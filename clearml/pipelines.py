@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import import_clearml_automation
+from adapter import as_dict, import_clearml_automation, import_clearml_symbol
 from ml_platform_core.config import load_yaml
 
 
@@ -21,6 +22,48 @@ TASK_TO_TEMPLATE = {
     "tabular_eval": "tabular_eval_template",
     "tabular_infer": "tabular_infer_template",
 }
+
+
+def pipeline_ui_params(
+    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
+    profile_path: str | Path = "config/profiles/clearml-dev.yaml",
+) -> dict[str, Any]:
+    pipeline_cfg = load_yaml(task_path)
+    train_cfg = load_yaml(pipeline_cfg.get("train", {}).get("task_config", "config/tasks/tabular_train.yaml"))
+    eval_cfg = load_yaml(pipeline_cfg.get("eval", {}).get("task_config", "config/tasks/tabular_eval.yaml"))
+    infer_cfg = load_yaml(pipeline_cfg.get("infer", {}).get("task_config", "config/tasks/tabular_infer.yaml"))
+    run = pipeline_cfg.get("run", {})
+    train_model = train_cfg.get("model", {})
+    return {
+        "Run/task": pipeline_cfg.get("task"),
+        "Run/name": run.get("name"),
+        "Run/seed": run.get("seed"),
+        "Input/clearml_dataset_id": None,
+        "Input/train_dataset_file": train_cfg.get("data", {}).get("dataset_file"),
+        "Input/eval_dataset_file": eval_cfg.get("data", {}).get("dataset_file"),
+        "Input/infer_dataset_file": infer_cfg.get("data", {}).get("dataset_file"),
+        "Model/name": train_model.get("name"),
+        "Model/params": train_model.get("params", {}),
+        "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
+    }
+
+
+def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -> None:
+    dataset_id = ui_params.get("Input/clearml_dataset_id")
+    if dataset_id:
+        step["parameter_override"]["Input/clearml_dataset_id"] = dataset_id
+        step["parameter_override"]["Input/local_path"] = ""
+        dataset_file = ui_params.get(f"Input/{step['name']}_dataset_file")
+        if dataset_file:
+            step["parameter_override"]["Input/dataset_file"] = dataset_file
+
+    if step["name"] == "train":
+        if ui_params.get("Model/name"):
+            step["parameter_override"]["Model/name"] = ui_params["Model/name"]
+        if "Model/params" in ui_params:
+            step["parameter_override"]["Model/params"] = json.dumps(as_dict(ui_params.get("Model/params")))
+        if ui_params.get("Model/feature_preset"):
+            step["parameter_override"]["Model/feature_preset"] = ui_params["Model/feature_preset"]
 
 
 def _load_step_task_name(task_config: str | Path) -> str:
@@ -34,6 +77,7 @@ def _load_step_task_name(task_config: str | Path) -> str:
 def build_pipeline_plan(
     task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
+    ui_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pipeline_cfg = load_yaml(task_path)
     profile = load_yaml(profile_path)
@@ -58,6 +102,8 @@ def build_pipeline_plan(
         }
         if name in {"eval", "infer"}:
             step["parameter_override"]["Model/artifact_path"] = MODEL_ARTIFACT_REF
+        if ui_params:
+            _apply_pipeline_overrides(step, ui_params)
         steps.append(step)
 
     return {
@@ -99,9 +145,14 @@ def register_tabular_pipeline(
     This is a Phase 3 starter. The local pipeline remains in pkgs/tabular/pipeline.py.
     Keep this DAG simple until template task execution is stable in the target server.
     """
-    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path)
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
+    Task = import_clearml_symbol("Task")
+    task = Task.current_task()
+    defaults = pipeline_ui_params(task_path, profile_path)
+    task_params = task.get_parameters() if task else {}
+    connected = {**defaults, **{key: value for key, value in task_params.items() if key in defaults}}
+    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected)
 
     pipe = PipelineController(
         project=plan["project"],

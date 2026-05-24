@@ -77,6 +77,15 @@ def test_clearml_ui_params_are_task_specific():
     assert set(pipeline) == {"Run/task", "Run/name", "Run/seed"}
 
 
+def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
+    pipelines = load_clearml_pipelines_module()
+    params = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+
+    assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
+    assert {"Input/clearml_dataset_id", "Input/train_dataset_file", "Input/eval_dataset_file", "Input/infer_dataset_file"}.issubset(params)
+    assert {"Model/name", "Model/params", "Model/feature_preset"}.issubset(params)
+
+
 def test_clearml_connect_params_uses_named_groups():
     adapter = load_clearml_adapter_module()
 
@@ -129,3 +138,28 @@ def test_clearml_pipeline_plan_is_fixed_three_step_dag():
     assert plan["steps"][2]["parents"] == ["eval"]
     assert plan["steps"][1]["parameter_override"]["Model/artifact_path"] == "${train.artifacts.model.url}"
     assert plan["steps"][2]["parameter_override"]["Model/artifact_path"] == "${train.artifacts.model.url}"
+
+
+def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
+    pipelines = load_clearml_pipelines_module()
+    plan = pipelines.build_pipeline_plan(
+        "config/tasks/tabular_pipeline.yaml",
+        "config/profiles/clearml-dev.yaml",
+        ui_params={
+            "Input/clearml_dataset_id": "dataset-id",
+            "Input/train_dataset_file": "train.csv",
+            "Input/eval_dataset_file": "eval.csv",
+            "Input/infer_dataset_file": "infer.csv",
+            "Model/name": "linear",
+            "Model/params": "{}",
+            "Model/feature_preset": "basic",
+        },
+    )
+
+    train, eval_step, infer = plan["steps"]
+    assert train["parameter_override"]["Input/clearml_dataset_id"] == "dataset-id"
+    assert train["parameter_override"]["Input/dataset_file"] == "train.csv"
+    assert train["parameter_override"]["Model/name"] == "linear"
+    assert train["parameter_override"]["Model/params"] == "{}"
+    assert eval_step["parameter_override"]["Input/dataset_file"] == "eval.csv"
+    assert infer["parameter_override"]["Input/dataset_file"] == "infer.csv"

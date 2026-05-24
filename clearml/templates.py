@@ -12,6 +12,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
 
 from adapter import default_ui_params, import_clearml_sdk
 from ml_platform_core.config import load_run_config, load_yaml
+from pipelines import pipeline_ui_params
 
 
 TEMPLATES = [
@@ -146,7 +147,8 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     if dry_run:
         for task_name, task_config, task_type_name in TEMPLATES:
             cfg = load_run_config(task_config, profile_path)
-            params = ", ".join(default_ui_params(cfg))
+            ui_params = pipeline_ui_params(task_config, profile_path) if task_name == "tabular_pipeline_template" else default_ui_params(cfg)
+            params = ", ".join(ui_params)
             entry_point = _entry_point(task_name)
             print(
                 "DRY-RUN template: "
@@ -169,6 +171,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     for task_name, task_config, task_type_name in TEMPLATES:
         cfg = load_run_config(task_config, profile_path)
         entry_point = _entry_point(task_name)
+        params = pipeline_ui_params(task_config, profile_path) if task_name == "tabular_pipeline_template" else default_ui_params(cfg)
         task = _sync_template_task(
             Task,
             project_name=project_name,
@@ -180,6 +183,6 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
             entry_point=entry_point,
             task_config=task_config,
             profile_path=profile_path,
-            params=default_ui_params(cfg),
+            params=params,
         )
         print(f"Synced template: {project_name}/{task_name} id={task.id} ({_template_note(task_name)})")
