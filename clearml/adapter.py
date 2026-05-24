@@ -96,7 +96,7 @@ def as_dict(value: Any) -> dict[str, Any]:
     if value is None or value == "":
         return {}
     if isinstance(value, dict):
-        return value
+        return dict(value)
     if isinstance(value, str):
         text = value.strip()
         if not text:
