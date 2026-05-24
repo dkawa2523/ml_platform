@@ -1,0 +1,18 @@
+task: tabular_infer
+
+run:
+  name: tabular_infer
+  seed: 42
+
+data:
+  local_path: data/sample_infer.csv
+  clearml_dataset_id: null
+  target_column: null
+  feature_columns: null
+  id_columns: []
+
+model:
+  artifact_path: null
+
+output:
+  prediction_name: predictions.csv

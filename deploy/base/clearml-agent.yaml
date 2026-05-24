@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-platform-clearml-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-platform-clearml-agent
+  template:
+    metadata:
+      labels:
+        app: ml-platform-clearml-agent
+    spec:
+      containers:
+        - name: clearml-agent
+          image: ml-platform-clearml-agent:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: clearml-credentials
+            - configMapRef:
+                name: ml-platform-clearml-agent-config
+          command: ["sh", "-lc"]
+          args:
+            - clearml-agent daemon --queue "${CLEARML_AGENT_QUEUE}"
+          volumeMounts:
+            - name: outputs
+              mountPath: /mnt/clearml/outputs
+      volumes:
+        - name: outputs
+          persistentVolumeClaim:
+            claimName: ml-platform-clearml-outputs

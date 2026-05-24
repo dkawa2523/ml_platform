@@ -1,0 +1,29 @@
+task: tabular_train
+
+run:
+  name: tabular_train
+  seed: 42
+
+data:
+  local_path: data/sample_train.csv
+  clearml_dataset_id: null
+  dataset_file: null
+  target_column: target
+  feature_columns: null
+  id_columns: [id]
+
+split:
+  method: random
+  valid_size: 0.2
+
+metrics:
+  names: [mae, rmse, r2]
+
+features:
+  preset: basic
+  params: {}
+
+model:
+  name: ridge
+  params:
+    alpha: 1.0

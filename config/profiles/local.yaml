@@ -1,0 +1,11 @@
+profile: local
+
+runtime:
+  output_dir: outputs
+  use_clearml: false
+
+data:
+  base_dir: .
+
+logging:
+  level: INFO

@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pickle
+import pandas as pd
+
+TABLE_SUFFIXES = {".csv", ".parquet", ".pq"}
+
+
+def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> Path:
+    """Resolve a table file from a file or directory path.
+
+    ClearML Dataset local copies are often directories. To keep pkgs ClearML-free,
+    the caller can pass the resolved local copy and this helper chooses a table file.
+    """
+    path = Path(path)
+    if path.is_file():
+        return path
+    if not path.exists():
+        raise FileNotFoundError(f"Table path not found: {path}")
+    if not path.is_dir():
+        raise ValueError(f"Table path is neither file nor directory: {path}")
+
+    if preferred_name:
+        candidate = path / preferred_name
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        raise FileNotFoundError(f"Preferred table file not found in dataset copy: {candidate}")
+
+    candidates = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in TABLE_SUFFIXES)
+    if not candidates:
+        raise FileNotFoundError(f"No supported table file found under directory: {path}")
+    if len(candidates) > 1:
+        formatted = ", ".join(str(p.relative_to(path)) for p in candidates[:10])
+        raise ValueError(
+            "Multiple table files found. Set data.dataset_file to choose one. "
+            f"Candidates: {formatted}"
+        )
+    return candidates[0]
+
+
+def read_table(path: str | Path, *, preferred_name: str | None = None) -> pd.DataFrame:
+    path = find_table_file(path, preferred_name=preferred_name)
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(path)
+    if suffix in {".parquet", ".pq"}:
+        return pd.read_parquet(path)
+
+    raise ValueError(f"Unsupported table format: {path.suffix}")
+
+
+def write_table(df: pd.DataFrame, path: str | Path) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        df.to_csv(path, index=False)
+        return path
+    if suffix in {".parquet", ".pq"}:
+        df.to_parquet(path, index=False)
+        return path
+
+    raise ValueError(f"Unsupported table format: {path.suffix}")
+
+
+def read_json(path: str | Path) -> dict[str, Any]:
+    path = Path(path)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(data: dict[str, Any], path: str | Path) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return path
+
+
+def dump_joblib(obj: Any, path: str | Path) -> Path:
+    """Serialize a Python object for MVP model artifacts.
+
+    The function name is kept for compatibility with existing code, but the MVP
+    intentionally uses stdlib pickle to avoid adding serialization complexity.
+    Codex may switch this to joblib later if the target runtime prefers it.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as f:
+        pickle.dump(obj, f)
+    return path
+
+
+def load_joblib(path: str | Path) -> Any:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Model artifact file not found: {path}")
+    with path.open("rb") as f:
+        return pickle.load(f)

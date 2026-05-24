@@ -1,0 +1,18 @@
+task: tabular_eval
+
+run:
+  name: tabular_eval
+  seed: 42
+
+data:
+  local_path: data/sample_train.csv
+  clearml_dataset_id: null
+  target_column: target
+  feature_columns: null
+  id_columns: []
+
+model:
+  artifact_path: null
+
+metrics:
+  names: [mae, rmse, r2]

@@ -1,0 +1,17 @@
+[project]
+name = "ml-platform-mvp"
+version = "0.1.0"
+description = "Minimal ML platform scaffold with ClearML boundary and tabular regression MVP."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+clearml = ["clearml>=1.14"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "pkgs/core/src",
+  "pkgs/tabular/src",
+  "."
+]
+testpaths = ["tests"]

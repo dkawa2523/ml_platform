@@ -1,0 +1,17 @@
+task: tabular_pipeline
+
+run:
+  name: tabular_pipeline
+  seed: 42
+
+# Local pipeline orchestration reuses the three simple task configs.
+# ClearML PipelineController is intentionally kept in clearml/pipelines.py and
+# is not part of pkgs/tabular.
+train:
+  task_config: config/tasks/tabular_train.yaml
+
+eval:
+  task_config: config/tasks/tabular_eval.yaml
+
+infer:
+  task_config: config/tasks/tabular_infer.yaml

@@ -1,0 +1,18 @@
+profile: clearml-prod
+
+runtime:
+  output_dir: /mnt/clearml/outputs
+  use_clearml: true
+
+clearml:
+  project_root: MLPlatform/Prod
+  queue: cpu
+  dataset_project: datasets
+  # Set this when the ClearML server has no default artifact storage.
+  artifact_output_uri: null
+  repository: https://github.com/dkawa2523/ml_platform.git
+  branch: main
+  working_dir: .
+
+logging:
+  level: INFO
