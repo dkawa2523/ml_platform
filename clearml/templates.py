@@ -42,6 +42,14 @@ def _entry_command(entry_point: str, task_config: str, profile_path: str | Path)
     return f"{entry_point} --task {task_config} --profile {Path(profile_path).as_posix()}"
 
 
+def _remote_packages() -> list[str]:
+    requirements = REPO_ROOT / "requirements.txt"
+    packages = [line.strip() for line in requirements.read_text(encoding="utf-8").splitlines() if line.strip() and not line.strip().startswith("#")]
+    if not any(line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0].strip().lower() == "clearml" for line in packages):
+        packages.append("clearml")
+    return packages
+
+
 def _set_script_with_compat(
     task: Any,
     *,
@@ -99,6 +107,7 @@ def _sync_template_task(
             branch=branch,
             script=_entry_command(entry_point, task_config, profile_arg),
             working_directory=working_dir,
+            packages=_remote_packages(),
             add_task_init_call=False,
         )
     else:
@@ -114,6 +123,7 @@ def _sync_template_task(
     task.update_parameters(params)
     task.delete_parameter("Args/task", force=True)
     task.delete_parameter("Args/profile", force=True)
+    task.set_packages(_remote_packages())
     return task
 
 
