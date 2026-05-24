@@ -42,6 +42,8 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
     assert (tmp_path / "outputs" / "latest_train" / "model.joblib").exists()
     model_info = read_json(train_result.artifacts["model_info"])
     assert model_info["feature_columns"] == ["x1", "x2"]
+    assert model_info["model_name"] == "ridge"
+    assert model_info["model_params"] == {"alpha": 1.0}
 
     eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
     eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
@@ -91,9 +93,12 @@ def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
     cfg["model"]["params"] = params
 
     result = run_train(cfg)
+    model_info = read_json(result.artifacts["model_info"])
 
     assert result.artifacts["model"].exists()
     assert result.artifacts["model_info"].exists()
+    assert model_info["model_name"] == model_name
+    assert model_info["model_params"] == params
     assert "rmse" in result.metrics
 
 

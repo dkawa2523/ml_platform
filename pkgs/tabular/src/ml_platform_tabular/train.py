@@ -34,7 +34,8 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
 
     model_cfg = cfg.get("model", {})
     model_name = model_cfg.get("name", "ridge")
-    model = build_model(model_name, model_cfg.get("params") or {})
+    model_params = model_cfg.get("params") or {}
+    model = build_model(model_name, model_params)
 
     estimator = TabularEstimator(transformer=transformer, model=model, feature_columns=feature_names)
     estimator.fit(X_train, y_train)
@@ -53,6 +54,7 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         target_column=cfg.get("data", {}).get("target_column"),
         feature_preset=feature_preset,
         model_name=model_name,
+        model_params=model_params,
     )
     metrics_path = write_json(metrics, run_dir / "metrics.json")
     config_path = write_config_snapshot(cfg, run_dir)

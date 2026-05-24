@@ -29,6 +29,7 @@ def write_model_info(
     target_column: str | None,
     feature_preset: str,
     model_name: str,
+    model_params: dict[str, Any] | None = None,
 ) -> Path:
     return write_json(
         {
@@ -36,6 +37,7 @@ def write_model_info(
             "target_column": target_column,
             "feature_preset": feature_preset,
             "model_name": model_name,
+            "model_params": model_params or {},
         },
         path,
     )
