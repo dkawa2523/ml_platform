@@ -38,6 +38,10 @@ def _entry_point(task_name: str) -> str:
     return "clearml/app.py"
 
 
+def _entry_command(entry_point: str, task_config: str, profile_path: str | Path) -> str:
+    return f"{entry_point} --task {task_config} --profile {Path(profile_path).as_posix()}"
+
+
 def _set_script_with_compat(
     task: Any,
     *,
@@ -48,11 +52,12 @@ def _set_script_with_compat(
     task_config: str,
     profile_path: str | Path,
 ) -> None:
+    entry_command = _entry_command(entry_point, task_config, profile_path)
     common = {
         "repository": repository,
         "branch": branch,
         "working_dir": working_dir,
-        "entry_point": entry_point,
+        "entry_point": entry_command,
     }
     try:
         task.set_script(**common, arguments={"--task": task_config, "--profile": str(profile_path)})
@@ -61,7 +66,6 @@ def _set_script_with_compat(
             task.set_script(**common, args=f"--task {task_config} --profile {profile_path}")
         except TypeError:
             task.set_script(**common)
-            task.update_parameters({"Args/task": task_config, "Args/profile": str(profile_path)})
 
 
 def _find_editable_template(Task: Any, project_name: str, task_name: str):
@@ -93,9 +97,8 @@ def _sync_template_task(
             task_type=task_type,
             repo=repository,
             branch=branch,
-            script=entry_point,
+            script=_entry_command(entry_point, task_config, profile_arg),
             working_directory=working_dir,
-            argparse_args=[("task", task_config), ("profile", profile_arg)],
             add_task_init_call=False,
         )
     else:
@@ -109,7 +112,8 @@ def _sync_template_task(
             profile_path=profile_arg,
         )
     task.update_parameters(params)
-    task.update_parameters({"Args/task": task_config, "Args/profile": profile_arg})
+    task.delete_parameter("Args/task", force=True)
+    task.delete_parameter("Args/profile", force=True)
     return task
 
 

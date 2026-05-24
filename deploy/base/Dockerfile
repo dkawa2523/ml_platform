@@ -2,8 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /workspace
 
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && update-ca-certificates \
+    && git config --system http.sslCAInfo /etc/ssl/certs/ca-certificates.crt \
     && apt-get clean
 
 COPY requirements.txt .
