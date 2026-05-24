@@ -46,7 +46,7 @@ def _remote_packages() -> list[str]:
     requirements = REPO_ROOT / "requirements.txt"
     packages = [line.strip() for line in requirements.read_text(encoding="utf-8").splitlines() if line.strip() and not line.strip().startswith("#")]
     if not any(line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0].strip().lower() == "clearml" for line in packages):
-        packages.append("clearml")
+        packages.append("clearml==2.1.7")
     return packages
 
 
