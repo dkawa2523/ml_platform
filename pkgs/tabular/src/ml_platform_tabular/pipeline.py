@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,12 @@ def _load_nested_task(root_cfg: dict[str, Any], section: str) -> dict[str, Any]:
     section_overrides = {k: v for k, v in section_cfg.items() if k != "task_config"}
     # Task config is the default. Profile/root pipeline settings override shared fields.
     # Section-specific overrides win last.
-    return deep_merge(deep_merge(task_cfg, inherited), section_overrides)
+    merged = deep_merge(deep_merge(task_cfg, inherited), section_overrides)
+    for overrides in (inherited, section_overrides):
+        model_overrides = overrides.get("model")
+        if isinstance(model_overrides, dict) and "params" in model_overrides:
+            merged.setdefault("model", {})["params"] = deepcopy(model_overrides["params"])
+    return merged
 
 
 def run_pipeline(cfg: dict[str, Any]) -> RunResult:

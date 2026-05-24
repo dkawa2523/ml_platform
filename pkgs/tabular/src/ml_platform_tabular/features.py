@@ -11,8 +11,8 @@ import pandas as pd
 class FeatureTransformer:
     """Small tabular feature transformer for the MVP.
 
-    The default MVP path avoids scikit-learn so local smoke runs stay light. Optional
-    sklearn-based models can still be added in models.py without changing ClearML boundaries.
+    Feature handling stays intentionally small so model additions in models.py do not
+    change the ClearML boundary.
     """
 
     preset: str = "basic"

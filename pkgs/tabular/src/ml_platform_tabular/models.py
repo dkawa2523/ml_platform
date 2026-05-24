@@ -69,14 +69,14 @@ def build_model(name: str, params: dict[str, Any] | None = None):
     if name == "random_forest":
         try:
             from sklearn.ensemble import RandomForestRegressor  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError("random_forest requires optional dependency: pip install scikit-learn") from exc
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("random_forest requires scikit-learn. Install project runtime dependencies.") from exc
         params.setdefault("n_jobs", 1)
         return RandomForestRegressor(**params)
     if name == "gradient_boosting":
         try:
             from sklearn.ensemble import GradientBoostingRegressor  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError("gradient_boosting requires optional dependency: pip install scikit-learn") from exc
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("gradient_boosting requires scikit-learn. Install project runtime dependencies.") from exc
         return GradientBoostingRegressor(**params)
     raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")

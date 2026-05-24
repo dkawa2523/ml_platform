@@ -2,6 +2,10 @@
 
 Minimal ML execution platform for tabular regression and small tabular analysis outputs with a strict ClearML boundary.
 
+Current status is `v0.1 / MVP`. The next product V1 scope is verified tabular
+scalar regression with four official models: `linear`, `ridge`,
+`random_forest`, and `gradient_boosting`.
+
 The product repo is intentionally small:
 
 ```text
@@ -45,6 +49,11 @@ Example override:
 python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile config/profiles/local.yaml --set data.local_path=data/sample_train.csv --set model.name=ridge --set metrics.names=mse,rmse
 ```
 
+Model switching uses `model.name` and `model.params` locally, or `Model/name`
+and `Model/params` in ClearML. V1 does not add `Model/candidates`, all-model
+training, ensemble, or runtime leaderboard tasks. The V1 leaderboard CSV is
+release verification evidence under `verification/full_run/`.
+
 ## ClearML
 
 ClearML is optional for local development. Install the SDK only when syncing templates or running tasks through a ClearML server.
@@ -62,6 +71,13 @@ Before a real sync or Agent run, update `config/profiles/clearml-dev.yaml` or `c
 - `working_dir`
 - `queue`
 - `artifact_output_uri` when the server has no default artifact storage
+
+For local runs, use `data.local_path` or `Input/local_path`. For ClearML Agent
+runs, prefer `Input/clearml_dataset_id` and use `Input/dataset_file` when a
+Dataset contains multiple files. Dataset artifact URLs must be reachable from the
+Agent environment; host-only `localhost` URLs and host filesystem paths usually
+are not. `artifact_output_uri` controls newly produced run artifacts and does not
+fix Dataset storage reachability.
 
 Pipeline dry-run:
 

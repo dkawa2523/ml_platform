@@ -103,7 +103,7 @@ Tasks:
 - keep README, handoff, and spec current
 - keep CI local-only
 - remove stale docs and unsupported config keys
-- keep requirements light
+- keep requirements focused on V1 runtime needs
 - keep tests small and useful
 
 ## Phase 7: Future Expansion
@@ -122,3 +122,23 @@ Deferred:
 - distribution modes
 - optimization
 - new domain packages until there is a clear second domain
+
+## V1 Scope
+
+Goal: verify multiple tabular scalar regression models across local and ClearML execution.
+
+Required:
+
+- official models: `linear`, `ridge`, `random_forest`, `gradient_boosting`
+- `scikit-learn` as a runtime dependency
+- local train/eval/infer/pipeline verification for all official models
+- ClearML task and pipeline verification for all official models
+- model comparison CSV as release verification evidence
+
+Deferred:
+
+- `Model/candidates`
+- all-model training
+- runtime leaderboard tasks
+- ensemble, stacking, and weighted ensemble
+- LightGBM, XGBoost, CatBoost, and TabPFN

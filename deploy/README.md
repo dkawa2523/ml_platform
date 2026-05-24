@@ -60,6 +60,10 @@ Apply only the overlay for the target environment in a given namespace. If dev
 and prod must run in the same cluster, put them in separate namespaces or add an
 environment-specific name prefix outside this MVP manifest set.
 
+For ClearML Dataset inputs, make sure Dataset artifact URLs are reachable from
+the Agent pod. Host-only `localhost` URLs and host filesystem paths are not valid
+inside Kubernetes unless they are explicitly mounted or routed there.
+
 Render first:
 
 ```powershell
@@ -80,8 +84,10 @@ Use `deploy/overlays/prod` instead when applying production.
 - The image repository and tag exist and are pullable by the cluster.
 - `clearml-credentials` exists in the target namespace and contains no placeholder values.
 - The deploy queue matches the profile queue and the ClearML UI queue.
+- Remote pipeline runs have enough Agent capacity: one worker slot for the controller task and one for step tasks, or separate controller and step queues.
 - The profile repository URL has been changed from the placeholder to a real Git repository the Agent can clone.
 - `working_dir` points to the repository root that contains `clearml/app.py`.
 - `artifact_output_uri` is set if the ClearML server does not provide default artifact storage.
+- Dataset artifact storage is reachable from the Agent pod; `artifact_output_uri` is not a substitute for Dataset storage reachability.
 - The PVC size and storage class are acceptable for the environment.
 - ClearML UI shows the Agent under Workers / Queues after the Deployment starts.

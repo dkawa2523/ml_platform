@@ -64,6 +64,39 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
     assert (tmp_path / "outputs" / "latest_infer" / "predictions.csv").exists()
 
 
+@pytest.mark.parametrize(
+    ("model_name", "params"),
+    [
+        ("random_forest", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
+        ("gradient_boosting", {"n_estimators": 5, "random_state": 42}),
+    ],
+)
+def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame(
+        {
+            "id": range(40),
+            "x1": rng.normal(size=40),
+            "x2": rng.normal(size=40),
+        }
+    )
+    df["target"] = 1.5 * df["x1"] + 0.5 * df["x2"] + rng.normal(scale=0.05, size=40)
+    train_path = tmp_path / "train.csv"
+    df.to_csv(train_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["name"] = model_name
+    cfg["model"]["params"] = params
+
+    result = run_train(cfg)
+
+    assert result.artifacts["model"].exists()
+    assert result.artifacts["model_info"].exists()
+    assert "rmse" in result.metrics
+
+
 def test_regression_metrics_can_select_mse():
     values = regression_metrics([1.0, 2.0, 3.0], [1.0, 2.0, 5.0], metrics=["mse", "rmse"])
     assert list(values) == ["mse", "rmse"]

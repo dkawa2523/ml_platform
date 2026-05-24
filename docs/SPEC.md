@@ -12,6 +12,18 @@ The current product surface supports:
 - minimal ClearML Agent deploy manifests
 - smoke and boundary tests
 
+Current status is `v0.1 / MVP`. Product V1 requires verified local and ClearML
+runs for these tabular scalar regression models:
+
+- `linear`
+- `ridge`
+- `random_forest`
+- `gradient_boosting`
+
+`scikit-learn` is a required V1 runtime dependency because it provides
+`random_forest` and `gradient_boosting`. `Model/candidates`, all-model training,
+ensembles, and runtime leaderboard tasks are future scope.
+
 ## Boundaries
 
 ```text
@@ -20,7 +32,7 @@ clearml/app.py      -> clearml/adapter.py -> pkgs
 clearml/pipelines.py -> ClearML PipelineController
 
 pkgs/core    -> pandas, pyyaml, stdlib
-pkgs/tabular -> pkgs/core, pandas, numpy, optional sklearn models
+pkgs/tabular -> pkgs/core, pandas, numpy, scikit-learn
 ```
 
 Forbidden dependencies:
