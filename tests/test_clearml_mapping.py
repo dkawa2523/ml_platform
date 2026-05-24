@@ -59,6 +59,7 @@ def test_clearml_ui_params_stay_in_four_groups():
     params = adapter.default_ui_params(cfg)
 
     assert "Input/dataset_file" in params
+    assert params["Model/params"] == '{"alpha": 1.0}'
     assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
     assert not [key for key in params if key.startswith("Output/")]
 

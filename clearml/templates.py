@@ -121,6 +121,9 @@ def _sync_template_task(
             task_config=task_config,
             profile_path=profile_arg,
         )
+    for key in list(task.get_parameters() or {}):
+        if key.startswith("Model/params/"):
+            task.delete_parameter(key, force=True)
     task.update_parameters(params)
     task.delete_parameter("Args/task", force=True)
     task.delete_parameter("Args/profile", force=True)

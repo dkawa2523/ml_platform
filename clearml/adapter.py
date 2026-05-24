@@ -133,7 +133,7 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
         if "name" in model:
             params["Model/name"] = model.get("name")
         if "params" in model:
-            params["Model/params"] = model.get("params", {})
+            params["Model/params"] = json.dumps(model.get("params", {}) or {})
         if "artifact_path" in model:
             params["Model/artifact_path"] = model.get("artifact_path")
     if "features" in cfg:

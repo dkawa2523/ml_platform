@@ -43,7 +43,7 @@ def pipeline_ui_params(
         "Input/eval_dataset_file": eval_cfg.get("data", {}).get("dataset_file"),
         "Input/infer_dataset_file": infer_cfg.get("data", {}).get("dataset_file"),
         "Model/name": train_model.get("name"),
-        "Model/params": train_model.get("params", {}),
+        "Model/params": json.dumps(train_model.get("params", {}) or {}),
         "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
     }
 
