@@ -102,6 +102,42 @@ def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
     assert "rmse" in result.metrics
 
 
+def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
+    rng = np.random.default_rng(3)
+    df = pd.DataFrame(
+        {
+            "id": range(50),
+            "x1": rng.normal(size=50),
+            "x2": rng.normal(size=50),
+        }
+    )
+    df["target"] = 1.2 * df["x1"] - 0.8 * df["x2"] + rng.normal(scale=0.05, size=50)
+    train_path = tmp_path / "train.csv"
+    df.to_csv(train_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["candidates"] = [
+        {"name": "linear", "params": {}},
+        {"name": "ridge", "params": {"alpha": 1.0}},
+    ]
+    cfg["model"]["selection_metric"] = "rmse"
+
+    result = run_train(cfg)
+
+    assert result.artifacts["model"].exists()
+    assert result.tables["leaderboard"].exists()
+    leaderboard = pd.read_csv(result.tables["leaderboard"])
+    assert list(leaderboard["rank"]) == [1, 2]
+    assert set(leaderboard["model_name"]) == {"linear", "ridge"}
+    assert leaderboard["selected"].tolist() == [True, False]
+    model_info = read_json(result.artifacts["model_info"])
+    assert model_info["model_name"] == leaderboard.loc[0, "model_name"]
+    expected_params = {} if leaderboard.loc[0, "model_params"] == "{}" else {"alpha": 1.0}
+    assert model_info["model_params"] == expected_params
+
+
 def test_regression_metrics_can_select_mse():
     values = regression_metrics([1.0, 2.0, 3.0], [1.0, 2.0, 5.0], metrics=["mse", "rmse"])
     assert list(values) == ["mse", "rmse"]

@@ -122,7 +122,7 @@ def _sync_template_task(
             profile_path=profile_arg,
         )
     for key in list(task.get_parameters() or {}):
-        if key.startswith("Model/params/"):
+        if key.startswith("Model/params/") or key.startswith("Model/candidates/"):
             task.delete_parameter(key, force=True)
     task.update_parameters(params)
     task.delete_parameter("Args/task", force=True)

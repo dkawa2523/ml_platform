@@ -12,7 +12,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import as_dict, import_clearml_automation, import_clearml_symbol
+from adapter import as_candidates, as_dict, import_clearml_automation, import_clearml_symbol
 from ml_platform_core.config import load_yaml
 
 
@@ -44,6 +44,8 @@ def pipeline_ui_params(
         "Input/infer_dataset_file": infer_cfg.get("data", {}).get("dataset_file"),
         "Model/name": train_model.get("name"),
         "Model/params": json.dumps(train_model.get("params", {}) or {}),
+        "Model/candidates": json.dumps(train_model.get("candidates", []) or []),
+        "Model/selection_metric": train_model.get("selection_metric", "rmse"),
         "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
     }
 
@@ -62,6 +64,10 @@ def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -
             step["parameter_override"]["Model/name"] = ui_params["Model/name"]
         if "Model/params" in ui_params:
             step["parameter_override"]["Model/params"] = json.dumps(as_dict(ui_params.get("Model/params")))
+        if "Model/candidates" in ui_params:
+            step["parameter_override"]["Model/candidates"] = json.dumps(as_candidates(ui_params.get("Model/candidates")))
+        if ui_params.get("Model/selection_metric"):
+            step["parameter_override"]["Model/selection_metric"] = ui_params["Model/selection_metric"]
         if ui_params.get("Model/feature_preset"):
             step["parameter_override"]["Model/feature_preset"] = ui_params["Model/feature_preset"]
 

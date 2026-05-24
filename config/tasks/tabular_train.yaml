@@ -27,3 +27,5 @@ model:
   name: ridge
   params:
     alpha: 1.0
+  candidates: []
+  selection_metric: rmse

@@ -108,6 +108,24 @@ def as_dict(value: Any) -> dict[str, Any]:
     raise ValueError(f"Cannot convert value to dict: {value!r}")
 
 
+def as_candidates(value: Any) -> list[dict[str, Any]]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        value = json.loads(text)
+    if not isinstance(value, list):
+        raise ValueError(f"Expected JSON array for candidates, got: {value!r}")
+    candidates = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"Model/candidates[{index}] must be an object.")
+        candidates.append(dict(item))
+    return candidates
+
+
 def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
     """Return the small ClearML UI parameter surface for a task config."""
     run = cfg.get("run", {})
@@ -134,6 +152,10 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Model/name"] = model.get("name")
         if "params" in model:
             params["Model/params"] = json.dumps(model.get("params", {}) or {})
+        if "candidates" in model:
+            params["Model/candidates"] = json.dumps(model.get("candidates", []) or [])
+        if "selection_metric" in model:
+            params["Model/selection_metric"] = model.get("selection_metric")
         if "artifact_path" in model:
             params["Model/artifact_path"] = model.get("artifact_path")
     if "features" in cfg:
@@ -201,6 +223,10 @@ def apply_ui_params(
         cfg["model"]["name"] = connected["Model/name"]
     if "Model/params" in connected:
         cfg["model"]["params"] = as_dict(connected.get("Model/params"))
+    if "Model/candidates" in connected:
+        cfg["model"]["candidates"] = as_candidates(connected.get("Model/candidates"))
+    if connected.get("Model/selection_metric"):
+        cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
     if connected.get("Model/artifact_path"):
         cfg["model"]["artifact_path"] = connected["Model/artifact_path"]
     if connected.get("Model/feature_preset"):

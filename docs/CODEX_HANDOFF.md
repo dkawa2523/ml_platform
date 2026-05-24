@@ -12,7 +12,8 @@ This repo is at `v0.1 / MVP` and is being hardened toward V1. Keep the implement
 - Tests are smoke and boundary oriented.
 - V1 official regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
 - `scikit-learn` is a required V1 runtime dependency.
-- V1 model switching uses `Model/name` and `Model/params`; do not add `Model/candidates` unless the scope changes.
+- V1 single-model switching uses `Model/name` and `Model/params`.
+- V1 comparison uses `Model/candidates` and `Model/selection_metric`, writes `leaderboard.csv`, and saves only the best model artifact.
 
 ## Required Local Check
 
@@ -96,4 +97,4 @@ See `deploy/README.md`. At minimum verify:
 - Do not expand UI parameters without a current product need.
 - Do not copy legacy repo files or directory structures.
 - Do not add broad diagnostics, contract docs, or abstract base classes.
-- Do not add all-model training, ensemble, or runtime leaderboard tasks for V1.
+- Do not add all-model pipeline DAGs, ensemble, or separate runtime leaderboard tasks for V1.

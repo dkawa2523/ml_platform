@@ -21,8 +21,10 @@ runs for these tabular scalar regression models:
 - `gradient_boosting`
 
 `scikit-learn` is a required V1 runtime dependency because it provides
-`random_forest` and `gradient_boosting`. `Model/candidates`, all-model training,
-ensembles, and runtime leaderboard tasks are future scope.
+`random_forest` and `gradient_boosting`. Train supports a small
+`model.candidates` comparison mode that writes `leaderboard.csv` and saves only
+the best model artifact. All-model pipeline DAGs, ensembles, and separate
+runtime leaderboard tasks are future scope.
 
 ## Boundaries
 
@@ -94,6 +96,8 @@ Run/seed
 
 Model/name
 Model/params
+Model/candidates
+Model/selection_metric
 Model/artifact_path
 Model/feature_preset
 
@@ -131,6 +135,7 @@ outputs/
 - Add models in `pkgs/tabular/src/ml_platform_tabular/models.py`.
 - Add feature presets in `pkgs/tabular/src/ml_platform_tabular/features.py`.
 - Add metrics in `pkgs/tabular/src/ml_platform_tabular/metrics.py`.
+- Use train `model.candidates` for small model comparison; do not add a template per model.
 - Add small tabular analysis tasks in `pkgs/tabular/src/ml_platform_tabular/`.
 - Change ClearML parameter mapping in `clearml/adapter.py`.
 - Change ClearML reports in `clearml/reports.py`.

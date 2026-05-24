@@ -133,11 +133,10 @@ Required:
 - `scikit-learn` as a runtime dependency
 - local train/eval/infer/pipeline verification for all official models
 - ClearML task and pipeline verification for all official models
-- model comparison CSV as release verification evidence
+- train `model.candidates` comparison mode with `leaderboard.csv`
 
 Deferred:
 
-- `Model/candidates`
 - all-model training
 - runtime leaderboard tasks
 - ensemble, stacking, and weighted ensemble

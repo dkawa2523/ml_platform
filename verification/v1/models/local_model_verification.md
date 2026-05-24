@@ -84,7 +84,6 @@ No failing V1 model was found in local execution.
 
 The following remain outside V1:
 
-- `Model/candidates`
 - all-model training
 - runtime leaderboard task
 - ensemble, stacking, and weighted ensemble

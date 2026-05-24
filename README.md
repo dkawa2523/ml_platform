@@ -49,10 +49,11 @@ Example override:
 python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile config/profiles/local.yaml --set data.local_path=data/sample_train.csv --set model.name=ridge --set metrics.names=mse,rmse
 ```
 
-Model switching uses `model.name` and `model.params` locally, or `Model/name`
-and `Model/params` in ClearML. V1 does not add `Model/candidates`, all-model
-training, ensemble, or runtime leaderboard tasks. The V1 leaderboard CSV is
-release verification evidence under `verification/full_run/`.
+Single-model runs use `model.name` and `model.params` locally, or `Model/name`
+and `Model/params` in ClearML. Train also supports `model.candidates` /
+`Model/candidates` for a small sequential comparison run that writes
+`leaderboard.csv` and saves only the best model as `model.joblib`. V1 does not
+add all-model pipeline DAGs, ensemble, or a separate runtime leaderboard task.
 
 ## ClearML
 
