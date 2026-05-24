@@ -145,6 +145,14 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
     return params
 
 
+def grouped_ui_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    for key, value in params.items():
+        group, name = key.split("/", 1)
+        groups.setdefault(group, {})[name] = value
+    return groups
+
+
 def apply_ui_params(
     cfg: dict[str, Any],
     connected: dict[str, Any],
@@ -229,8 +237,13 @@ class ClearMLAdapter:
         return cls(task)
 
     def connect_params(self, params: dict[str, Any]) -> dict[str, Any]:
-        connected = self.task.connect(params)
-        return connected if isinstance(connected, dict) else params
+        connected: dict[str, Any] = {}
+        for group, values in grouped_ui_params(params).items():
+            group_values = self.task.connect(values, name=group)
+            if not isinstance(group_values, dict):
+                group_values = values
+            connected.update({f"{group}/{key}": value for key, value in group_values.items()})
+        return connected
 
     def resolve_dataset(
         self,

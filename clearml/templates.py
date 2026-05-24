@@ -57,11 +57,64 @@ def _set_script_with_compat(
     try:
         task.set_script(**common, arguments={"--task": task_config, "--profile": str(profile_path)})
     except TypeError:  # pragma: no cover - depends on ClearML SDK version
-        task.set_script(**common, args=f"--task {task_config} --profile {profile_path}")
+        try:
+            task.set_script(**common, args=f"--task {task_config} --profile {profile_path}")
+        except TypeError:
+            task.set_script(**common)
+            task.update_parameters({"Args/task": task_config, "Args/profile": str(profile_path)})
+
+
+def _find_editable_template(Task: Any, project_name: str, task_name: str):
+    tasks = Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=False)
+    editable = [task for task in tasks if getattr(task, "status", None) == "created"]
+    return editable[-1] if editable else None
+
+
+def _sync_template_task(
+    Task: Any,
+    *,
+    project_name: str,
+    task_name: str,
+    task_type: Any,
+    repository: str,
+    branch: str,
+    working_dir: str,
+    entry_point: str,
+    task_config: str,
+    profile_path: str | Path,
+    params: dict[str, Any],
+):
+    profile_arg = Path(profile_path).as_posix()
+    task = _find_editable_template(Task, project_name, task_name)
+    if task is None:
+        task = Task.create(
+            project_name=project_name,
+            task_name=task_name,
+            task_type=task_type,
+            repo=repository,
+            branch=branch,
+            script=entry_point,
+            working_directory=working_dir,
+            argparse_args=[("task", task_config), ("profile", profile_arg)],
+            add_task_init_call=False,
+        )
+    else:
+        _set_script_with_compat(
+            task,
+            repository=repository,
+            branch=branch,
+            working_dir=working_dir,
+            entry_point=entry_point,
+            task_config=task_config,
+            profile_path=profile_arg,
+        )
+    task.update_parameters(params)
+    task.update_parameters({"Args/task": task_config, "Args/profile": profile_arg})
+    return task
 
 
 def _task_args(task_config: str, profile_path: str | Path) -> str:
-    return f"--task {task_config} --profile {profile_path}"
+    return f"--task {task_config} --profile {Path(profile_path).as_posix()}"
 
 
 def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
@@ -101,17 +154,18 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
 
     for task_name, task_config, task_type_name in TEMPLATES:
         cfg = load_run_config(task_config, profile_path)
-        task = Task.init(project_name=project_name, task_name=task_name, task_type=_task_type(Task, task_type_name))
-        task.connect(default_ui_params(cfg))
         entry_point = _entry_point(task_name)
-        _set_script_with_compat(
-            task,
+        task = _sync_template_task(
+            Task,
+            project_name=project_name,
+            task_name=task_name,
+            task_type=_task_type(Task, task_type_name),
             repository=repository,
             branch=branch,
             working_dir=working_dir,
             entry_point=entry_point,
             task_config=task_config,
             profile_path=profile_path,
+            params=default_ui_params(cfg),
         )
-        task.close()
-        print(f"Synced template: {project_name}/{task_name} ({_template_note(task_name)})")
+        print(f"Synced template: {project_name}/{task_name} id={task.id} ({_template_note(task_name)})")

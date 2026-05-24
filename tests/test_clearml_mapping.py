@@ -77,6 +77,36 @@ def test_clearml_ui_params_are_task_specific():
     assert set(pipeline) == {"Run/task", "Run/name", "Run/seed"}
 
 
+def test_clearml_connect_params_uses_named_groups():
+    adapter = load_clearml_adapter_module()
+
+    class FakeTask:
+        def __init__(self):
+            self.calls = []
+
+        def connect(self, values, name=None):
+            self.calls.append((name, dict(values)))
+            return values
+
+    task = FakeTask()
+    connected = adapter.ClearMLAdapter(task).connect_params(
+        {
+            "Run/task": "tabular_train",
+            "Input/local_path": "data/sample_train.csv",
+            "Model/name": "ridge",
+        }
+    )
+
+    assert connected == {
+        "Run/task": "tabular_train",
+        "Input/local_path": "data/sample_train.csv",
+        "Model/name": "ridge",
+    }
+    assert ("Run", {"task": "tabular_train"}) in task.calls
+    assert ("Input", {"local_path": "data/sample_train.csv"}) in task.calls
+    assert ("Model", {"name": "ridge"}) in task.calls
+
+
 def test_clearml_templates_are_fixed_to_four_mvp_templates():
     templates = load_clearml_templates_module()
     assert [name for name, _, _ in templates.TEMPLATES] == [
