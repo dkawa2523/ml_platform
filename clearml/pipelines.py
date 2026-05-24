@@ -148,17 +148,19 @@ def register_tabular_pipeline(
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
     Task = import_clearml_symbol("Task")
-    task = Task.current_task()
     defaults = pipeline_ui_params(task_path, profile_path)
-    task_params = task.get_parameters() if task else {}
-    connected = {**defaults, **{key: value for key, value in task_params.items() if key in defaults}}
-    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected)
+    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path)
 
     pipe = PipelineController(
         project=plan["project"],
         name=plan["name"],
         version=plan["version"],
     )
+    task = Task.current_task()
+    task_params = task.get_parameters() if task else {}
+    connected = {**defaults, **{key: value for key, value in task_params.items() if key in defaults}}
+    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected)
+
     pipe.set_default_execution_queue(plan["queue"])
     for step in plan["steps"]:
         kwargs = {
