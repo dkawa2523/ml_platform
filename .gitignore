@@ -4,6 +4,7 @@ __pycache__/
 outputs/
 data/
 verification/raw/
+verification/full_run_rerun/
 credentials/
 secrets/
 *.egg-info/
