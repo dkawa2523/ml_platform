@@ -1,0 +1,9 @@
+model,source,task_url_or_run_dir,mae,rmse,r2,mse,status
+linear,local_pipeline,outputs/tabular_pipeline_20260524T132346Z,,0.5218273825248825,0.975121016854341,,pass
+ridge,local_pipeline,outputs/tabular_pipeline_20260524T132348Z,,0.522628388463519,0.9750445796690351,,pass
+random_forest,local_pipeline,outputs/tabular_pipeline_20260524T132352Z,,0.6283117085198283,0.9639314069203292,,pass
+gradient_boosting,local_pipeline,outputs/tabular_pipeline_20260524T132356Z,,0.5455435326303649,0.9728082148686884,,pass
+linear,clearml_eval,http://localhost:8080/projects/dff412a3cc954606bd3718c3d1ef8fe2/experiments/4a93dc5d4a8a4ac38bd361b8665b228b/output/log,0.42199715971946716,0.5218273997306824,0.975121021270752,,pass
+ridge,clearml_eval,http://localhost:8080/projects/dff412a3cc954606bd3718c3d1ef8fe2/experiments/449e03d117b3452b89b6213dbd967d37/output/log,0.4216107428073883,0.5226283669471741,0.9750446081161499,,pass
+random_forest,clearml_eval,http://localhost:8080/projects/dff412a3cc954606bd3718c3d1ef8fe2/experiments/41d5ffbcdfbd4c8eb86ea7e66b6224e6/output/log,0.4248252511024475,0.6283116936683655,0.9639313817024231,,pass
+gradient_boosting,clearml_eval,http://localhost:8080/projects/dff412a3cc954606bd3718c3d1ef8fe2/experiments/106292432ad24be2a2a45a520af3e2fd/output/log,0.4104173481464386,0.5455435514450073,0.9728082418441772,,pass
