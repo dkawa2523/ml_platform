@@ -3,7 +3,7 @@
 ## Run Metadata
 
 - Date: 2026-05-24
-- Scope: local train compare mode and local pipeline compare mode
+- Scope: local and ClearML dev train compare mode and pipeline compare mode
 - Raw logs: not stored
 - Outputs: generated under `outputs/` and not committed
 
@@ -44,6 +44,29 @@ model:
 - Train step `leaderboard.csv`: present
 - Eval and infer used the best model artifact from the train step.
 
+## ClearML Dev Train Result
+
+- Template: `tabular_train_template`
+- Task ID: `6b3393de1c3749d59024da4128f4c175`
+- Task URL: `http://localhost:8080/projects/dff412a3cc954606bd3718c3d1ef8fe2/experiments/6b3393de1c3749d59024da4128f4c175/output/log`
+- Status: completed
+- Artifacts: `config`, `leaderboard`, `manifest`, `metrics`, `model`, `model_info`, `validation_predictions`
+- Scalars: best model `mae`, `rmse`, `r2`
+- Raw console log: not stored
+
+## ClearML Dev Pipeline Result
+
+- Template: `tabular_pipeline_template`
+- Pipeline task ID: `f4f502a3a3e2410691f5e2ae85d0ce6f`
+- Pipeline URL: `http://localhost:8080/projects/57d192f3bb8746acae1a10961ee597ae/experiments/f4f502a3a3e2410691f5e2ae85d0ce6f/output/log`
+- Status: completed
+- Steps:
+  - `train`: completed, artifacts `config`, `leaderboard`, `manifest`, `metrics`, `model`, `model_info`, `validation_predictions`
+  - `eval`: completed, artifacts `config`, `evaluation_predictions`, `manifest`, `metrics`
+  - `infer`: completed, artifacts `config`, `manifest`, `predictions`
+- The train step selected the best model and passed its `model` artifact to eval and infer through the existing pipeline handoff.
+- Raw console logs: not stored
+
 ## Decision
 
-The V1 leaderboard design is accepted locally. It compares candidate models inside the existing train task, uploads naturally as a table artifact, and does not add ensemble behavior or new ClearML templates.
+The V1 leaderboard design is accepted for local and ClearML dev execution. It compares candidate models inside the existing train task, uploads naturally as a table artifact, and does not add ensemble behavior or new ClearML templates.
