@@ -30,17 +30,22 @@ def write_model_info(
     feature_preset: str,
     model_name: str,
     model_params: dict[str, Any] | None = None,
+    artifact_kind: str = "model",
+    extra: dict[str, Any] | None = None,
 ) -> Path:
-    return write_json(
-        {
-            "feature_columns": feature_columns,
-            "target_column": target_column,
-            "feature_preset": feature_preset,
-            "model_name": model_name,
-            "model_params": model_params or {},
-        },
-        path,
-    )
+    payload = {
+        "feature_columns": feature_columns,
+        "target_column": target_column,
+        "feature_preset": feature_preset,
+        "artifact_kind": artifact_kind,
+        "model_name": model_name,
+        "model_params": model_params or {},
+        "best_model_name": model_name,
+        "best_model_params": model_params or {},
+    }
+    if extra:
+        payload.update(extra)
+    return write_json(payload, path)
 
 
 def load_model_info_for_model(model_path: str | Path) -> dict[str, Any]:

@@ -34,6 +34,9 @@ def pipeline_ui_params(
     infer_cfg = load_yaml(pipeline_cfg.get("infer", {}).get("task_config", "config/tasks/tabular_infer.yaml"))
     run = pipeline_cfg.get("run", {})
     train_model = train_cfg.get("model", {})
+    train_ensemble = train_model.get("ensemble", {}) or {}
+    if not isinstance(train_ensemble, dict):
+        train_ensemble = {}
     return {
         "Run/task": pipeline_cfg.get("task"),
         "Run/name": run.get("name"),
@@ -46,6 +49,9 @@ def pipeline_ui_params(
         "Model/params": json.dumps(train_model.get("params", {}) or {}),
         "Model/candidates": json.dumps(train_model.get("candidates", []) or []),
         "Model/selection_metric": train_model.get("selection_metric", "rmse"),
+        "Model/ensemble_enabled": bool(train_ensemble.get("enabled", False)),
+        "Model/ensemble_method": train_ensemble.get("method", "mean_topk"),
+        "Model/ensemble_top_k": int(train_ensemble.get("top_k") or 3),
         "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
     }
 
@@ -68,6 +74,9 @@ def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -
             step["parameter_override"]["Model/candidates"] = json.dumps(as_candidates(ui_params.get("Model/candidates")))
         if ui_params.get("Model/selection_metric"):
             step["parameter_override"]["Model/selection_metric"] = ui_params["Model/selection_metric"]
+        for key in ("Model/ensemble_enabled", "Model/ensemble_method", "Model/ensemble_top_k"):
+            if key in ui_params:
+                step["parameter_override"][key] = ui_params[key]
         if ui_params.get("Model/feature_preset"):
             step["parameter_override"]["Model/feature_preset"] = ui_params["Model/feature_preset"]
 

@@ -62,8 +62,27 @@ def test_clearml_ui_params_stay_in_four_groups():
     assert params["Model/params"] == '{"alpha": 1.0}'
     assert params["Model/candidates"] == "[]"
     assert params["Model/selection_metric"] == "rmse"
+    assert params["Model/ensemble_enabled"] is False
+    assert params["Model/ensemble_method"] == "mean_topk"
+    assert params["Model/ensemble_top_k"] == 3
     assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
     assert not [key for key in params if key.startswith("Output/")]
+
+
+def test_clearml_flat_ensemble_params_apply_to_nested_config():
+    adapter = load_clearml_adapter_module()
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/clearml-dev.yaml")
+
+    updated = adapter.apply_ui_params(
+        cfg,
+        {
+            "Model/ensemble_enabled": True,
+            "Model/ensemble_method": "weighted",
+            "Model/ensemble_top_k": 2,
+        },
+    )
+
+    assert updated["model"]["ensemble"] == {"enabled": True, "method": "weighted", "top_k": 2}
 
 
 def test_clearml_ui_params_are_task_specific():
@@ -73,7 +92,16 @@ def test_clearml_ui_params_are_task_specific():
     infer = adapter.default_ui_params(load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml"))
     pipeline = adapter.default_ui_params(load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"))
 
-    assert {"Model/name", "Model/params", "Model/candidates", "Model/selection_metric", "Model/feature_preset"}.issubset(train)
+    assert {
+        "Model/name",
+        "Model/params",
+        "Model/candidates",
+        "Model/selection_metric",
+        "Model/ensemble_enabled",
+        "Model/ensemble_method",
+        "Model/ensemble_top_k",
+        "Model/feature_preset",
+    }.issubset(train)
     assert "Model/name" not in eval_cfg
     assert "Model/params" not in eval_cfg
     assert "Output/prediction_name" in infer
@@ -86,7 +114,16 @@ def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
 
     assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
     assert {"Input/clearml_dataset_id", "Input/train_dataset_file", "Input/eval_dataset_file", "Input/infer_dataset_file"}.issubset(params)
-    assert {"Model/name", "Model/params", "Model/candidates", "Model/selection_metric", "Model/feature_preset"}.issubset(params)
+    assert {
+        "Model/name",
+        "Model/params",
+        "Model/candidates",
+        "Model/selection_metric",
+        "Model/ensemble_enabled",
+        "Model/ensemble_method",
+        "Model/ensemble_top_k",
+        "Model/feature_preset",
+    }.issubset(params)
 
 
 def test_clearml_connect_params_uses_named_groups():
@@ -155,8 +192,11 @@ def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
             "Input/infer_dataset_file": "infer.csv",
             "Model/name": "linear",
             "Model/params": "{}",
-            "Model/candidates": '[{"name":"linear","params":{}}]',
+            "Model/candidates": '["linear","ridge"]',
             "Model/selection_metric": "rmse",
+            "Model/ensemble_enabled": True,
+            "Model/ensemble_method": "mean_topk",
+            "Model/ensemble_top_k": 2,
             "Model/feature_preset": "basic",
         },
     )
@@ -166,7 +206,10 @@ def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
     assert train["parameter_override"]["Input/dataset_file"] == "train.csv"
     assert train["parameter_override"]["Model/name"] == "linear"
     assert train["parameter_override"]["Model/params"] == "{}"
-    assert train["parameter_override"]["Model/candidates"] == '[{"name": "linear", "params": {}}]'
+    assert train["parameter_override"]["Model/candidates"] == '["linear", "ridge"]'
     assert train["parameter_override"]["Model/selection_metric"] == "rmse"
+    assert train["parameter_override"]["Model/ensemble_enabled"] is True
+    assert train["parameter_override"]["Model/ensemble_method"] == "mean_topk"
+    assert train["parameter_override"]["Model/ensemble_top_k"] == 2
     assert eval_step["parameter_override"]["Input/dataset_file"] == "eval.csv"
     assert infer["parameter_override"]["Input/dataset_file"] == "infer.csv"

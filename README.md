@@ -2,9 +2,25 @@
 
 Minimal ML execution platform for tabular regression and small tabular analysis outputs with a strict ClearML boundary.
 
-Current status is `v0.1 / MVP`. The next product V1 scope is verified tabular
-scalar regression with four official models: `linear`, `ridge`,
-`random_forest`, and `gradient_boosting`.
+V1 verified scope is tabular scalar regression with four official models:
+`linear`, `ridge`, `random_forest`, and `gradient_boosting`. These models are
+verified for local train/eval/infer/pipeline, ClearML task train/eval/infer, and
+ClearML train -> eval -> infer pipeline execution.
+
+V1.1 extends the same single-model interface with lightweight sklearn models:
+`lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`. They use the same
+`model.name` / `Model/name` and `model.params` / `Model/params` controls; no
+model-specific templates or task YAML files are added.
+
+V1.2 adds simple ensemble modes on top of comparison mode. `mean_topk` averages
+the top-k models from `leaderboard.csv`; `weighted` uses validation metric based
+weights for the same top-k set. Both save the ensemble as the standard
+`model.joblib` and keep eval/infer/pipeline unchanged.
+
+V1.3 standardizes batch inference output. `predictions.csv` preserves the input
+columns and appends `prediction`, `model_name`, `artifact_kind`, and
+`prediction_run_id`. Single-model, best-model, and ensemble artifacts all use the
+same infer task.
 
 The product repo is intentionally small:
 
@@ -50,10 +66,36 @@ python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile con
 ```
 
 Single-model runs use `model.name` and `model.params` locally, or `Model/name`
-and `Model/params` in ClearML. Train also supports `model.candidates` /
-`Model/candidates` for a small sequential comparison run that writes
-`leaderboard.csv` and saves only the best model as `model.joblib`. V1 does not
-add all-model pipeline DAGs, ensemble, or a separate runtime leaderboard task.
+and `Model/params` in ClearML. Train also supports comparison mode with
+`model.candidates` / `Model/candidates` as a list of model names and
+`selection_metric` / `Model/selection_metric`. In comparison mode, `model.params`
+can be a mapping from model name to params. The train task writes
+`leaderboard.csv`, records comparison summary in `metrics.json`, and saves only
+the best model as `model.joblib`. V1.1 does not include ensemble,
+train_ensemble_full, stacking, gaussian_process, LightGBM/XGBoost/CatBoost/TabPFN,
+advanced plots, diagnostics, all-model pipeline DAGs, or a separate runtime
+leaderboard task.
+
+For V1.2 ensemble mode, add nested `model.ensemble` locally. In ClearML, use
+the flat Model parameters `Model/ensemble_enabled`, `Model/ensemble_method`, and
+`Model/ensemble_top_k`:
+
+```json
+{
+  "Model/ensemble_enabled": true,
+  "Model/ensemble_method": "mean_topk",
+  "Model/ensemble_top_k": 3
+}
+```
+
+Use `Model/ensemble_method=weighted` for validation metric based weights. This is
+a best-of-comparison ensemble artifact, not train_ensemble_full, stacking, or
+weight optimization.
+
+Inference writes a table artifact named `predictions` in ClearML. The file name
+comes from `output.prediction_name` locally or `Output/prediction_name` in
+ClearML. Input tables must not already contain the reserved output columns
+`prediction`, `model_name`, `artifact_kind`, or `prediction_run_id`.
 
 ## ClearML
 
@@ -79,6 +121,12 @@ Dataset contains multiple files. Dataset artifact URLs must be reachable from th
 Agent environment; host-only `localhost` URLs and host filesystem paths usually
 are not. `artifact_output_uri` controls newly produced run artifacts and does not
 fix Dataset storage reachability.
+
+The ClearML templates are task-type based and remain four templates:
+`tabular_train_template`, `tabular_eval_template`, `tabular_infer_template`, and
+`tabular_pipeline_template`. Do not create model-specific or dataset-specific
+templates. Remote pipeline execution needs enough worker slots for the controller
+and step tasks when they share one queue.
 
 Pipeline dry-run:
 

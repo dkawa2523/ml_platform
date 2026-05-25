@@ -1,6 +1,6 @@
 # Codex Handoff
 
-This repo is at `v0.1 / MVP` and is being hardened toward V1. Keep the implementation simple.
+This repo has V1 execution verification for tabular scalar regression. Keep the implementation simple.
 
 ## Current State
 
@@ -11,9 +11,12 @@ This repo is at `v0.1 / MVP` and is being hardened toward V1. Keep the implement
 - Deploy manifests provide a minimal ClearML Agent runtime.
 - Tests are smoke and boundary oriented.
 - V1 official regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
+- V1.1 adds single-model sklearn regressors: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
 - `scikit-learn` is a required V1 runtime dependency.
+- V1 local, ClearML task, and ClearML pipeline verification evidence lives under `verification/v1/`.
 - V1 single-model switching uses `Model/name` and `Model/params`.
-- V1 comparison uses `Model/candidates` and `Model/selection_metric`, writes `leaderboard.csv`, and saves only the best model artifact.
+- V1.1 comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
+- V1.2 ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
 
 ## Required Local Check
 
@@ -97,4 +100,7 @@ See `deploy/README.md`. At minimum verify:
 - Do not expand UI parameters without a current product need.
 - Do not copy legacy repo files or directory structures.
 - Do not add broad diagnostics, contract docs, or abstract base classes.
-- Do not add all-model pipeline DAGs, ensemble, or separate runtime leaderboard tasks for V1.
+- Do not add all-model pipeline DAGs, stacking, train_ensemble_full, or separate runtime leaderboard tasks for V1/V1.2.
+- Do not add model-specific or dataset-specific ClearML templates.
+- Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
+- Do not add stacking or weight optimization to V1.2 ensemble.

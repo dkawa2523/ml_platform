@@ -36,7 +36,7 @@ Done:
 - UI parameters grouped as Input, Run, Model, Output
 - local tests pass without ClearML installed
 
-Needs environment validation:
+Verified for V1:
 
 - real ClearML template sync
 - train/eval/infer clone-run
@@ -54,7 +54,7 @@ Done:
 - train model artifact passed to eval/infer as `Model/artifact_path`
 - local pipeline remains in `pkgs/tabular/pipeline.py`
 
-Needs environment validation:
+Verified for V1:
 
 - pipeline template clone-run
 - model artifact handoff on the dev server
@@ -127,17 +127,62 @@ Deferred:
 
 Goal: verify multiple tabular scalar regression models across local and ClearML execution.
 
-Required:
+Verified:
 
 - official models: `linear`, `ridge`, `random_forest`, `gradient_boosting`
 - `scikit-learn` as a runtime dependency
 - local train/eval/infer/pipeline verification for all official models
 - ClearML task and pipeline verification for all official models
 - train `model.candidates` comparison mode with `leaderboard.csv`
+- four task-type ClearML templates only; no model-specific templates
 
 Deferred:
 
-- all-model training
+- all-model pipeline DAGs
 - runtime leaderboard tasks
 - ensemble, stacking, and weighted ensemble
 - LightGBM, XGBoost, CatBoost, and TabPFN
+- train_ensemble_full
+- advanced plots and diagnostics
+
+## V1.1 Scope
+
+Goal: add lightweight sklearn single-model regressors without changing template or config shape.
+
+Implemented:
+
+- `lasso`
+- `elasticnet`
+- `extra_trees`
+- `knn`
+- `svr`
+- `mlp`
+- model switching remains `Model/name` plus `Model/params`
+- ClearML templates remain the same four task-type templates
+
+Deferred:
+
+- `gaussian_process`
+- LightGBM, XGBoost, CatBoost, and TabPFN
+- ensemble, stacking, weighted ensemble, and train_ensemble_full
+- model-specific task configs or templates
+
+## V1.2 Scope
+
+Goal: add the first ensemble mode without adding ensemble-specific templates.
+
+Implemented:
+
+- `mean_topk` ensemble over comparison-mode leaderboard results
+- `weighted` ensemble with deterministic validation-metric weights
+- flat ClearML `Model/ensemble_*` parameters plus nested local `model.ensemble`
+- ensemble artifact saved as the standard `model.joblib`
+- selected top-k base models saved under `base_models/`
+- eval, infer, and pipeline continue to consume the `model` artifact
+
+Deferred:
+
+- stacking
+- weight optimization
+- train_ensemble_full
+- ensemble-specific templates or pipeline DAGs

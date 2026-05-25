@@ -108,7 +108,7 @@ def as_dict(value: Any) -> dict[str, Any]:
     raise ValueError(f"Cannot convert value to dict: {value!r}")
 
 
-def as_candidates(value: Any) -> list[dict[str, Any]]:
+def as_candidates(value: Any) -> list[Any]:
     if value is None or value == "":
         return []
     if isinstance(value, str):
@@ -120,9 +120,15 @@ def as_candidates(value: Any) -> list[dict[str, Any]]:
         raise ValueError(f"Expected JSON array for candidates, got: {value!r}")
     candidates = []
     for index, item in enumerate(value):
-        if not isinstance(item, dict):
-            raise ValueError(f"Model/candidates[{index}] must be an object.")
-        candidates.append(dict(item))
+        if isinstance(item, str):
+            text = item.strip()
+            if not text:
+                raise ValueError(f"Model/candidates[{index}] must not be empty.")
+            candidates.append(text)
+        elif isinstance(item, dict):
+            candidates.append(dict(item))
+        else:
+            raise ValueError(f"Model/candidates[{index}] must be a model name or object.")
     return candidates
 
 
@@ -156,6 +162,13 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Model/candidates"] = json.dumps(model.get("candidates", []) or [])
         if "selection_metric" in model:
             params["Model/selection_metric"] = model.get("selection_metric")
+        if "ensemble" in model:
+            ensemble = model.get("ensemble", {}) or {}
+            if not isinstance(ensemble, dict):
+                ensemble = {}
+            params["Model/ensemble_enabled"] = as_bool(ensemble.get("enabled"))
+            params["Model/ensemble_method"] = ensemble.get("method", "mean_topk")
+            params["Model/ensemble_top_k"] = int(ensemble.get("top_k") or 3)
         if "artifact_path" in model:
             params["Model/artifact_path"] = model.get("artifact_path")
     if "features" in cfg:
@@ -227,6 +240,16 @@ def apply_ui_params(
         cfg["model"]["candidates"] = as_candidates(connected.get("Model/candidates"))
     if connected.get("Model/selection_metric"):
         cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
+    ensemble_updates: dict[str, Any] = {}
+    if "Model/ensemble_enabled" in connected:
+        ensemble_updates["enabled"] = as_bool(connected.get("Model/ensemble_enabled"))
+    if connected.get("Model/ensemble_method"):
+        ensemble_updates["method"] = connected["Model/ensemble_method"]
+    if "Model/ensemble_top_k" in connected and connected.get("Model/ensemble_top_k") not in {None, ""}:
+        ensemble_updates["top_k"] = int(connected["Model/ensemble_top_k"])
+    if ensemble_updates:
+        cfg["model"].setdefault("ensemble", {})
+        cfg["model"]["ensemble"].update(ensemble_updates)
     if connected.get("Model/artifact_path"):
         cfg["model"]["artifact_path"] = connected["Model/artifact_path"]
     if connected.get("Model/feature_preset"):

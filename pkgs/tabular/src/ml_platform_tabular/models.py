@@ -6,7 +6,18 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-AVAILABLE_MODELS = ["linear", "ridge", "random_forest", "gradient_boosting"]
+AVAILABLE_MODELS = [
+    "linear",
+    "ridge",
+    "random_forest",
+    "gradient_boosting",
+    "lasso",
+    "elasticnet",
+    "extra_trees",
+    "knn",
+    "svr",
+    "mlp",
+]
 
 
 @dataclass
@@ -60,6 +71,21 @@ class TabularEstimator:
         return self.model.predict(self.transformer.transform(X))
 
 
+@dataclass
+class MeanTopKEnsemble:
+    estimators: list[TabularEstimator]
+    weights: list[float]
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        if not self.estimators:
+            raise ValueError("Ensemble has no base estimators.")
+        predictions = np.column_stack([estimator.predict(X) for estimator in self.estimators])
+        weights = np.asarray(self.weights, dtype=float)
+        if len(weights) != predictions.shape[1]:
+            raise ValueError("Ensemble weights do not match base estimators.")
+        return predictions @ (weights / weights.sum())
+
+
 def build_model(name: str, params: dict[str, Any] | None = None):
     params = dict(params or {})
     if name == "linear":
@@ -79,4 +105,59 @@ def build_model(name: str, params: dict[str, Any] | None = None):
         except Exception as exc:  # pragma: no cover - dependency install failure
             raise RuntimeError("gradient_boosting requires scikit-learn. Install project runtime dependencies.") from exc
         return GradientBoostingRegressor(**params)
+    if name == "lasso":
+        try:
+            from sklearn.linear_model import Lasso  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("lasso requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("alpha", 0.01)
+        params.setdefault("max_iter", 5000)
+        return Lasso(**params)
+    if name == "elasticnet":
+        try:
+            from sklearn.linear_model import ElasticNet  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("elasticnet requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("alpha", 0.01)
+        params.setdefault("l1_ratio", 0.5)
+        params.setdefault("max_iter", 5000)
+        params.setdefault("random_state", 42)
+        return ElasticNet(**params)
+    if name == "extra_trees":
+        try:
+            from sklearn.ensemble import ExtraTreesRegressor  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("extra_trees requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("n_estimators", 50)
+        params.setdefault("random_state", 42)
+        params.setdefault("n_jobs", 1)
+        return ExtraTreesRegressor(**params)
+    if name == "knn":
+        try:
+            from sklearn.neighbors import KNeighborsRegressor  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("knn requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("n_neighbors", 5)
+        params.setdefault("weights", "distance")
+        return KNeighborsRegressor(**params)
+    if name == "svr":
+        try:
+            from sklearn.svm import SVR  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("svr requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("kernel", "rbf")
+        params.setdefault("C", 1.0)
+        params.setdefault("epsilon", 0.1)
+        params.setdefault("gamma", "scale")
+        return SVR(**params)
+    if name == "mlp":
+        try:
+            from sklearn.neural_network import MLPRegressor  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency install failure
+            raise RuntimeError("mlp requires scikit-learn. Install project runtime dependencies.") from exc
+        params.setdefault("hidden_layer_sizes", [32])
+        params.setdefault("solver", "lbfgs")
+        params.setdefault("max_iter", 500)
+        params.setdefault("random_state", 42)
+        return MLPRegressor(**params)
     raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")

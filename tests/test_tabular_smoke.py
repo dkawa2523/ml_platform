@@ -3,12 +3,22 @@ import pandas as pd
 import pytest
 
 from ml_platform_core.config import load_run_config
-from ml_platform_core.io import read_json
+from ml_platform_core.io import load_joblib, read_json
 from ml_platform_tabular import TASK_NAMES, run_task
 from ml_platform_tabular.evaluate import run_evaluate
 from ml_platform_tabular.infer import run_infer
 from ml_platform_tabular.metrics import regression_metrics
 from ml_platform_tabular.train import run_train
+
+
+def _assert_prediction_output(path, *, input_columns, model_name, artifact_kind):
+    predictions = pd.read_csv(path)
+    assert list(predictions.columns) == [*input_columns, "prediction", "model_name", "artifact_kind", "prediction_run_id"]
+    assert set(predictions["model_name"]) == {model_name}
+    assert set(predictions["artifact_kind"]) == {artifact_kind}
+    assert predictions["prediction_run_id"].str.len().min() > 0
+    assert predictions["prediction"].notna().all()
+    return predictions
 
 
 def test_tabular_train_eval_and_infer_smoke(tmp_path):
@@ -64,6 +74,18 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
     infer_result = run_infer(infer_cfg)
     assert infer_result.tables["predictions"].exists()
     assert (tmp_path / "outputs" / "latest_infer" / "predictions.csv").exists()
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name="ridge",
+        artifact_kind="model",
+    )
+    assert infer_result.artifacts["model_info"].exists()
+    manifest = read_json(infer_result.artifacts["manifest"])
+    assert manifest["extra"]["prediction_rows"] == 10
+    assert manifest["extra"]["prediction_file"] == "predictions.csv"
+    assert manifest["extra"]["model_name"] == "ridge"
+    assert manifest["extra"]["artifact_kind"] == "model"
 
 
 @pytest.mark.parametrize(
@@ -71,6 +93,12 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
     [
         ("random_forest", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
         ("gradient_boosting", {"n_estimators": 5, "random_state": 42}),
+        ("lasso", {"alpha": 0.01, "max_iter": 5000}),
+        ("elasticnet", {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42}),
+        ("extra_trees", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
+        ("knn", {"n_neighbors": 3, "weights": "distance"}),
+        ("svr", {"kernel": "rbf", "C": 1.0, "epsilon": 0.1, "gamma": "scale"}),
+        ("mlp", {"hidden_layer_sizes": [16], "solver": "lbfgs", "max_iter": 500, "random_state": 42}),
     ],
 )
 def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
@@ -113,15 +141,15 @@ def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
     )
     df["target"] = 1.2 * df["x1"] - 0.8 * df["x2"] + rng.normal(scale=0.05, size=50)
     train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
     df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(6).to_csv(infer_path, index=False)
 
     cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["candidates"] = [
-        {"name": "linear", "params": {}},
-        {"name": "ridge", "params": {"alpha": 1.0}},
-    ]
+    cfg["model"]["candidates"] = ["linear", "ridge"]
+    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
     cfg["model"]["selection_metric"] = "rmse"
 
     result = run_train(cfg)
@@ -131,11 +159,194 @@ def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
     leaderboard = pd.read_csv(result.tables["leaderboard"])
     assert list(leaderboard["rank"]) == [1, 2]
     assert set(leaderboard["model_name"]) == {"linear", "ridge"}
-    assert leaderboard["selected"].tolist() == [True, False]
+    assert {"rank", "model_name", "selection_metric", "rmse", "mae", "r2", "model_params", "artifact_name"} <= set(
+        leaderboard.columns
+    )
+    assert leaderboard.loc[0, "artifact_name"] == "model"
     model_info = read_json(result.artifacts["model_info"])
     assert model_info["model_name"] == leaderboard.loc[0, "model_name"]
+    assert model_info["best_model_name"] == leaderboard.loc[0, "model_name"]
     expected_params = {} if leaderboard.loc[0, "model_params"] == "{}" else {"alpha": 1.0}
     assert model_info["model_params"] == expected_params
+    metrics_json = read_json(result.artifacts["metrics"])
+    assert metrics_json["comparison"]["enabled"] is True
+    assert metrics_json["comparison"]["best_model_name"] == model_info["model_name"]
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_result = run_infer(infer_cfg)
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name=model_info["model_name"],
+        artifact_kind="model",
+    )
+
+
+def test_train_mean_topk_ensemble_artifact_eval_and_infer(tmp_path):
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame(
+        {
+            "id": range(60),
+            "x1": rng.normal(size=60),
+            "x2": rng.normal(size=60),
+        }
+    )
+    df["target"] = 1.0 * df["x1"] - 0.4 * df["x2"] + rng.normal(scale=0.05, size=60)
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(8).to_csv(infer_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["data"]["id_columns"] = ["id"]
+    cfg["model"]["candidates"] = ["linear", "ridge"]
+    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
+    cfg["model"]["ensemble"] = {"enabled": True, "method": "mean_topk", "top_k": 2}
+
+    train_result = run_train(cfg)
+    model = load_joblib(train_result.artifacts["model"])
+    model_info = read_json(train_result.artifacts["model_info"])
+
+    assert model_info["artifact_kind"] == "ensemble"
+    assert model_info["ensemble_method"] == "mean_topk"
+    assert len(model_info["selected_base_models"]) == 2
+    assert train_result.tables["leaderboard"].exists()
+    leaderboard = pd.read_csv(train_result.tables["leaderboard"])
+    assert "mean_topk" in set(leaderboard["model_name"])
+    assert leaderboard.loc[leaderboard["model_name"] == "mean_topk", "artifact_name"].iloc[0] == "model"
+    assert train_result.tables["ensemble_predictions"].exists()
+    assert len(list((train_result.run_dir / "base_models").glob("*.joblib"))) == 2
+    assert len(model.predict(df.drop(columns=["target"]).head(3))) == 3
+
+    eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
+    eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    eval_cfg["data"]["local_path"] = str(train_path)
+    eval_cfg["data"]["target_column"] = "target"
+    eval_result = run_evaluate(eval_cfg)
+    assert eval_result.tables["evaluation_predictions"].exists()
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_result = run_infer(infer_cfg)
+    assert infer_result.tables["predictions"].exists()
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name="mean_topk",
+        artifact_kind="ensemble",
+    )
+
+
+def test_train_weighted_ensemble_artifact_eval_and_infer(tmp_path):
+    rng = np.random.default_rng(5)
+    df = pd.DataFrame(
+        {
+            "id": range(60),
+            "x1": rng.normal(size=60),
+            "x2": rng.normal(size=60),
+        }
+    )
+    df["target"] = 0.8 * df["x1"] + 0.7 * df["x2"] + rng.normal(scale=0.05, size=60)
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(8).to_csv(infer_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["data"]["id_columns"] = ["id"]
+    cfg["model"]["candidates"] = ["linear", "ridge"]
+    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
+    cfg["model"]["ensemble"] = {"enabled": True, "method": "weighted", "top_k": 2}
+
+    train_result = run_train(cfg)
+    model = load_joblib(train_result.artifacts["model"])
+    model_info = read_json(train_result.artifacts["model_info"])
+
+    assert model_info["artifact_kind"] == "ensemble"
+    assert model_info["model_name"] == "weighted"
+    assert model_info["ensemble_method"] == "weighted"
+    assert len(model_info["selected_base_models"]) == 2
+    assert len(model_info["weights"]) == 2
+    assert sum(model_info["weights"]) == pytest.approx(1.0)
+    assert train_result.tables["ensemble_predictions"].exists()
+    assert len(list((train_result.run_dir / "base_models").glob("*.joblib"))) == 2
+    assert len(model.predict(df.drop(columns=["target"]).head(3))) == 3
+
+    leaderboard = pd.read_csv(train_result.tables["leaderboard"])
+    assert "weighted" in set(leaderboard["model_name"])
+    assert leaderboard.loc[leaderboard["model_name"] == "weighted", "artifact_name"].iloc[0] == "model"
+
+    eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
+    eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    eval_cfg["data"]["local_path"] = str(train_path)
+    eval_cfg["data"]["target_column"] = "target"
+    eval_result = run_evaluate(eval_cfg)
+    assert eval_result.tables["evaluation_predictions"].exists()
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_result = run_infer(infer_cfg)
+    assert infer_result.tables["predictions"].exists()
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name="weighted",
+        artifact_kind="ensemble",
+    )
+
+
+def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
+    rng = np.random.default_rng(6)
+    df = pd.DataFrame(
+        {
+            "id": range(30),
+            "x1": rng.normal(size=30),
+            "x2": rng.normal(size=30),
+        }
+    )
+    df["target"] = df["x1"] + df["x2"]
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    conflict_path = tmp_path / "infer_conflict.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(4).to_csv(infer_path, index=False)
+    df.drop(columns=["target"]).head(4).assign(prediction=0.0).to_csv(conflict_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["data"]["target_column"] = "target"
+    cfg["data"]["id_columns"] = ["id"]
+    cfg["model"]["name"] = "linear"
+    cfg["model"]["params"] = {}
+    run_train(cfg)
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_cfg["data"]["id_columns"] = ["id"]
+    infer_cfg["output"]["prediction_name"] = "scored.csv"
+    infer_result = run_infer(infer_cfg)
+    assert infer_result.tables["predictions"].name == "scored.csv"
+    assert (tmp_path / "outputs" / "latest_infer" / "scored.csv").exists()
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name="linear",
+        artifact_kind="model",
+    )
+
+    infer_cfg["data"]["local_path"] = str(conflict_path)
+    with pytest.raises(ValueError, match="reserved prediction output columns"):
+        run_infer(infer_cfg)
 
 
 def test_regression_metrics_can_select_mse():
