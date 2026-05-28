@@ -29,6 +29,12 @@ model:
     alpha: 1.0
   candidates: []
   selection_metric: rmse
+  search:
+    enabled: false
+    method: grid
+    max_trials: 20
+    search_space: {}
+    retrain_best: true
   ensemble:
     enabled: false
     method: mean_topk

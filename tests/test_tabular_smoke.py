@@ -13,9 +13,17 @@ from ml_platform_tabular.train import run_train
 
 def _assert_prediction_output(path, *, input_columns, model_name, artifact_kind):
     predictions = pd.read_csv(path)
-    assert list(predictions.columns) == [*input_columns, "prediction", "model_name", "artifact_kind", "prediction_run_id"]
+    assert list(predictions.columns) == [
+        *input_columns,
+        "prediction",
+        "model_name",
+        "artifact_kind",
+        "model_artifact_id",
+        "prediction_run_id",
+    ]
     assert set(predictions["model_name"]) == {model_name}
     assert set(predictions["artifact_kind"]) == {artifact_kind}
+    assert predictions["model_artifact_id"].str.len().min() > 0
     assert predictions["prediction_run_id"].str.len().min() > 0
     assert predictions["prediction"].notna().all()
     return predictions
@@ -86,6 +94,11 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
     assert manifest["extra"]["prediction_file"] == "predictions.csv"
     assert manifest["extra"]["model_name"] == "ridge"
     assert manifest["extra"]["artifact_kind"] == "model"
+    assert manifest["extra"]["prediction_schema_version"] == "v2.2"
+    assert manifest["extra"]["model_artifact_id"]
+    assert manifest["extra"]["id_columns"] == ["id"]
+    assert manifest["extra"]["target_column"] is None
+    assert manifest["extra"]["chunk_size"] is None
 
 
 @pytest.mark.parametrize(
@@ -182,6 +195,137 @@ def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
         model_name=model_info["model_name"],
         artifact_kind="model",
     )
+
+
+def test_train_grid_search_writes_optimization_artifacts(tmp_path):
+    rng = np.random.default_rng(31)
+    df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
+    df["target"] = 1.1 * df["x1"] - 0.6 * df["x2"] + rng.normal(scale=0.05, size=50)
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(6).to_csv(infer_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["name"] = "ridge"
+    cfg["model"]["params"] = {}
+    cfg["model"]["search"] = {
+        "enabled": True,
+        "method": "grid",
+        "max_trials": 3,
+        "search_space": {"alpha": [0.1, 1.0, 10.0]},
+        "retrain_best": True,
+    }
+
+    result = run_train(cfg)
+
+    trials = pd.read_csv(result.tables["optimization_trials"])
+    model_info = read_json(result.artifacts["model_info"])
+    metrics_json = read_json(result.artifacts["metrics"])
+    summary = read_json(result.artifacts["optimization_summary"])
+    best_params = read_json(result.artifacts["best_params"])
+
+    assert len(trials) == 3
+    assert {"trial", "model_name", "model_params", "selection_metric", "selection_value", "mae", "rmse", "r2", "status"} <= set(
+        trials.columns
+    )
+    assert result.artifacts["model"].exists()
+    assert result.artifacts["optimization_summary"].exists()
+    assert result.artifacts["best_params"].exists()
+    assert model_info["search"]["enabled"] is True
+    assert model_info["search"]["method"] == "grid"
+    assert model_info["search"]["completed_trials"] == 3
+    assert model_info["search"]["retrained_on_full_data"] is True
+    assert metrics_json["search"]["best_trial"] == summary["best_trial"]
+    assert summary["best_model_name"] == "ridge"
+    assert summary["best_params"] == str(result.artifacts["best_params"])
+    assert best_params["model_name"] == "ridge"
+    assert best_params["best_trial"] == summary["best_trial"]
+    assert best_params["retrained_on_full_data"] is True
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_result = run_infer(infer_cfg)
+    _assert_prediction_output(
+        infer_result.tables["predictions"],
+        input_columns=["id", "x1", "x2"],
+        model_name="ridge",
+        artifact_kind="model",
+    )
+
+
+def test_train_random_search_is_deterministic_and_limited(tmp_path):
+    rng = np.random.default_rng(32)
+    df = pd.DataFrame({"id": range(45), "x1": rng.normal(size=45), "x2": rng.normal(size=45)})
+    df["target"] = 0.9 * df["x1"] + 0.4 * df["x2"] + rng.normal(scale=0.05, size=45)
+    train_path = tmp_path / "train.csv"
+    df.to_csv(train_path, index=False)
+
+    rows = []
+    for index in range(2):
+        cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+        cfg["runtime"]["output_dir"] = str(tmp_path / f"outputs_{index}")
+        cfg["data"]["local_path"] = str(train_path)
+        cfg["run"]["seed"] = 123
+        cfg["model"]["name"] = "ridge"
+        cfg["model"]["params"] = {}
+        cfg["model"]["search"] = {
+            "enabled": True,
+            "method": "random",
+            "max_trials": 2,
+            "search_space": {"alpha": [0.1, 1.0, 10.0, 100.0]},
+        }
+        result = run_train(cfg)
+        rows.append(pd.read_csv(result.tables["optimization_trials"])["model_params"].tolist())
+
+    assert len(rows[0]) == 2
+    assert rows[0] == rows[1]
+
+
+def test_train_candidate_search_uses_model_keyed_space(tmp_path):
+    rng = np.random.default_rng(33)
+    df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
+    df["target"] = df["x1"] - df["x2"] + rng.normal(scale=0.05, size=50)
+    train_path = tmp_path / "train.csv"
+    df.to_csv(train_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["candidates"] = ["linear", "ridge"]
+    cfg["model"]["params"] = {}
+    cfg["model"]["search"] = {
+        "enabled": True,
+        "method": "grid",
+        "max_trials": 4,
+        "search_space": {"ridge": {"alpha": [0.1, 1.0]}},
+    }
+
+    result = run_train(cfg)
+
+    trials = pd.read_csv(result.tables["optimization_trials"])
+    assert len(trials) == 3
+    assert set(trials["model_name"]) == {"linear", "ridge"}
+    assert result.tables["leaderboard"].exists()
+
+
+def test_train_search_rejects_unsupported_method(tmp_path):
+    rng = np.random.default_rng(34)
+    df = pd.DataFrame({"id": range(20), "x1": rng.normal(size=20), "x2": rng.normal(size=20)})
+    df["target"] = df["x1"] + df["x2"]
+    train_path = tmp_path / "train.csv"
+    df.to_csv(train_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["search"] = {"enabled": True, "method": "bayes", "search_space": {"alpha": [1.0]}}
+
+    with pytest.raises(ValueError, match="model.search.method"):
+        run_train(cfg)
 
 
 def test_train_mean_topk_ensemble_artifact_eval_and_infer(tmp_path):
@@ -318,7 +462,7 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     conflict_path = tmp_path / "infer_conflict.csv"
     df.to_csv(train_path, index=False)
     df.drop(columns=["target"]).head(4).to_csv(infer_path, index=False)
-    df.drop(columns=["target"]).head(4).assign(prediction=0.0).to_csv(conflict_path, index=False)
+    df.drop(columns=["target"]).head(4).assign(model_artifact_id="existing").to_csv(conflict_path, index=False)
 
     cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
@@ -334,15 +478,19 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     infer_cfg["data"]["local_path"] = str(infer_path)
     infer_cfg["data"]["id_columns"] = ["id"]
     infer_cfg["output"]["prediction_name"] = "scored.csv"
+    infer_cfg["output"]["chunk_size"] = 2
     infer_result = run_infer(infer_cfg)
     assert infer_result.tables["predictions"].name == "scored.csv"
     assert (tmp_path / "outputs" / "latest_infer" / "scored.csv").exists()
-    _assert_prediction_output(
+    predictions = _assert_prediction_output(
         infer_result.tables["predictions"],
         input_columns=["id", "x1", "x2"],
         model_name="linear",
         artifact_kind="model",
     )
+    assert len(predictions) == 4
+    manifest = read_json(infer_result.artifacts["manifest"])
+    assert manifest["extra"]["chunk_size"] == 2
 
     infer_cfg["data"]["local_path"] = str(conflict_path)
     with pytest.raises(ValueError, match="reserved prediction output columns"):

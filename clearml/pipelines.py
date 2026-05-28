@@ -37,6 +37,9 @@ def pipeline_ui_params(
     train_ensemble = train_model.get("ensemble", {}) or {}
     if not isinstance(train_ensemble, dict):
         train_ensemble = {}
+    train_search = train_model.get("search", {}) or {}
+    if not isinstance(train_search, dict):
+        train_search = {}
     return {
         "Run/task": pipeline_cfg.get("task"),
         "Run/name": run.get("name"),
@@ -49,6 +52,10 @@ def pipeline_ui_params(
         "Model/params": json.dumps(train_model.get("params", {}) or {}),
         "Model/candidates": json.dumps(train_model.get("candidates", []) or []),
         "Model/selection_metric": train_model.get("selection_metric", "rmse"),
+        "Model/search_enabled": bool(train_search.get("enabled", False)),
+        "Model/search_method": train_search.get("method", "grid"),
+        "Model/search_space": json.dumps(train_search.get("search_space", {}) or {}),
+        "Model/max_trials": int(train_search.get("max_trials") or 20),
         "Model/ensemble_enabled": bool(train_ensemble.get("enabled", False)),
         "Model/ensemble_method": train_ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(train_ensemble.get("top_k") or 3),
@@ -74,6 +81,9 @@ def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -
             step["parameter_override"]["Model/candidates"] = json.dumps(as_candidates(ui_params.get("Model/candidates")))
         if ui_params.get("Model/selection_metric"):
             step["parameter_override"]["Model/selection_metric"] = ui_params["Model/selection_metric"]
+        for key in ("Model/search_enabled", "Model/search_method", "Model/search_space", "Model/max_trials"):
+            if key in ui_params:
+                step["parameter_override"][key] = ui_params[key]
         for key in ("Model/ensemble_enabled", "Model/ensemble_method", "Model/ensemble_top_k"):
             if key in ui_params:
                 step["parameter_override"][key] = ui_params[key]

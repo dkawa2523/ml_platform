@@ -14,7 +14,8 @@ The V1 product surface supports:
 - official tabular scalar regression models: `linear`, `ridge`, `random_forest`, and `gradient_boosting`
 - V1.1 single-model extensions: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`
 - V1.2 `mean_topk` and `weighted` ensembles on top of comparison mode
-- V1.3 standardized batch inference output for model, best-model, and ensemble artifacts
+- V2.1 minimal train-time `grid` and `random` hyperparameter search
+- V2.2 standardized batch inference output for model, best-model, ensemble, and optimized artifacts
 
 The four official models are verified for local train/eval/infer/pipeline,
 ClearML task train/eval/infer, and ClearML train -> eval -> infer pipeline
@@ -28,8 +29,11 @@ and separate runtime leaderboard tasks are future scope. V1.1 excludes
 `gaussian_process` because it needs a separate stability and runtime gate.
 V1.2 includes `mean_topk` and deterministic validation-metric `weighted`
 ensemble. Stacking remains future scope.
-V1.3 inference remains batch table inference only. It does not add online
-serving, optimization, streaming readers, or a new template.
+V2.1 optimization is train-time hyperparameter search only. It does not add
+Optuna, Ray Tune, ClearML child tasks, or an optimize template.
+V2.2 inference remains batch table inference only. It adds CSV chunked
+prediction/write support, but not streaming readers, online serving, parquet as
+a required format, or a new template.
 
 ## Boundaries
 
@@ -103,6 +107,10 @@ Model/name
 Model/params
 Model/candidates
 Model/selection_metric
+Model/search_enabled
+Model/search_method
+Model/search_space
+Model/max_trials
 Model/ensemble_enabled
 Model/ensemble_method
 Model/ensemble_top_k
@@ -110,6 +118,7 @@ Model/artifact_path
 Model/feature_preset
 
 Output/prediction_name
+Output/chunk_size
 ```
 
 Queue selection is profile and Agent configuration, not a UI parameter.
@@ -149,6 +158,13 @@ When enabled, train saves `model.joblib` as an ensemble artifact and stores the
 selected top-k base models under `base_models/`. `weighted` derives normalized
 weights from `Model/selection_metric`; it does not run optimization.
 
+Use `Model/search_*` parameters only for train-time hyperparameter search.
+Supported methods are `grid` and `random`. Search writes
+`optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`,
+then saves the best params as the standard retrained `model.joblib` artifact.
+`Model/search_space` is a JSON object string: direct parameter names for
+single-model search, or a model-keyed object when `Model/candidates` is used.
+
 ## Artifacts
 
 Typical local outputs:
@@ -162,6 +178,9 @@ outputs/
     model.joblib
     model_info.json
     leaderboard.csv
+    optimization_trials.csv
+    optimization_summary.json
+    best_params.json
     ensemble_predictions.csv
     predictions.csv
 
@@ -181,12 +200,15 @@ Inference `predictions.csv` preserves the input columns and appends:
 prediction
 model_name
 artifact_kind
+model_artifact_id
 prediction_run_id
 ```
 
 These appended column names are reserved in inference input tables. The ClearML
 artifact key is `predictions`; the physical file name is controlled by
-`output.prediction_name` or `Output/prediction_name`.
+`output.prediction_name` or `Output/prediction_name`. `Output/chunk_size` is an
+optional CSV inference control that chunks prediction and writing after the input
+table has been loaded.
 
 ## Extension Points
 

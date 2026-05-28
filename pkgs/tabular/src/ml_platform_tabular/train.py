@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import itertools
 import json
 import math
+import random
 from pathlib import Path
 from typing import Any
 
@@ -25,15 +27,19 @@ from .models import MeanTopKEnsemble, TabularEstimator, build_model
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
 SELECTION_METRICS = {"rmse", "mae", "r2"}
 WEIGHT_EPSILON = 1e-12
+SEARCH_METHODS = {"grid", "random"}
 
 
-def _as_bool(value: Any) -> bool:
+def _as_bool(value: Any, *, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
     if value is None:
-        return False
+        return default
     if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+        text = value.strip().lower()
+        if text in {"", "none", "null"}:
+            return default
+        return text in {"1", "true", "yes", "y", "on"}
     return bool(value)
 
 
@@ -157,6 +163,97 @@ def _ensemble_cfg(model_cfg: dict[str, Any]) -> dict[str, Any]:
     return {"enabled": enabled, "method": method, "top_k": top_k}
 
 
+def _search_cfg(model_cfg: dict[str, Any]) -> dict[str, Any]:
+    raw = model_cfg.get("search") or {}
+    if not isinstance(raw, dict):
+        raise ValueError("model.search must be a mapping.")
+    enabled = _as_bool(raw.get("enabled"))
+    method = str(raw.get("method") or "grid").strip().lower()
+    max_trials = int(raw.get("max_trials") or 20)
+    search_space = raw.get("search_space") or {}
+    if not isinstance(search_space, dict):
+        raise ValueError("model.search.search_space must be a mapping.")
+    if max_trials < 1:
+        raise ValueError("model.search.max_trials must be >= 1.")
+    if enabled and method not in SEARCH_METHODS:
+        raise ValueError("model.search.method must be one of: grid, random.")
+    return {
+        "enabled": enabled,
+        "method": method,
+        "max_trials": max_trials,
+        "search_space": search_space,
+        "retrain_best": _as_bool(raw.get("retrain_best"), default=True),
+    }
+
+
+def _parameter_grid(search_space: dict[str, Any]) -> list[dict[str, Any]]:
+    if not search_space:
+        return [{}]
+    keys = list(search_space)
+    values = []
+    for key in keys:
+        raw_value = search_space[key]
+        if not isinstance(raw_value, list) or not raw_value:
+            raise ValueError(f"model.search.search_space.{key} must be a non-empty list.")
+        values.append(raw_value)
+    return [dict(zip(keys, combination)) for combination in itertools.product(*values)]
+
+
+def _search_space_for_candidate(
+    search_space: dict[str, Any],
+    model_name: str,
+    *,
+    comparison: bool,
+) -> dict[str, Any]:
+    if comparison:
+        raw = search_space.get(model_name, {})
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"model.search.search_space.{model_name} must be a mapping.")
+        return raw
+    return search_space
+
+
+def _search_trials(
+    candidates: list[dict[str, Any]],
+    search_cfg: dict[str, Any],
+    *,
+    comparison: bool,
+    seed: int,
+) -> list[dict[str, Any]]:
+    if not search_cfg["enabled"]:
+        return [
+            {
+                "trial": index,
+                "model_name": candidate["name"],
+                "model_params": candidate["params"],
+            }
+            for index, candidate in enumerate(candidates, start=1)
+        ]
+
+    trials: list[dict[str, Any]] = []
+    for candidate in candidates:
+        space = _search_space_for_candidate(search_cfg["search_space"], candidate["name"], comparison=comparison)
+        for params in _parameter_grid(space):
+            trial_params = {**candidate["params"], **params}
+            trials.append(
+                {
+                    "trial": 0,
+                    "model_name": candidate["name"],
+                    "model_params": trial_params,
+                }
+            )
+
+    if search_cfg["method"] == "random":
+        rng = random.Random(seed)
+        rng.shuffle(trials)
+    trials = trials[: int(search_cfg["max_trials"])]
+    for index, trial in enumerate(trials, start=1):
+        trial["trial"] = index
+    return trials
+
+
 def _base_model_path(base_dir: Path, rank: int, model_name: str) -> Path:
     safe_name = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in model_name)
     return base_dir / f"{rank:02d}_{safe_name}.joblib"
@@ -194,6 +291,26 @@ def _ensemble_weights(selected_results: list[dict[str, Any]], method: str, selec
     return [float(weight) / total for weight in raw_weights]
 
 
+def _optimization_trial_rows(candidate_results: list[dict[str, Any]], selection_metric: str) -> list[dict[str, Any]]:
+    rows = []
+    for item in candidate_results:
+        metrics = item["metrics"]
+        rows.append(
+            {
+                "trial": item["trial"],
+                "model_name": item["model_name"],
+                "model_params": json.dumps(item["model_params"], sort_keys=True, default=str),
+                "selection_metric": selection_metric,
+                "selection_value": _metric_value(metrics, selection_metric),
+                "mae": metrics.get("mae"),
+                "rmse": metrics.get("rmse"),
+                "r2": metrics.get("r2"),
+                "status": "completed",
+            }
+        )
+    return rows
+
+
 def run_train(cfg: dict[str, Any]) -> RunResult:
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
     run_name = cfg.get("run", {}).get("name", "tabular_train")
@@ -214,23 +331,34 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     comparison = bool(model_cfg.get("candidates"))
     ensemble_cfg = _ensemble_cfg(model_cfg)
     ensemble_enabled = bool(ensemble_cfg["enabled"])
+    search_cfg = _search_cfg(model_cfg)
+    search_enabled = bool(search_cfg["enabled"])
     if ensemble_enabled and not comparison:
         raise ValueError("model.ensemble.enabled=true requires model.candidates.")
+    if search_enabled and ensemble_enabled:
+        raise ValueError("model.search.enabled=true cannot be combined with model.ensemble.enabled=true in V2.1.")
     if selection_metric not in SELECTION_METRICS:
         raise ValueError("model.selection_metric must be one of: mae, rmse, r2.")
-    train_metric_names = _metric_names_for_training(metric_names, selection_metric, comparison=comparison)
+    train_metric_names = _metric_names_for_training(metric_names, selection_metric, comparison=comparison or search_enabled)
 
     candidate_results = []
-    for candidate in candidates:
-        model = build_model(candidate["name"], candidate["params"])
+    trials = _search_trials(
+        candidates,
+        search_cfg,
+        comparison=comparison,
+        seed=int(cfg.get("run", {}).get("seed", 42)),
+    )
+    for trial in trials:
+        model = build_model(trial["model_name"], trial["model_params"])
         estimator = TabularEstimator(transformer=transformer, model=model, feature_columns=feature_names)
         estimator.fit(X_train, y_train)
         y_pred = estimator.predict(X_valid)
         metrics = regression_metrics(y_valid, y_pred, metrics=train_metric_names)
         candidate_results.append(
             {
-                "model_name": candidate["name"],
-                "model_params": candidate["params"],
+                "trial": trial["trial"],
+                "model_name": trial["model_name"],
+                "model_params": trial["model_params"],
                 "estimator": estimator,
                 "predictions": y_pred,
                 "metrics": metrics,
@@ -282,6 +410,14 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         y_pred = best["predictions"]
         metrics = best["metrics"]
 
+    retrained_on_full_data = False
+    if search_enabled and bool(search_cfg["retrain_best"]):
+        final_transformer = build_feature_pipeline(feature_preset, X, feature_cfg.get("params") or {})
+        final_model = build_model(model_name, model_params)
+        estimator = TabularEstimator(transformer=final_transformer, model=final_model, feature_columns=feature_names)
+        estimator.fit(X, y)
+        retrained_on_full_data = True
+
     validation_predictions_path = write_table(
         X_valid.assign(_target=y_valid.values, _prediction=y_pred),
         run_dir / "validation_predictions.csv",
@@ -314,6 +450,22 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
             else None
         ),
     )
+    if search_enabled:
+        model_info = {
+            "search": {
+                "enabled": True,
+                "method": search_cfg["method"],
+                "max_trials": search_cfg["max_trials"],
+                "completed_trials": len(candidate_results),
+                "selection_metric": selection_metric,
+                "best_trial": int(best["trial"]),
+                "retrain_best": search_cfg["retrain_best"],
+                "retrained_on_full_data": retrained_on_full_data,
+            }
+        }
+        current_info = json.loads(model_info_path.read_text(encoding="utf-8"))
+        current_info.update(model_info)
+        model_info_path.write_text(json.dumps(current_info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     metrics_payload: dict[str, Any] = dict(metrics)
     config_path = write_config_snapshot(cfg, run_dir)
 
@@ -326,6 +478,40 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     tables = {"validation_predictions": validation_predictions_path}
     if ensemble_predictions_path is not None:
         tables["ensemble_predictions"] = ensemble_predictions_path
+    if search_enabled:
+        optimization_trials_path = write_table(
+            pd.DataFrame(_optimization_trial_rows(candidate_results, selection_metric)),
+            run_dir / "optimization_trials.csv",
+        )
+        optimization_summary = {
+            "enabled": True,
+            "method": search_cfg["method"],
+            "max_trials": search_cfg["max_trials"],
+            "completed_trials": len(candidate_results),
+            "selection_metric": selection_metric,
+            "best_trial": int(best["trial"]),
+            "best_model_name": model_name,
+            "best_model_params": model_params,
+            "optimization_trials": str(optimization_trials_path),
+            "retrain_best": search_cfg["retrain_best"],
+            "retrained_on_full_data": retrained_on_full_data,
+        }
+        best_params_payload = {
+            "model_name": model_name,
+            "model_params": model_params,
+            "selection_metric": selection_metric,
+            "selection_value": _metric_value(metrics, selection_metric),
+            "best_trial": int(best["trial"]),
+            "retrain_best": search_cfg["retrain_best"],
+            "retrained_on_full_data": retrained_on_full_data,
+        }
+        best_params_path = write_json(best_params_payload, run_dir / "best_params.json")
+        optimization_summary["best_params"] = str(best_params_path)
+        optimization_summary_path = write_json(optimization_summary, run_dir / "optimization_summary.json")
+        tables["optimization_trials"] = optimization_trials_path
+        artifacts["best_params"] = best_params_path
+        artifacts["optimization_summary"] = optimization_summary_path
+        metrics_payload["search"] = optimization_summary
     if comparison:
         leaderboard_results = ranked_results
         leaderboard_artifact_names = dict(artifact_names)

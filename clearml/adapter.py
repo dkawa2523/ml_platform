@@ -162,6 +162,14 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Model/candidates"] = json.dumps(model.get("candidates", []) or [])
         if "selection_metric" in model:
             params["Model/selection_metric"] = model.get("selection_metric")
+        if "search" in model:
+            search = model.get("search", {}) or {}
+            if not isinstance(search, dict):
+                search = {}
+            params["Model/search_enabled"] = as_bool(search.get("enabled"))
+            params["Model/search_method"] = search.get("method", "grid")
+            params["Model/search_space"] = json.dumps(search.get("search_space", {}) or {})
+            params["Model/max_trials"] = int(search.get("max_trials") or 20)
         if "ensemble" in model:
             ensemble = model.get("ensemble", {}) or {}
             if not isinstance(ensemble, dict):
@@ -177,6 +185,8 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
         output = cfg.get("output", {})
         if "prediction_name" in output:
             params["Output/prediction_name"] = output.get("prediction_name")
+        if "chunk_size" in output:
+            params["Output/chunk_size"] = output.get("chunk_size")
     return params
 
 
@@ -240,6 +250,18 @@ def apply_ui_params(
         cfg["model"]["candidates"] = as_candidates(connected.get("Model/candidates"))
     if connected.get("Model/selection_metric"):
         cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
+    search_updates: dict[str, Any] = {}
+    if "Model/search_enabled" in connected:
+        search_updates["enabled"] = as_bool(connected.get("Model/search_enabled"))
+    if connected.get("Model/search_method"):
+        search_updates["method"] = str(connected["Model/search_method"]).strip().lower()
+    if "Model/search_space" in connected:
+        search_updates["search_space"] = as_dict(connected.get("Model/search_space"))
+    if "Model/max_trials" in connected and connected.get("Model/max_trials") not in {None, ""}:
+        search_updates["max_trials"] = int(connected["Model/max_trials"])
+    if search_updates:
+        cfg["model"].setdefault("search", {})
+        cfg["model"]["search"].update(search_updates)
     ensemble_updates: dict[str, Any] = {}
     if "Model/ensemble_enabled" in connected:
         ensemble_updates["enabled"] = as_bool(connected.get("Model/ensemble_enabled"))
@@ -257,6 +279,8 @@ def apply_ui_params(
 
     if connected.get("Output/prediction_name"):
         cfg["output"]["prediction_name"] = connected["Output/prediction_name"]
+    if "Output/chunk_size" in connected and connected.get("Output/chunk_size") not in {None, ""}:
+        cfg["output"]["chunk_size"] = int(connected["Output/chunk_size"])
     return cfg
 
 

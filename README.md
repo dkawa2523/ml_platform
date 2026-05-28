@@ -22,6 +22,16 @@ columns and appends `prediction`, `model_name`, `artifact_kind`, and
 `prediction_run_id`. Single-model, best-model, and ensemble artifacts all use the
 same infer task.
 
+V2.2 adds operational inference metadata and lightweight chunked prediction.
+`predictions.csv` also includes `model_artifact_id`; `Output/chunk_size` can be
+set for CSV write/predict chunking without adding serving APIs or a new template.
+
+V2.1 adds minimal train-time hyperparameter search. `grid` and `random` search
+run inside the train task, write `optimization_trials.csv` and
+`optimization_summary.json` plus `best_params.json`, then save the best params
+as the standard retrained `model.joblib`. No Optuna, child-task HPO, or
+optimize template is added.
+
 The product repo is intentionally small:
 
 ```text
@@ -92,10 +102,28 @@ Use `Model/ensemble_method=weighted` for validation metric based weights. This i
 a best-of-comparison ensemble artifact, not train_ensemble_full, stacking, or
 weight optimization.
 
+For V2.1 search, add nested `model.search` locally or use the flat ClearML
+parameters `Model/search_enabled`, `Model/search_method`, `Model/search_space`,
+and `Model/max_trials`. `Model/search_space` is a JSON object string:
+
+```json
+{
+  "Model/search_enabled": true,
+  "Model/search_method": "grid",
+  "Model/search_space": "{\"alpha\":[0.1,1.0,10.0]}",
+  "Model/max_trials": 20
+}
+```
+
+With `Model/candidates`, use a model-keyed search space such as
+`{"ridge":{"alpha":[0.1,1.0]},"random_forest":{"max_depth":[null,5]}}`.
+
 Inference writes a table artifact named `predictions` in ClearML. The file name
 comes from `output.prediction_name` locally or `Output/prediction_name` in
 ClearML. Input tables must not already contain the reserved output columns
-`prediction`, `model_name`, `artifact_kind`, or `prediction_run_id`.
+`prediction`, `model_name`, `artifact_kind`, `model_artifact_id`, or
+`prediction_run_id`. Use `Output/chunk_size` only for CSV batch inference; input
+tables are still read eagerly.
 
 ## ClearML
 

@@ -186,3 +186,43 @@ Deferred:
 - weight optimization
 - train_ensemble_full
 - ensemble-specific templates or pipeline DAGs
+
+## V2.1 Scope
+
+Goal: add minimal train-time hyperparameter search without adding heavy optimization frameworks.
+
+Implemented:
+
+- `grid` and `random` search inside `tabular_train`
+- nested local `model.search` config
+- flat ClearML `Model/search_*` parameters
+- `optimization_trials.csv`
+- `optimization_summary.json`
+- `best_params.json`
+- best params saved as the standard retrained `model.joblib`
+- pipeline continues to pass the train `model` artifact to eval/infer
+
+Deferred:
+
+- Optuna, Ray Tune, and Bayesian optimization
+- per-trial ClearML child tasks
+- optimize-specific templates
+- per-trial model artifacts
+
+## V2.2 Scope
+
+Goal: make batch inference artifacts easier to use in operations without adding serving APIs.
+
+Implemented:
+
+- `model_artifact_id` in `predictions.csv`
+- `prediction_schema_version`, model, input, and chunk metadata in manifest
+- optional CSV chunked prediction via `output.chunk_size` / `Output/chunk_size`
+- same infer path for single, best, ensemble, and optimized model artifacts
+
+Deferred:
+
+- online serving APIs
+- streaming input readers
+- parquet as a required output format
+- inference-specific templates

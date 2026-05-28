@@ -39,6 +39,7 @@ def write_model_info(
         "feature_preset": feature_preset,
         "artifact_kind": artifact_kind,
         "model_name": model_name,
+        "produced_model_name": model_name,
         "model_params": model_params or {},
         "best_model_name": model_name,
         "best_model_params": model_params or {},

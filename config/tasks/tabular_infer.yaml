@@ -16,3 +16,4 @@ model:
 
 output:
   prediction_name: predictions.csv
+  chunk_size: null

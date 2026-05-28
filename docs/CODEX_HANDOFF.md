@@ -17,6 +17,8 @@ This repo has V1 execution verification for tabular scalar regression. Keep the 
 - V1 single-model switching uses `Model/name` and `Model/params`.
 - V1.1 comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
 - V1.2 ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
+- V2.1 search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; it writes `optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`, then saves the best params as the standard retrained `model` artifact.
+- V2.2 inference adds `model_artifact_id` to `predictions.csv` and supports optional CSV chunked prediction with `Output/chunk_size`.
 
 ## Required Local Check
 
@@ -104,3 +106,4 @@ See `deploy/README.md`. At minimum verify:
 - Do not add model-specific or dataset-specific ClearML templates.
 - Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
 - Do not add stacking or weight optimization to V1.2 ensemble.
+- Do not add Optuna, Ray Tune, per-trial ClearML child tasks, or an optimize template for V2.1 search.

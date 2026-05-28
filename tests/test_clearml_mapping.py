@@ -43,6 +43,7 @@ def test_clearml_ui_params_are_applied_to_nested_config():
         "Run/seed": 7,
         "Model/artifact_path": "outputs/latest_train/model.joblib",
         "Output/prediction_name": "scored.csv",
+        "Output/chunk_size": 500,
     }
     updated = adapter.apply_ui_params(cfg, connected)
     assert updated["data"]["local_path"] == "data/other.csv"
@@ -51,6 +52,7 @@ def test_clearml_ui_params_are_applied_to_nested_config():
     assert updated["run"]["seed"] == 7
     assert updated["model"]["artifact_path"] == "outputs/latest_train/model.joblib"
     assert updated["output"]["prediction_name"] == "scored.csv"
+    assert updated["output"]["chunk_size"] == 500
 
 
 def test_clearml_ui_params_stay_in_four_groups():
@@ -62,6 +64,10 @@ def test_clearml_ui_params_stay_in_four_groups():
     assert params["Model/params"] == '{"alpha": 1.0}'
     assert params["Model/candidates"] == "[]"
     assert params["Model/selection_metric"] == "rmse"
+    assert params["Model/search_enabled"] is False
+    assert params["Model/search_method"] == "grid"
+    assert params["Model/search_space"] == "{}"
+    assert params["Model/max_trials"] == 20
     assert params["Model/ensemble_enabled"] is False
     assert params["Model/ensemble_method"] == "mean_topk"
     assert params["Model/ensemble_top_k"] == 3
@@ -85,6 +91,29 @@ def test_clearml_flat_ensemble_params_apply_to_nested_config():
     assert updated["model"]["ensemble"] == {"enabled": True, "method": "weighted", "top_k": 2}
 
 
+def test_clearml_flat_search_params_apply_to_nested_config():
+    adapter = load_clearml_adapter_module()
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/clearml-dev.yaml")
+
+    updated = adapter.apply_ui_params(
+        cfg,
+        {
+            "Model/search_enabled": True,
+            "Model/search_method": "random",
+            "Model/search_space": '{"alpha":[0.1,1.0]}',
+            "Model/max_trials": 2,
+        },
+    )
+
+    assert updated["model"]["search"] == {
+        "enabled": True,
+        "method": "random",
+        "search_space": {"alpha": [0.1, 1.0]},
+        "max_trials": 2,
+        "retrain_best": True,
+    }
+
+
 def test_clearml_ui_params_are_task_specific():
     adapter = load_clearml_adapter_module()
     train = adapter.default_ui_params(load_run_config("config/tasks/tabular_train.yaml", "config/profiles/clearml-dev.yaml"))
@@ -97,6 +126,10 @@ def test_clearml_ui_params_are_task_specific():
         "Model/params",
         "Model/candidates",
         "Model/selection_metric",
+        "Model/search_enabled",
+        "Model/search_method",
+        "Model/search_space",
+        "Model/max_trials",
         "Model/ensemble_enabled",
         "Model/ensemble_method",
         "Model/ensemble_top_k",
@@ -105,6 +138,7 @@ def test_clearml_ui_params_are_task_specific():
     assert "Model/name" not in eval_cfg
     assert "Model/params" not in eval_cfg
     assert "Output/prediction_name" in infer
+    assert "Output/chunk_size" in infer
     assert set(pipeline) == {"Run/task", "Run/name", "Run/seed"}
 
 
@@ -119,6 +153,10 @@ def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
         "Model/params",
         "Model/candidates",
         "Model/selection_metric",
+        "Model/search_enabled",
+        "Model/search_method",
+        "Model/search_space",
+        "Model/max_trials",
         "Model/ensemble_enabled",
         "Model/ensemble_method",
         "Model/ensemble_top_k",
@@ -194,6 +232,10 @@ def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
             "Model/params": "{}",
             "Model/candidates": '["linear","ridge"]',
             "Model/selection_metric": "rmse",
+            "Model/search_enabled": True,
+            "Model/search_method": "grid",
+            "Model/search_space": '{"ridge":{"alpha":[0.1,1.0]}}',
+            "Model/max_trials": 3,
             "Model/ensemble_enabled": True,
             "Model/ensemble_method": "mean_topk",
             "Model/ensemble_top_k": 2,
@@ -208,6 +250,10 @@ def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
     assert train["parameter_override"]["Model/params"] == "{}"
     assert train["parameter_override"]["Model/candidates"] == '["linear", "ridge"]'
     assert train["parameter_override"]["Model/selection_metric"] == "rmse"
+    assert train["parameter_override"]["Model/search_enabled"] is True
+    assert train["parameter_override"]["Model/search_method"] == "grid"
+    assert train["parameter_override"]["Model/search_space"] == '{"ridge":{"alpha":[0.1,1.0]}}'
+    assert train["parameter_override"]["Model/max_trials"] == 3
     assert train["parameter_override"]["Model/ensemble_enabled"] is True
     assert train["parameter_override"]["Model/ensemble_method"] == "mean_topk"
     assert train["parameter_override"]["Model/ensemble_top_k"] == 2
