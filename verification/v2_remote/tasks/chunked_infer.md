@@ -12,7 +12,7 @@ Status: `completed`
 
 - `Input/clearml_dataset_id`: `<Agent-reachable dev Dataset ID>`
 - `Input/dataset_file`: `sample_infer.csv`
-- `Model/artifact_path`: `http://clearml-fileserver:8081/MLPlatform/Dev/v2_remote_optimization_grid_train.cf5616f7025d4bd498fa8d7be8cb2528/artifacts/model/model.joblib`
+- `Model/artifact_path`: `<model artifact URL from grid train>`
 - `Output/prediction_name`: `predictions.csv`
 - `Output/chunk_size`: `10`
 
