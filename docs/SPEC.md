@@ -4,34 +4,79 @@
 
 `ml_platform` manages small tabular regression runs locally and through ClearML while keeping reusable ML logic ClearML-free.
 
-The V1 product surface supports:
+## Product Scope
 
-- local train, eval, infer, and train -> eval -> infer pipeline
-- local tabular 1D output task
-- ClearML template tasks for train, eval, infer, and pipeline controller
-- minimal ClearML Agent deploy manifests
-- smoke and boundary tests
-- official tabular scalar regression models: `linear`, `ridge`, `random_forest`, and `gradient_boosting`
-- V1.1 single-model extensions: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`
-- V1.2 `mean_topk` and `weighted` ensembles on top of comparison mode
-- V2.1 minimal train-time `grid` and `random` hyperparameter search
-- V2.2 standardized batch inference output for model, best-model, ensemble, and optimized artifacts
+This section is the canonical current product scope. Historical phase notes live
+in `docs/PRODUCTIZATION_PHASES.md`.
+
+### Supported
+
+Supported means the behavior is implemented, exposed through the intended local
+or ClearML interface, and has local plus ClearML remote verification evidence.
+
+- tabular scalar regression local train, eval, infer, and train -> eval -> infer pipeline
+- ClearML UI train, eval, infer, and pipeline execution
+- four task-type ClearML templates: train, eval, infer, and pipeline
+- official models: `linear`, `ridge`, `random_forest`, and `gradient_boosting`
+- comparison mode with `model.candidates` / `Model/candidates`
+- `leaderboard.csv` and best model selection
+- `mean_topk` and `weighted` ensemble saved as the standard model artifact
+- train-time `grid` and `random` hyperparameter search
+- standardized batch inference output for model, best-model, ensemble, and optimized artifacts
+- optional CSV chunked prediction/write via `output.chunk_size` / `Output/chunk_size`
+- metrics, artifacts, predictions, ClearML Dataset id/file handling, and minimal Agent deploy manifests
+
+### Experimental
+
+Experimental means the behavior is implemented but remote verification is
+limited, dependency/runtime behavior has caveats, or the API/config may still
+change before promotion to supported.
+
+- additional sklearn regressors: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`
+- local `tabular_1d_output` utility
+- model-specific runtime caveats such as convergence warnings or data-size sensitivity
+
+Experimental features must use the existing task/profile config shape and the
+same four ClearML templates. Do not mark them supported until local and ClearML
+remote evidence is documented.
+
+### Future
+
+- LightGBM, XGBoost, and CatBoost
+- Optuna, Ray Tune, Bayesian search, and advanced optimization
+- stacking and weight optimization
+- per-trial ClearML child tasks
+- advanced plots and reporting
+- online serving APIs
+- 1D / 2D productization
+- distribution mode decomposition
+- richer preprocessing and schema validation
+
+### Discarded
+
+- legacy full parity as a goal
+- excessive contract docs and checklist pages
+- broad diagnostics helpers
+- old adapter splits
+- live cleanup operations
+- model-specific ClearML templates
+- dataset-specific ClearML templates
+- legacy repo directory, config, helper, test, or docs recreation
 
 The four official models are verified for local train/eval/infer/pipeline,
 ClearML task train/eval/infer, and ClearML train -> eval -> infer pipeline
-execution. `scikit-learn` is a required V1 runtime dependency because it
-provides `random_forest` and `gradient_boosting`. Train supports a small
+execution. `scikit-learn` is a required runtime dependency because it provides
+`random_forest` and `gradient_boosting`. Train supports a small
 `model.candidates` comparison mode that writes `leaderboard.csv`, records a
 comparison summary in `metrics.json`, and saves only the best model artifact.
-Broader ensemble workflows such as train_ensemble_full, stacking,
-LightGBM/XGBoost/CatBoost, advanced plots, diagnostics, all-model pipeline DAGs,
-and separate runtime leaderboard tasks are future scope. V1.1 excludes
-`gaussian_process` because it needs a separate stability and runtime gate.
-V1.2 includes `mean_topk` and deterministic validation-metric `weighted`
-ensemble. Stacking remains future scope.
-V2.1 optimization is train-time hyperparameter search only. It does not add
+This repo does not target full legacy parity: train_ensemble_full, all-model
+pipeline DAGs, separate runtime leaderboard tasks, broad diagnostics, and
+template proliferation are not product scope. `mean_topk` and deterministic
+validation-metric `weighted` ensemble are supported; stacking remains future
+scope. Train-time hyperparameter search is limited to `grid` and `random`; it
+does not add
 Optuna, Ray Tune, ClearML child tasks, or an optimize template.
-V2.2 inference remains batch table inference only. It adds CSV chunked
+Inference remains batch table inference only. It includes CSV chunked
 prediction/write support, but not streaming readers, online serving, parquet as
 a required format, or a new template.
 
@@ -138,13 +183,13 @@ Example:
 }
 ```
 
-The same parameter surface is used for V1.1 sklearn models. Do not add
+The same parameter surface is used for experimental sklearn models. Do not add
 model-specific templates or ClearML adapter branches for `lasso`, `elasticnet`,
 `extra_trees`, `knn`, `svr`, or `mlp`.
 
 Use the flat `Model/ensemble_*` parameters only with comparison mode. Local
 config remains nested under `model.ensemble`. Supported methods are `mean_topk`
-and `weighted`. The V1.2 supported ClearML shape is:
+and `weighted`. The supported ClearML shape is:
 
 ```json
 {

@@ -2,35 +2,30 @@
 
 Minimal ML execution platform for tabular regression and small tabular analysis outputs with a strict ClearML boundary.
 
-V1 verified scope is tabular scalar regression with four official models:
-`linear`, `ridge`, `random_forest`, and `gradient_boosting`. These models are
-verified for local train/eval/infer/pipeline, ClearML task train/eval/infer, and
-ClearML train -> eval -> infer pipeline execution.
+## Current V2 Scope
 
-V1.1 extends the same single-model interface with lightweight sklearn models:
-`lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`. They use the same
-`model.name` / `Model/name` and `model.params` / `Model/params` controls; no
-model-specific templates or task YAML files are added.
+Supported scope is tabular scalar regression with local and ClearML remote
+train/eval/infer/pipeline execution for the official models `linear`, `ridge`,
+`random_forest`, and `gradient_boosting`. It also includes comparison mode,
+`leaderboard.csv`, best model selection, `mean_topk` and `weighted` ensemble
+artifacts, train-time `grid` and `random` search, standardized batch inference
+output, optional CSV chunked inference, metrics, artifacts, predictions, and
+ClearML Dataset id/file handling.
 
-V1.2 adds simple ensemble modes on top of comparison mode. `mean_topk` averages
-the top-k models from `leaderboard.csv`; `weighted` uses validation metric based
-weights for the same top-k set. Both save the ensemble as the standard
-`model.joblib` and keep eval/infer/pipeline unchanged.
+Experimental scope includes implemented features with limited remote
+verification or operational caveats: `lasso`, `elasticnet`, `extra_trees`,
+`knn`, `svr`, `mlp`, and the local `tabular_1d_output` utility.
 
-V1.3 standardizes batch inference output. `predictions.csv` preserves the input
-columns and appends `prediction`, `model_name`, `artifact_kind`, and
-`prediction_run_id`. Single-model, best-model, and ensemble artifacts all use the
-same infer task.
+Future scope includes LightGBM, XGBoost, CatBoost, Optuna, Ray Tune, stacking,
+per-trial ClearML child tasks, advanced plots, online serving, 1D/2D
+productization, distribution mode decomposition, and advanced optimization.
 
-V2.2 adds operational inference metadata and lightweight chunked prediction.
-`predictions.csv` also includes `model_artifact_id`; `Output/chunk_size` can be
-set for CSV write/predict chunking without adding serving APIs or a new template.
+Discarded scope includes legacy full parity, excessive contracts and checklists,
+diagnostics helpers, old adapter splits, live cleanup, model-specific templates,
+dataset-specific templates, and legacy repo directory/config recreation.
 
-V2.1 adds minimal train-time hyperparameter search. `grid` and `random` search
-run inside the train task, write `optimization_trials.csv` and
-`optimization_summary.json` plus `best_params.json`, then save the best params
-as the standard retrained `model.joblib`. No Optuna, child-task HPO, or
-optimize template is added.
+Detailed scope is defined in `docs/SPEC.md`. This repo is not full parity with
+the legacy repos; they are reference material only.
 
 The product repo is intentionally small:
 
@@ -81,12 +76,12 @@ and `Model/params` in ClearML. Train also supports comparison mode with
 `selection_metric` / `Model/selection_metric`. In comparison mode, `model.params`
 can be a mapping from model name to params. The train task writes
 `leaderboard.csv`, records comparison summary in `metrics.json`, and saves only
-the best model as `model.joblib`. V1.1 does not include ensemble,
+the best model as `model.joblib`. Product scope does not include
 train_ensemble_full, stacking, gaussian_process, LightGBM/XGBoost/CatBoost/TabPFN,
 advanced plots, diagnostics, all-model pipeline DAGs, or a separate runtime
 leaderboard task.
 
-For V1.2 ensemble mode, add nested `model.ensemble` locally. In ClearML, use
+For ensemble mode, add nested `model.ensemble` locally. In ClearML, use
 the flat Model parameters `Model/ensemble_enabled`, `Model/ensemble_method`, and
 `Model/ensemble_top_k`:
 
@@ -102,7 +97,7 @@ Use `Model/ensemble_method=weighted` for validation metric based weights. This i
 a best-of-comparison ensemble artifact, not train_ensemble_full, stacking, or
 weight optimization.
 
-For V2.1 search, add nested `model.search` locally or use the flat ClearML
+For train-time search, add nested `model.search` locally or use the flat ClearML
 parameters `Model/search_enabled`, `Model/search_method`, `Model/search_space`,
 and `Model/max_trials`. `Model/search_space` is a JSON object string:
 
@@ -173,4 +168,5 @@ See `deploy/README.md`. The deploy manifests are a minimal ClearML Agent runtime
 - `docs/PROHIBITIONS.md`
 - `docs/LEGACY_REPO_POLICY.md`
 - `docs/PRODUCTIZATION_PHASES.md`
+- `docs/NEXT_RELEASE_BACKLOG.md`
 - `docs/CODEX_HANDOFF.md`

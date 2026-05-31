@@ -1,6 +1,8 @@
 # Productization Phases
 
 Each phase must end with local smoke runs and tests passing. Keep the product small and operational.
+This file is phase history. Current supported, experimental, future, and
+discarded scope is defined in `docs/SPEC.md`.
 
 ## Phase 0: Repo Acceptance
 

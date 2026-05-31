@@ -1,6 +1,6 @@
 # Codex Handoff
 
-This repo has V1 execution verification for tabular scalar regression. Keep the implementation simple.
+This repo has V2 product scope for tabular scalar regression. Keep the implementation simple.
 
 ## Current State
 
@@ -10,15 +10,21 @@ This repo has V1 execution verification for tabular scalar regression. Keep the 
 - `pkgs/core` and `pkgs/tabular` do not import ClearML.
 - Deploy manifests provide a minimal ClearML Agent runtime.
 - Tests are smoke and boundary oriented.
-- V1 official regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
-- V1.1 adds single-model sklearn regressors: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
-- `scikit-learn` is a required V1 runtime dependency.
-- V1 local, ClearML task, and ClearML pipeline verification evidence lives under `verification/v1/`.
+- Official supported regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
+- Experimental sklearn regressors are implemented: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
+- `scikit-learn` is a required runtime dependency.
+- Verification evidence lives under `verification/v1/`, `verification/v1_2/`, `verification/v1_3/`, `verification/v2_1/`, `verification/v2_2/`, and `verification/v2_remote/`.
 - V1 single-model switching uses `Model/name` and `Model/params`.
-- V1.1 comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
-- V1.2 ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
-- V2.1 search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; it writes `optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`, then saves the best params as the standard retrained `model` artifact.
-- V2.2 inference adds `model_artifact_id` to `predictions.csv` and supports optional CSV chunked prediction with `Output/chunk_size`.
+- Comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
+- Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
+- Search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; it writes `optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`, then saves the best params as the standard retrained `model` artifact.
+- Inference adds `model_artifact_id` to `predictions.csv` and supports optional CSV chunked prediction with `Output/chunk_size`.
+
+## Scope Rules
+
+`docs/SPEC.md` is the source of truth for supported, experimental, future, and
+discarded scope. Do not promote an experimental or future feature to supported
+without local and ClearML remote verification evidence.
 
 ## Required Local Check
 
@@ -101,9 +107,9 @@ See `deploy/README.md`. At minimum verify:
 - Do not add real ClearML server tests to pytest or CI.
 - Do not expand UI parameters without a current product need.
 - Do not copy legacy repo files or directory structures.
-- Do not add broad diagnostics, contract docs, or abstract base classes.
-- Do not add all-model pipeline DAGs, stacking, train_ensemble_full, or separate runtime leaderboard tasks for V1/V1.2.
+- Do not add broad diagnostics, contract docs, checklist docs, old adapter splits, live cleanup, or abstract base classes.
+- Do not add all-model pipeline DAGs, stacking, train_ensemble_full, or separate runtime leaderboard tasks.
 - Do not add model-specific or dataset-specific ClearML templates.
 - Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
-- Do not add stacking or weight optimization to V1.2 ensemble.
-- Do not add Optuna, Ray Tune, per-trial ClearML child tasks, or an optimize template for V2.1 search.
+- Do not add stacking or weight optimization to ensemble without a new verification phase.
+- Do not add Optuna, Ray Tune, per-trial ClearML child tasks, or an optimize template for current search.
