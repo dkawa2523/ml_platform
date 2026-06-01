@@ -309,6 +309,8 @@ def sync_pipeline_draft(
             profile_path=profile_path,
         )
         existing.update_parameters(params)
+        if packages:
+            existing.set_packages(packages)
         return existing
 
     automation = import_clearml_automation()
