@@ -79,7 +79,7 @@ Manual UI checks:
 - Clone `tabular_train_template`, set `Input/*`, `Run/*`, `Model/*`, and run.
 - Clone `tabular_eval_template`, set the dataset and model artifact when needed, and run.
 - Clone `tabular_infer_template`, set the dataset and model artifact when needed, and run.
-- Clone `tabular_pipeline_template` and verify exactly three steps: train, eval, infer.
+- Open `tabular_pipeline_template` from the Pipeline tab and verify exactly three steps: train, eval, infer.
 - Confirm train uploads the `model` artifact and eval/infer receive it as `Model/artifact_path`.
 
 Useful logs on failure:

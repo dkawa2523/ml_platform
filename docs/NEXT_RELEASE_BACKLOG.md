@@ -5,8 +5,9 @@ supported, experimental, future, and discarded scope remains defined in
 `docs/SPEC.md`.
 
 Do not implement multiple backlog items in one pass. Each item must preserve the
-current V2 boundary: four ClearML templates, `config/tasks` plus
-`config/profiles`, ClearML SDK under `clearml/`, and ClearML-free `pkgs`.
+current V2 boundary: three ClearML task templates plus one Pipeline-tab draft,
+`config/tasks` plus `config/profiles`, ClearML SDK under `clearml/`, and
+ClearML-free `pkgs`.
 
 ## Priority
 
@@ -35,8 +36,8 @@ If implementing one item next, start with P0.
   step's `Input/dataset_file`.
 - affected files: `README.md`, `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`,
   optionally `verification/v2_remote/parameter_sets.md`.
-- ClearML impact: Documentation only. No template count change and no new task
-  type.
+- ClearML impact: Documentation only. No launch target count change and no new
+  task type.
 - complexity risk: Low.
 - acceptance criteria: Docs explain when to use pipeline-specific dataset file
   parameters; dry-run still shows the same train -> eval -> infer graph; no new
@@ -110,8 +111,8 @@ If implementing one item next, start with P0.
   `knn`, `svr`, and `mlp`; keep `lasso` evidence as a reference. Add pipeline
   verification only for models intended to become supported.
 - affected files: `verification/*`, `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`.
-- ClearML impact: Uses existing train/eval/infer/pipeline templates. No new
-  template or task YAML.
+- ClearML impact: Uses existing train/eval/infer task templates and Pipeline-tab
+  draft. No new template or task YAML.
 - complexity risk: Medium because runtime behavior differs by model.
 - acceptance criteria: Each promoted model has local train/eval/infer/pipeline
   evidence and ClearML task/pipeline evidence; runtime caveats such as `mlp`
@@ -273,13 +274,14 @@ If implementing one item next, start with P0.
 - title: Discard model-, dataset-, leaderboard-, ensemble-, and optimization-
   specific templates.
 - purpose: Preserve the product's simple ClearML operation model.
-- scope: Keep exactly four task-type templates unless a future product review
-  explicitly changes this boundary.
+- scope: Keep exactly three task templates plus one Pipeline-tab draft unless a
+  future product review explicitly changes this boundary.
 - affected files: `clearml/templates.py`, `docs/SPEC.md`,
   `docs/CODEX_HANDOFF.md`.
 - ClearML impact: Prevents UI sprawl and clone-run confusion.
 - complexity risk: Low.
-- acceptance criteria: Template sync dry-run reports four templates.
+- acceptance criteria: Template sync dry-run reports three task templates and
+  one Pipeline-tab draft.
 - do-not-do: Do not import legacy template YAML or recreate legacy task trees.
 
 ### D2: Legacy Contracts, Checklists, Diagnostics, And Helpers

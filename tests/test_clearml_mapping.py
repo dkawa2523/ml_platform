@@ -194,7 +194,7 @@ def test_clearml_connect_params_uses_named_groups():
     assert ("Model", {"name": "ridge"}) in task.calls
 
 
-def test_clearml_templates_are_fixed_to_four_mvp_templates():
+def test_clearml_launch_targets_are_fixed_to_three_tasks_and_one_pipeline_draft():
     templates = load_clearml_templates_module()
     assert [name for name, _, _ in templates.TEMPLATES] == [
         "tabular_train_template",
@@ -202,6 +202,13 @@ def test_clearml_templates_are_fixed_to_four_mvp_templates():
         "tabular_infer_template",
         "tabular_pipeline_template",
     ]
+    assert [name for name, _, _ in templates.TASK_TEMPLATES] == [
+        "tabular_train_template",
+        "tabular_eval_template",
+        "tabular_infer_template",
+    ]
+    assert templates.PIPELINE_TEMPLATE[0] == "tabular_pipeline_template"
+    assert templates.PIPELINE_TEMPLATE[2] == "pipeline"
     assert templates._entry_point("tabular_train_template") == "clearml/app.py"
     assert templates._entry_point("tabular_pipeline_template") == "clearml/pipelines.py"
 

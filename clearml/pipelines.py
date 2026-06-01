@@ -12,7 +12,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import as_candidates, as_dict, import_clearml_automation, import_clearml_symbol
+from adapter import as_candidates, as_dict, import_clearml_automation, import_clearml_sdk, import_clearml_symbol
 from ml_platform_core.config import load_yaml
 
 
@@ -161,6 +161,122 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         )
 
 
+def _entry_command(task_config: str | Path, profile_path: str | Path) -> str:
+    return f"clearml/pipelines.py --task {Path(task_config).as_posix()} --profile {Path(profile_path).as_posix()}"
+
+
+def _set_pipeline_script_with_compat(
+    task: Any,
+    *,
+    repository: str,
+    branch: str,
+    working_dir: str,
+    task_config: str | Path,
+    profile_path: str | Path,
+) -> None:
+    entry_command = _entry_command(task_config, profile_path)
+    common = {
+        "repository": repository,
+        "branch": branch,
+        "working_dir": working_dir,
+        "entry_point": entry_command,
+    }
+    try:
+        task.set_script(
+            **common,
+            arguments={"--task": str(task_config), "--profile": str(profile_path)},
+        )
+    except TypeError:  # pragma: no cover - depends on ClearML SDK version
+        try:
+            task.set_script(**common, args=f"--task {task_config} --profile {profile_path}")
+        except TypeError:
+            task.set_script(**common)
+
+
+def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
+    pipe.set_default_execution_queue(plan["queue"])
+    for step in plan["steps"]:
+        kwargs = {
+            "name": step["name"],
+            "base_task_project": step["base_task_project"],
+            "base_task_name": step["base_task_name"],
+        }
+        if step["parents"]:
+            kwargs["parents"] = step["parents"]
+        if step["parameter_override"]:
+            kwargs["parameter_override"] = step["parameter_override"]
+        pipe.add_step(**kwargs)
+
+
+def _find_pipeline_draft(Task: Any, task_name: str):
+    tasks = Task.get_tasks(task_name=task_name, allow_archived=False)
+    for task in reversed(tasks):
+        if getattr(task, "status", None) != "created":
+            continue
+        if str(getattr(task, "task_type", "")) != str(Task.TaskTypes.controller):
+            continue
+        if "pipeline" not in (task.get_system_tags() or []):
+            continue
+        return task
+    return None
+
+
+def sync_pipeline_draft(
+    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
+    profile_path: str | Path = "config/profiles/clearml-dev.yaml",
+    *,
+    template_name: str = "tabular_pipeline_template",
+    repository: str | None = None,
+    branch: str | None = None,
+    working_dir: str | None = None,
+    packages: list[str] | None = None,
+):
+    """Create a Pipeline-tab draft that users can edit and enqueue from ClearML."""
+    clearml_sdk = import_clearml_sdk()
+    Task = clearml_sdk.Task
+    existing = _find_pipeline_draft(Task, template_name)
+    params = pipeline_ui_params(task_path, profile_path)
+    if existing is not None:
+        _set_pipeline_script_with_compat(
+            existing,
+            repository=repository or ".",
+            branch=branch or "main",
+            working_dir=working_dir or ".",
+            task_config=task_path,
+            profile_path=profile_path,
+        )
+        existing.update_parameters(params)
+        return existing
+
+    automation = import_clearml_automation()
+    PipelineController = automation.PipelineController
+    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=params)
+    pipe = PipelineController(
+        project=plan["project"],
+        name=template_name,
+        version=plan["version"],
+        add_run_number=False,
+        target_project=plan["project"],
+        repo=repository or ".",
+        repo_branch=branch,
+        packages=packages,
+        working_dir=working_dir or ".",
+    )
+    _set_pipeline_script_with_compat(
+        pipe.task,
+        repository=repository or ".",
+        branch=branch or "main",
+        working_dir=working_dir or ".",
+        task_config=task_path,
+        profile_path=profile_path,
+    )
+    pipe.task.update_parameters(params)
+    _add_plan_steps(pipe, plan)
+    pipe.create_draft()
+    pipe.task.update_parameters(params)
+    return pipe.task
+
+
 def register_tabular_pipeline(
     task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
@@ -186,18 +302,7 @@ def register_tabular_pipeline(
     connected = {**defaults, **{key: value for key, value in task_params.items() if key in defaults}}
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected)
 
-    pipe.set_default_execution_queue(plan["queue"])
-    for step in plan["steps"]:
-        kwargs = {
-            "name": step["name"],
-            "base_task_project": step["base_task_project"],
-            "base_task_name": step["base_task_name"],
-        }
-        if step["parents"]:
-            kwargs["parents"] = step["parents"]
-        if step["parameter_override"]:
-            kwargs["parameter_override"] = step["parameter_override"]
-        pipe.add_step(**kwargs)
+    _add_plan_steps(pipe, plan)
     pipe.start_locally(run_pipeline_steps_locally=False)
 
 

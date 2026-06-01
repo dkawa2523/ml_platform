@@ -34,7 +34,7 @@ Goal: ClearML UI clone-run for train/eval/infer.
 Done:
 
 - ClearML SDK boundary under `clearml/`
-- four template definitions
+- three task template definitions plus one Pipeline-tab draft
 - UI parameters grouped as Input, Run, Model, Output
 - local tests pass without ClearML installed
 
@@ -58,7 +58,7 @@ Done:
 
 Verified for V1:
 
-- pipeline template clone-run
+- Pipeline-tab draft run
 - model artifact handoff on the dev server
 - Agent queue behavior
 
@@ -136,7 +136,7 @@ Verified:
 - local train/eval/infer/pipeline verification for all official models
 - ClearML task and pipeline verification for all official models
 - train `model.candidates` comparison mode with `leaderboard.csv`
-- four task-type ClearML templates only; no model-specific templates
+- three task templates plus one Pipeline-tab draft only; no model-specific templates
 
 Deferred:
 
@@ -160,7 +160,7 @@ Implemented:
 - `svr`
 - `mlp`
 - model switching remains `Model/name` plus `Model/params`
-- ClearML templates remain the same four task-type templates
+- ClearML launch targets remain the same three task templates plus one Pipeline-tab draft
 
 Deferred:
 

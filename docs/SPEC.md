@@ -16,7 +16,7 @@ or ClearML interface, and has local plus ClearML remote verification evidence.
 
 - tabular scalar regression local train, eval, infer, and train -> eval -> infer pipeline
 - ClearML UI train, eval, infer, and pipeline execution
-- four task-type ClearML templates: train, eval, infer, and pipeline
+- four ClearML launch targets: train, eval, infer, and Pipeline-tab pipeline
 - official models: `linear`, `ridge`, `random_forest`, and `gradient_boosting`
 - comparison mode with `model.candidates` / `Model/candidates`
 - `leaderboard.csv` and best model selection
@@ -37,7 +37,7 @@ change before promotion to supported.
 - model-specific runtime caveats such as convergence warnings or data-size sensitivity
 
 Experimental features must use the existing task/profile config shape and the
-same four ClearML templates. Do not mark them supported until local and ClearML
+same ClearML launch targets. Do not mark them supported until local and ClearML
 remote evidence is documented.
 
 ### Future
@@ -168,11 +168,12 @@ Output/chunk_size
 
 Queue selection is profile and Agent configuration, not a UI parameter.
 
-Templates are task-type based, not model-specific. Keep the four templates:
-train, eval, infer, and pipeline. Use `Model/name` and `Model/params` for single
-model execution. Use `Model/candidates` as a JSON list of model names and
-`Model/selection_metric` for comparison mode. In comparison mode, `Model/params`
-may be a JSON object keyed by model name.
+ClearML launch targets are task-type based, not model-specific. Keep three
+clone-run task templates for train, eval, and infer plus one Pipeline-tab draft
+for the fixed train -> eval -> infer pipeline. Use `Model/name` and
+`Model/params` for single model execution. Use `Model/candidates` as a JSON list
+of model names and `Model/selection_metric` for comparison mode. In comparison
+mode, `Model/params` may be a JSON object keyed by model name.
 
 Example:
 

@@ -145,11 +145,12 @@ Agent environment; host-only `localhost` URLs and host filesystem paths usually
 are not. `artifact_output_uri` controls newly produced run artifacts and does not
 fix Dataset storage reachability.
 
-The ClearML templates are task-type based and remain four templates:
-`tabular_train_template`, `tabular_eval_template`, `tabular_infer_template`, and
-`tabular_pipeline_template`. Do not create model-specific or dataset-specific
-templates. Remote pipeline execution needs enough worker slots for the controller
-and step tasks when they share one queue.
+The ClearML entrypoints remain four user-facing launch targets:
+`tabular_train_template`, `tabular_eval_template`, and `tabular_infer_template`
+are clone-run task templates. `tabular_pipeline_template` is a Pipeline-tab draft
+for the fixed train -> eval -> infer graph. Do not create model-specific or
+dataset-specific templates. Remote pipeline execution needs enough worker slots
+for the controller and step tasks when they share one queue.
 
 Pipeline dry-run:
 
