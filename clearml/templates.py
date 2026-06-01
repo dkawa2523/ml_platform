@@ -66,6 +66,8 @@ def _set_script_with_compat(
     common = {
         "repository": repository,
         "branch": branch,
+        "commit": "",
+        "diff": "",
         "working_dir": working_dir,
         "entry_point": entry_command,
     }
