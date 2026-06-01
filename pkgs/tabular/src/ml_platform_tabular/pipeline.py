@@ -11,6 +11,7 @@ from ml_platform_core.result import RunResult
 
 from .evaluate import run_evaluate
 from .infer import run_infer
+from .pipeline_modes import apply_pipeline_mode_defaults
 from .train import run_train
 
 
@@ -31,29 +32,6 @@ def _load_nested_task(root_cfg: dict[str, Any], section: str) -> dict[str, Any]:
         if isinstance(model_overrides, dict) and "params" in model_overrides:
             merged.setdefault("model", {})["params"] = deepcopy(model_overrides["params"])
     return merged
-
-
-def _as_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return bool(value)
-
-
-def _pipeline_mode(train_cfg: dict[str, Any]) -> str:
-    model_cfg = train_cfg.get("model", {})
-    candidates = model_cfg.get("candidates") or []
-    ensemble_cfg = model_cfg.get("ensemble") or {}
-    ensemble_enabled = isinstance(ensemble_cfg, dict) and _as_bool(ensemble_cfg.get("enabled"))
-    if candidates and ensemble_enabled:
-        method = str(ensemble_cfg.get("method") or "mean_topk")
-        return f"{method}_ensemble"
-    if candidates:
-        return "comparison_best_model"
-    return "single_model"
 
 
 def _path_map(mapping: dict[str, Path]) -> dict[str, str]:
@@ -82,6 +60,7 @@ def run_pipeline(cfg: dict[str, Any]) -> RunResult:
     pipeline_dir = prepare_run_dir(output_dir, run_name)
 
     train_cfg = _load_nested_task(cfg, "train")
+    mode, train_cfg = apply_pipeline_mode_defaults(train_cfg)
     train_result = run_train(train_cfg)
 
     eval_cfg = _load_nested_task(cfg, "eval")
@@ -96,8 +75,6 @@ def run_pipeline(cfg: dict[str, Any]) -> RunResult:
 
     train_model_info_path = train_result.artifacts.get("model_info")
     train_model_info = _load_model_info(train_model_info_path)
-    mode = _pipeline_mode(train_cfg)
-
     metrics = {
         **{f"train_{k}": v for k, v in train_result.metrics.items()},
         **{f"eval_{k}": v for k, v in eval_result.metrics.items()},
@@ -130,6 +107,7 @@ def run_pipeline(cfg: dict[str, Any]) -> RunResult:
         "model": str(train_result.artifacts["model"]),
         "model_info": str(train_model_info_path) if train_model_info_path else None,
         "leaderboard": str(train_result.tables["leaderboard"]) if "leaderboard" in train_result.tables else None,
+        "ensemble_info": str(train_result.artifacts["ensemble_info"]) if "ensemble_info" in train_result.artifacts else None,
         "ensemble_predictions": str(train_result.tables["ensemble_predictions"])
         if "ensemble_predictions" in train_result.tables
         else None,

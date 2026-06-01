@@ -34,6 +34,8 @@ change before promotion to supported.
 
 - additional sklearn regressors: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`
 - local `tabular_1d_output` utility
+- explicit Pipeline-tab modes through `run.pipeline_mode` / `Run/pipeline_mode`
+  until remote comparison, ensemble, and optimization evidence is recorded
 - model-specific runtime caveats such as convergence warnings or data-size sensitivity
 
 Experimental features must use the existing task/profile config shape and the
@@ -140,6 +142,9 @@ Current parameters:
 Input/local_path
 Input/clearml_dataset_id
 Input/dataset_file
+Input/train_dataset_file
+Input/eval_dataset_file
+Input/infer_dataset_file
 Input/target_column
 Input/feature_columns
 Input/id_columns
@@ -147,6 +152,7 @@ Input/id_columns
 Run/task
 Run/name
 Run/seed
+Run/pipeline_mode
 
 Model/name
 Model/params
@@ -184,13 +190,47 @@ Example:
 }
 ```
 
+Pipeline mode is explicit for the Pipeline-tab draft:
+
+```text
+Run/pipeline_mode=auto
+Run/pipeline_mode=single
+Run/pipeline_mode=compare
+Run/pipeline_mode=ensemble
+Run/pipeline_mode=optimize
+```
+
+`auto` preserves compatibility by inferring mode from the Model parameters.
+`single` uses `Model/name` and `Model/params` only. `compare` requires
+`Model/candidates` and writes `leaderboard.csv`; eval and infer receive the
+selected best model. `ensemble` requires candidates and saves a `mean_topk` or
+`weighted` ensemble as the standard `model` artifact. `optimize` requires
+`Model/search_space`, writes `optimization_trials.csv`,
+`optimization_summary.json`, and `best_params.json`, then passes the optimized
+model to eval and infer. V2.3 does not combine search and ensemble.
+`single_model`, `comparison`, and `optimization` are accepted as compatibility
+aliases.
+
+Pipeline-specific dataset file parameters map to the matching step:
+
+```text
+Input/train_dataset_file -> train Input/dataset_file
+Input/eval_dataset_file  -> eval Input/dataset_file
+Input/infer_dataset_file -> infer Input/dataset_file
+```
+
+Pipeline-level `Input/target_column` maps to train and eval. Pipeline-level
+`Input/id_columns` maps to train, eval, and infer. Pipeline-level
+`Output/prediction_name` and `Output/chunk_size` map only to infer.
+
 The same parameter surface is used for experimental sklearn models. Do not add
 model-specific templates or ClearML adapter branches for `lasso`, `elasticnet`,
 `extra_trees`, `knn`, `svr`, or `mlp`.
 
-Use the flat `Model/ensemble_*` parameters only with comparison mode. Local
-config remains nested under `model.ensemble`. Supported methods are `mean_topk`
-and `weighted`. The supported ClearML shape is:
+Use the flat `Model/ensemble_*` parameters with comparison or
+`Run/pipeline_mode=ensemble`. Local config remains nested under
+`model.ensemble`. Supported methods are `mean_topk` and `weighted`. The
+supported ClearML shape is:
 
 ```json
 {
@@ -210,6 +250,7 @@ Supported methods are `grid` and `random`. Search writes
 then saves the best params as the standard retrained `model.joblib` artifact.
 `Model/search_space` is a JSON object string: direct parameter names for
 single-model search, or a model-keyed object when `Model/candidates` is used.
+Search and ensemble are not combined in V2.3.
 
 ## Artifacts
 
@@ -227,6 +268,7 @@ outputs/
     optimization_trials.csv
     optimization_summary.json
     best_params.json
+    ensemble_info.json
     ensemble_predictions.csv
     predictions.csv
 

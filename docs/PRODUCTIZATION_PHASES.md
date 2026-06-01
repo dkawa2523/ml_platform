@@ -228,3 +228,25 @@ Deferred:
 - streaming input readers
 - parquet as a required output format
 - inference-specific templates
+
+## V2.3 Scope
+
+Goal: make the Pipeline-tab product flow explicit without adding templates or
+recreating legacy all-model DAGs.
+
+Implemented:
+
+- `run.pipeline_mode` / `Run/pipeline_mode`
+- modes: `auto`, `single`, `compare`, `ensemble`, `optimize`
+- Pipeline-tab input controls for train/eval/infer dataset files
+- pipeline-level `Input/target_column` and `Input/id_columns`
+- pipeline-level `Output/prediction_name` and `Output/chunk_size`
+- fixed ClearML graph remains train -> eval -> infer
+- eval and infer continue to consume the train step's standard `model` artifact
+
+Deferred:
+
+- separate leaderboard, ensemble, or optimization pipeline nodes
+- train_ensemble_full
+- per-model or per-trial child tasks
+- Optuna, Ray Tune, and stacking

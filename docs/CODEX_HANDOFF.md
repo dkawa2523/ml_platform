@@ -15,6 +15,7 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - `scikit-learn` is a required runtime dependency.
 - Verification evidence lives under `verification/v1/`, `verification/v1_2/`, `verification/v1_3/`, `verification/v2_1/`, `verification/v2_2/`, and `verification/v2_remote/`.
 - V1 single-model switching uses `Model/name` and `Model/params`.
+- Pipeline-tab runs use `Run/pipeline_mode`: `auto`, `single`, `compare`, `ensemble`, or `optimize`.
 - Comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
 - Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
 - Search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; it writes `optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`, then saves the best params as the standard retrained `model` artifact.
@@ -80,7 +81,9 @@ Manual UI checks:
 - Clone `tabular_eval_template`, set the dataset and model artifact when needed, and run.
 - Clone `tabular_infer_template`, set the dataset and model artifact when needed, and run.
 - Open `tabular_pipeline_template` from the Pipeline tab and verify exactly three steps: train, eval, infer.
+- Set `Run/pipeline_mode` explicitly for compare, ensemble, and optimize checks.
 - Confirm train uploads the `model` artifact and eval/infer receive it as `Model/artifact_path`.
+- Confirm mode artifacts on the train step: `leaderboard`, `ensemble_predictions`, or optimization trial artifacts.
 
 Useful logs on failure:
 
@@ -109,6 +112,7 @@ See `deploy/README.md`. At minimum verify:
 - Do not copy legacy repo files or directory structures.
 - Do not add broad diagnostics, contract docs, checklist docs, old adapter splits, live cleanup, or abstract base classes.
 - Do not add all-model pipeline DAGs, stacking, train_ensemble_full, or separate runtime leaderboard tasks.
+- Do not add separate pipeline nodes for leaderboard, ensemble, or optimization in V2.3.
 - Do not add model-specific or dataset-specific ClearML templates.
 - Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
 - Do not add stacking or weight optimization to ensemble without a new verification phase.

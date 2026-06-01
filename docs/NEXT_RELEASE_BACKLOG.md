@@ -13,7 +13,7 @@ ClearML-free `pkgs`.
 
 | priority | bucket | title | reason |
 | --- | --- | --- | --- |
-| P0 | V2 patch | Document pipeline dataset-file UI parameters | Known docs gap; no runtime behavior change needed. |
+| P0 | V2 patch | ClearML remote verification for pipeline modes | Confirms the new Pipeline-tab product flow before promoting it as fully verified. |
 | P1 | V2 patch | Verification scope index | Prevents accidental promotion of experimental features. |
 | P2 | V2.1 | Remote verification for experimental sklearn models | Smallest path to promote selected models to supported. |
 | P3 | V2.1 | Evaluation table improvement | Useful product artifact without changing templates. |
@@ -26,24 +26,26 @@ If implementing one item next, start with P0.
 
 ## V2 Patch
 
-### P0: Document Pipeline Dataset-File UI Parameters
+### P0: ClearML Remote Verification For Pipeline Modes
 
-- title: Document pipeline dataset-file UI parameters.
-- purpose: Make the existing pipeline-only dataset file controls visible to
-  operators and future maintainers.
-- scope: Document `Input/train_dataset_file`, `Input/eval_dataset_file`, and
-  `Input/infer_dataset_file` as pipeline controller parameters that map to each
-  step's `Input/dataset_file`.
-- affected files: `README.md`, `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`,
-  optionally `verification/v2_remote/parameter_sets.md`.
-- ClearML impact: Documentation only. No launch target count change and no new
-  task type.
-- complexity risk: Low.
-- acceptance criteria: Docs explain when to use pipeline-specific dataset file
-  parameters; dry-run still shows the same train -> eval -> infer graph; no new
-  ClearML parameters outside `Input`, `Run`, `Model`, and `Output`.
-- do-not-do: Do not add dataset-specific templates, dataset registration, or a
-  new config axis.
+- title: ClearML remote verification for pipeline modes.
+- purpose: Confirm the Pipeline-tab product flow after adding explicit
+  `Run/pipeline_mode`.
+- scope: Run the `tabular_pipeline_template` Pipeline-tab draft for
+  `compare`, `ensemble`, and `optimize` using a small ClearML Dataset.
+  Record the train/eval/infer task URLs and artifact evidence.
+- affected files: existing `verification/*` summaries, `docs/SPEC.md`, and
+  `docs/CODEX_HANDOFF.md` only if support status changes.
+- ClearML impact: Uses the existing Pipeline-tab draft and fixed train -> eval
+  -> infer graph. No new template or task YAML.
+- complexity risk: Low to medium because remote Agent capacity and artifact
+  storage can fail independently of code.
+- acceptance criteria: Pipeline graph has exactly three steps; train uploads the
+  standard `model` artifact; eval/infer receive it; comparison has
+  `leaderboard`; ensemble has `ensemble_predictions`; optimization has
+  `optimization_trials`, `optimization_summary`, and `best_params`.
+- do-not-do: Do not add per-model steps, a runtime leaderboard step,
+  train_ensemble_full, child tasks, or optimization-specific templates.
 
 ### P1: Verification Scope Index
 

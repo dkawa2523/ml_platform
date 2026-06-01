@@ -450,6 +450,20 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
             else None
         ),
     )
+    ensemble_info_path = None
+    if ensemble_enabled:
+        ensemble_info_path = write_json(
+            {
+                "enabled": True,
+                "method": ensemble_cfg["method"],
+                "top_k": model_params["top_k"],
+                "selection_metric": selection_metric,
+                "produced_model_name": model_name,
+                "selected_base_models": selected_base_models,
+                "weights": [item["weight"] for item in selected_base_models],
+            },
+            run_dir / "ensemble_info.json",
+        )
     if search_enabled:
         model_info = {
             "search": {
@@ -475,6 +489,8 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         "config": config_path,
         **base_model_artifacts,
     }
+    if ensemble_info_path is not None:
+        artifacts["ensemble_info"] = ensemble_info_path
     tables = {"validation_predictions": validation_predictions_path}
     if ensemble_predictions_path is not None:
         tables["ensemble_predictions"] = ensemble_predictions_path

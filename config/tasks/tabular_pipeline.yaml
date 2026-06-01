@@ -3,6 +3,7 @@ task: tabular_pipeline
 run:
   name: tabular_pipeline
   seed: 42
+  pipeline_mode: auto
 
 # Local pipeline orchestration reuses the three simple task configs.
 # ClearML PipelineController is intentionally kept in clearml/pipelines.py and

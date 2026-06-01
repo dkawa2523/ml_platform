@@ -140,6 +140,8 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
         "Run/name": run.get("name"),
         "Run/seed": run.get("seed"),
     }
+    if "pipeline_mode" in run:
+        params["Run/pipeline_mode"] = run.get("pipeline_mode")
     if "data" in cfg:
         data = cfg.get("data", {})
         params.update(
@@ -223,6 +225,8 @@ def apply_ui_params(
         cfg["run"]["name"] = connected["Run/name"]
     if connected.get("Run/seed") is not None:
         cfg["run"]["seed"] = int(connected["Run/seed"])
+    if connected.get("Run/pipeline_mode"):
+        cfg["run"]["pipeline_mode"] = connected["Run/pipeline_mode"]
 
     if "data" in cfg:
         if resolved_local_path is not None:

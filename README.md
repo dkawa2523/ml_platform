@@ -152,6 +152,27 @@ for the fixed train -> eval -> infer graph. Do not create model-specific or
 dataset-specific templates. Remote pipeline execution needs enough worker slots
 for the controller and step tasks when they share one queue.
 
+Pipeline runs use `Run/pipeline_mode` to make the product flow explicit while
+keeping the physical graph fixed:
+
+```text
+auto
+single
+compare
+ensemble
+optimize
+```
+
+V2.3 local mode names are `single`, `compare`, `ensemble`, and `optimize`;
+`single_model`, `comparison`, and `optimization` are accepted as compatibility
+aliases. `compare` requires `Model/candidates`, `ensemble` requires candidates
+and uses `Model/ensemble_*`, and `optimize` requires `Model/search_space`.
+Pipeline `eval` and `infer` always consume the standard `model` artifact from
+the `train` step, whether that artifact is a single model, selected best model,
+ensemble, or optimized model.
+Remote verification for all explicit pipeline modes is tracked as the next
+backlog item before promoting the mode flow beyond experimental scope.
+
 Pipeline dry-run:
 
 ```powershell

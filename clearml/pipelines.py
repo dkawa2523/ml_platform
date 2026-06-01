@@ -12,8 +12,9 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import as_candidates, as_dict, import_clearml_automation, import_clearml_sdk, import_clearml_symbol
+from adapter import as_bool, as_candidates, as_dict, as_list, import_clearml_automation, import_clearml_sdk, import_clearml_symbol
 from ml_platform_core.config import load_yaml
+from ml_platform_tabular.pipeline_modes import apply_pipeline_mode_defaults
 
 
 MODEL_ARTIFACT_REF = "${train.artifacts.model.url}"
@@ -33,6 +34,8 @@ def pipeline_ui_params(
     eval_cfg = load_yaml(pipeline_cfg.get("eval", {}).get("task_config", "config/tasks/tabular_eval.yaml"))
     infer_cfg = load_yaml(pipeline_cfg.get("infer", {}).get("task_config", "config/tasks/tabular_infer.yaml"))
     run = pipeline_cfg.get("run", {})
+    train_data = train_cfg.get("data", {})
+    infer_output = infer_cfg.get("output", {})
     train_model = train_cfg.get("model", {})
     train_ensemble = train_model.get("ensemble", {}) or {}
     if not isinstance(train_ensemble, dict):
@@ -44,10 +47,13 @@ def pipeline_ui_params(
         "Run/task": pipeline_cfg.get("task"),
         "Run/name": run.get("name"),
         "Run/seed": run.get("seed"),
+        "Run/pipeline_mode": run.get("pipeline_mode", "auto"),
         "Input/clearml_dataset_id": None,
         "Input/train_dataset_file": train_cfg.get("data", {}).get("dataset_file"),
         "Input/eval_dataset_file": eval_cfg.get("data", {}).get("dataset_file"),
         "Input/infer_dataset_file": infer_cfg.get("data", {}).get("dataset_file"),
+        "Input/target_column": train_data.get("target_column"),
+        "Input/id_columns": train_data.get("id_columns", []),
         "Model/name": train_model.get("name"),
         "Model/params": json.dumps(train_model.get("params", {}) or {}),
         "Model/candidates": json.dumps(train_model.get("candidates", []) or []),
@@ -60,17 +66,65 @@ def pipeline_ui_params(
         "Model/ensemble_method": train_ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(train_ensemble.get("top_k") or 3),
         "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
+        "Output/prediction_name": infer_output.get("prediction_name"),
+        "Output/chunk_size": infer_output.get("chunk_size"),
     }
+
+
+def _effective_pipeline_params(ui_params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    model_cfg = {
+        "name": ui_params.get("Model/name"),
+        "params": as_dict(ui_params.get("Model/params")),
+        "candidates": as_candidates(ui_params.get("Model/candidates")),
+        "selection_metric": ui_params.get("Model/selection_metric", "rmse"),
+        "search": {
+            "enabled": as_bool(ui_params.get("Model/search_enabled")),
+            "method": str(ui_params.get("Model/search_method") or "grid").strip().lower(),
+            "search_space": as_dict(ui_params.get("Model/search_space")),
+            "max_trials": int(ui_params.get("Model/max_trials") or 20),
+        },
+        "ensemble": {
+            "enabled": as_bool(ui_params.get("Model/ensemble_enabled")),
+            "method": ui_params.get("Model/ensemble_method") or "mean_topk",
+            "top_k": int(ui_params.get("Model/ensemble_top_k") or 3),
+        },
+    }
+    mode, effective_cfg = apply_pipeline_mode_defaults(
+        {
+            "run": {"pipeline_mode": ui_params.get("Run/pipeline_mode", "auto")},
+            "model": model_cfg,
+        }
+    )
+    effective_model = effective_cfg["model"]
+    effective_params = dict(ui_params)
+    effective_params.update(
+        {
+            "Model/params": json.dumps(effective_model.get("params", {}) or {}),
+            "Model/candidates": json.dumps(effective_model.get("candidates", []) or []),
+            "Model/search_enabled": bool(effective_model.get("search", {}).get("enabled", False)),
+            "Model/search_method": effective_model.get("search", {}).get("method", "grid"),
+            "Model/search_space": json.dumps(effective_model.get("search", {}).get("search_space", {}) or {}),
+            "Model/max_trials": int(effective_model.get("search", {}).get("max_trials") or 20),
+            "Model/ensemble_enabled": bool(effective_model.get("ensemble", {}).get("enabled", False)),
+            "Model/ensemble_method": effective_model.get("ensemble", {}).get("method", "mean_topk"),
+            "Model/ensemble_top_k": int(effective_model.get("ensemble", {}).get("top_k") or 3),
+        }
+    )
+    return mode, effective_params
 
 
 def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -> None:
     dataset_id = ui_params.get("Input/clearml_dataset_id")
+    dataset_file = ui_params.get(f"Input/{step['name']}_dataset_file")
+    if dataset_file:
+        step["parameter_override"]["Input/dataset_file"] = dataset_file
     if dataset_id:
         step["parameter_override"]["Input/clearml_dataset_id"] = dataset_id
         step["parameter_override"]["Input/local_path"] = ""
-        dataset_file = ui_params.get(f"Input/{step['name']}_dataset_file")
-        if dataset_file:
-            step["parameter_override"]["Input/dataset_file"] = dataset_file
+    if step["name"] in {"train", "eval"} and ui_params.get("Input/target_column"):
+        step["parameter_override"]["Input/target_column"] = ui_params["Input/target_column"]
+    if "Input/id_columns" in ui_params:
+        step["parameter_override"]["Input/id_columns"] = as_list(ui_params.get("Input/id_columns")) or []
 
     if step["name"] == "train":
         if ui_params.get("Model/name"):
@@ -89,6 +143,11 @@ def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -
                 step["parameter_override"][key] = ui_params[key]
         if ui_params.get("Model/feature_preset"):
             step["parameter_override"]["Model/feature_preset"] = ui_params["Model/feature_preset"]
+    if step["name"] == "infer":
+        if ui_params.get("Output/prediction_name"):
+            step["parameter_override"]["Output/prediction_name"] = ui_params["Output/prediction_name"]
+        if "Output/chunk_size" in ui_params and ui_params.get("Output/chunk_size") not in {None, ""}:
+            step["parameter_override"]["Output/chunk_size"] = int(ui_params["Output/chunk_size"])
 
 
 def _load_step_task_name(task_config: str | Path) -> str:
@@ -109,6 +168,8 @@ def build_pipeline_plan(
     clearml_cfg = profile.get("clearml", {})
     project_root = clearml_cfg.get("project_root", "MLPlatform/Dev")
     templates_project = f"{project_root}/Templates"
+    default_params = pipeline_ui_params(task_path, profile_path)
+    mode, effective_params = _effective_pipeline_params({**default_params, **(ui_params or {})})
 
     steps = []
     for name, parents in (("train", []), ("eval", ["train"]), ("infer", ["eval"])):
@@ -128,13 +189,14 @@ def build_pipeline_plan(
         if name in {"eval", "infer"}:
             step["parameter_override"]["Model/artifact_path"] = MODEL_ARTIFACT_REF
         if ui_params:
-            _apply_pipeline_overrides(step, ui_params)
+            _apply_pipeline_overrides(step, effective_params)
         steps.append(step)
 
     return {
         "project": f"{project_root}/Pipelines",
         "name": pipeline_cfg.get("run", {}).get("name", "tabular_pipeline"),
         "version": "0.1.0",
+        "pipeline_mode": mode,
         "queue": clearml_cfg.get("queue", "default"),
         "steps": steps,
     }
@@ -146,6 +208,7 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         f"project={plan['project']} "
         f"name={plan['name']} "
         f"version={plan['version']} "
+        f"pipeline_mode={plan['pipeline_mode']} "
         f"queue={plan['queue']}"
     )
     for step in plan["steps"]:

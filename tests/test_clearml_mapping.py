@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from ml_platform_core.config import load_run_config
 
 
@@ -139,7 +141,7 @@ def test_clearml_ui_params_are_task_specific():
     assert "Model/params" not in eval_cfg
     assert "Output/prediction_name" in infer
     assert "Output/chunk_size" in infer
-    assert set(pipeline) == {"Run/task", "Run/name", "Run/seed"}
+    assert set(pipeline) == {"Run/task", "Run/name", "Run/seed", "Run/pipeline_mode"}
 
 
 def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
@@ -147,7 +149,17 @@ def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
     params = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
     assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
-    assert {"Input/clearml_dataset_id", "Input/train_dataset_file", "Input/eval_dataset_file", "Input/infer_dataset_file"}.issubset(params)
+    assert {
+        "Run/pipeline_mode",
+        "Input/clearml_dataset_id",
+        "Input/train_dataset_file",
+        "Input/eval_dataset_file",
+        "Input/infer_dataset_file",
+        "Input/target_column",
+        "Input/id_columns",
+        "Output/prediction_name",
+        "Output/chunk_size",
+    }.issubset(params)
     assert {
         "Model/name",
         "Model/params",
@@ -218,6 +230,7 @@ def test_clearml_pipeline_plan_is_fixed_three_step_dag():
     plan = pipelines.build_pipeline_plan("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
     assert [step["name"] for step in plan["steps"]] == ["train", "eval", "infer"]
+    assert plan["pipeline_mode"] == "single"
     assert plan["steps"][0]["parents"] == []
     assert plan["steps"][1]["parents"] == ["train"]
     assert plan["steps"][2]["parents"] == ["eval"]
@@ -235,34 +248,82 @@ def test_clearml_pipeline_plan_applies_dataset_and_model_overrides():
             "Input/train_dataset_file": "train.csv",
             "Input/eval_dataset_file": "eval.csv",
             "Input/infer_dataset_file": "infer.csv",
+            "Input/target_column": "target",
+            "Input/id_columns": ["id"],
+            "Run/pipeline_mode": "ensemble",
             "Model/name": "linear",
             "Model/params": "{}",
             "Model/candidates": '["linear","ridge"]',
             "Model/selection_metric": "rmse",
-            "Model/search_enabled": True,
+            "Model/search_enabled": False,
             "Model/search_method": "grid",
-            "Model/search_space": '{"ridge":{"alpha":[0.1,1.0]}}',
+            "Model/search_space": "{}",
             "Model/max_trials": 3,
-            "Model/ensemble_enabled": True,
+            "Model/ensemble_enabled": False,
             "Model/ensemble_method": "mean_topk",
             "Model/ensemble_top_k": 2,
             "Model/feature_preset": "basic",
+            "Output/prediction_name": "scored.csv",
+            "Output/chunk_size": 100,
         },
     )
 
     train, eval_step, infer = plan["steps"]
+    assert plan["pipeline_mode"] == "ensemble"
     assert train["parameter_override"]["Input/clearml_dataset_id"] == "dataset-id"
     assert train["parameter_override"]["Input/dataset_file"] == "train.csv"
+    assert train["parameter_override"]["Input/target_column"] == "target"
+    assert train["parameter_override"]["Input/id_columns"] == ["id"]
     assert train["parameter_override"]["Model/name"] == "linear"
     assert train["parameter_override"]["Model/params"] == "{}"
     assert train["parameter_override"]["Model/candidates"] == '["linear", "ridge"]'
     assert train["parameter_override"]["Model/selection_metric"] == "rmse"
-    assert train["parameter_override"]["Model/search_enabled"] is True
+    assert train["parameter_override"]["Model/search_enabled"] is False
     assert train["parameter_override"]["Model/search_method"] == "grid"
-    assert train["parameter_override"]["Model/search_space"] == '{"ridge":{"alpha":[0.1,1.0]}}'
+    assert train["parameter_override"]["Model/search_space"] == "{}"
     assert train["parameter_override"]["Model/max_trials"] == 3
     assert train["parameter_override"]["Model/ensemble_enabled"] is True
     assert train["parameter_override"]["Model/ensemble_method"] == "mean_topk"
     assert train["parameter_override"]["Model/ensemble_top_k"] == 2
     assert eval_step["parameter_override"]["Input/dataset_file"] == "eval.csv"
+    assert eval_step["parameter_override"]["Input/target_column"] == "target"
+    assert eval_step["parameter_override"]["Input/id_columns"] == ["id"]
     assert infer["parameter_override"]["Input/dataset_file"] == "infer.csv"
+    assert infer["parameter_override"]["Input/id_columns"] == ["id"]
+    assert infer["parameter_override"]["Output/prediction_name"] == "scored.csv"
+    assert infer["parameter_override"]["Output/chunk_size"] == 100
+
+
+def test_clearml_pipeline_optimization_mode_enables_search():
+    pipelines = load_clearml_pipelines_module()
+    plan = pipelines.build_pipeline_plan(
+        "config/tasks/tabular_pipeline.yaml",
+        "config/profiles/clearml-dev.yaml",
+        ui_params={
+            "Run/pipeline_mode": "optimization",
+            "Model/search_enabled": False,
+            "Model/search_space": '{"alpha":[0.1,1.0]}',
+        },
+    )
+
+    train = plan["steps"][0]
+    assert plan["pipeline_mode"] == "optimize"
+    assert train["parameter_override"]["Model/search_enabled"] is True
+    assert train["parameter_override"]["Model/search_space"] == '{"alpha": [0.1, 1.0]}'
+
+
+def test_clearml_pipeline_rejects_search_and_ensemble_combo():
+    pipelines = load_clearml_pipelines_module()
+
+    with pytest.raises(ValueError, match="cannot combine|cannot be combined"):
+        pipelines.build_pipeline_plan(
+            "config/tasks/tabular_pipeline.yaml",
+            "config/profiles/clearml-dev.yaml",
+            ui_params={
+                "Run/pipeline_mode": "auto",
+                "Model/candidates": '["linear","ridge"]',
+                "Model/search_enabled": True,
+                "Model/search_space": '{"alpha":[1.0]}',
+                "Model/ensemble_enabled": True,
+            },
+        )
