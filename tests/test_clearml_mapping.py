@@ -176,6 +176,25 @@ def test_clearml_pipeline_template_has_minimal_pipeline_overrides():
     }.issubset(params)
 
 
+def test_clearml_pipeline_new_run_args_are_mapped_to_ui_params():
+    pipelines = load_clearml_pipelines_module()
+    defaults = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    task_params = {
+        "Run/pipeline_mode": "auto",
+        "Args/Run/pipeline_mode": "compare",
+        "Args/Model/candidates": '["linear","ridge"]',
+        "Args/Input/clearml_dataset_id": "dataset-id",
+    }
+
+    args_params = pipelines.pipeline_arg_params(defaults)
+    connected = pipelines.pipeline_params_from_task(defaults, task_params)
+
+    assert args_params["Args/Run/pipeline_mode"] == "auto"
+    assert connected["Run/pipeline_mode"] == "compare"
+    assert connected["Model/candidates"] == '["linear","ridge"]'
+    assert connected["Input/clearml_dataset_id"] == "dataset-id"
+
+
 def test_clearml_connect_params_uses_named_groups():
     adapter = load_clearml_adapter_module()
 

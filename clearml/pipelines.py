@@ -18,6 +18,7 @@ from ml_platform_tabular.pipeline_modes import apply_pipeline_mode_defaults
 
 
 MODEL_ARTIFACT_REF = "${train.artifacts.model.url}"
+PIPELINE_ARG_PREFIX = "Args/"
 TASK_TO_TEMPLATE = {
     "tabular_train": "tabular_train_template",
     "tabular_eval": "tabular_eval_template",
@@ -111,6 +112,28 @@ def _effective_pipeline_params(ui_params: dict[str, Any]) -> tuple[str, dict[str
         }
     )
     return mode, effective_params
+
+
+def pipeline_arg_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Mirror UI params under Args/* so ClearML Pipeline New Run exposes them."""
+    return {f"{PIPELINE_ARG_PREFIX}{key}": value for key, value in params.items()}
+
+
+def pipeline_params_from_task(defaults: dict[str, Any], task_params: dict[str, Any]) -> dict[str, Any]:
+    """Read Pipeline New Run values, preferring Args/* over template defaults."""
+    connected = dict(defaults)
+    for key in defaults:
+        if key in task_params:
+            connected[key] = task_params[key]
+        args_key = f"{PIPELINE_ARG_PREFIX}{key}"
+        if args_key in task_params:
+            connected[key] = task_params[args_key]
+    return connected
+
+
+def _add_pipeline_args(pipe: Any, params: dict[str, Any]) -> None:
+    for key, value in params.items():
+        pipe.add_parameter(name=key, default=value)
 
 
 def _apply_pipeline_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -> None:
@@ -301,6 +324,7 @@ def sync_pipeline_draft(
     Task = clearml_sdk.Task
     existing = _find_pipeline_draft(Task, template_name)
     params = pipeline_ui_params(task_path, profile_path)
+    draft_params = {**params, **pipeline_arg_params(params)}
     if existing is not None:
         _set_pipeline_script_with_compat(
             existing,
@@ -310,7 +334,7 @@ def sync_pipeline_draft(
             task_config=task_path,
             profile_path=profile_path,
         )
-        existing.update_parameters(params)
+        existing.update_parameters(draft_params)
         if packages:
             existing.set_packages(packages)
         return existing
@@ -329,6 +353,7 @@ def sync_pipeline_draft(
         packages=packages,
         working_dir=working_dir or ".",
     )
+    _add_pipeline_args(pipe, params)
     _set_pipeline_script_with_compat(
         pipe.task,
         repository=repository or ".",
@@ -337,10 +362,10 @@ def sync_pipeline_draft(
         task_config=task_path,
         profile_path=profile_path,
     )
-    pipe.task.update_parameters(params)
+    pipe.task.update_parameters(draft_params)
     _add_plan_steps(pipe, plan)
     pipe.create_draft()
-    pipe.task.update_parameters(params)
+    pipe.task.update_parameters(draft_params)
     return pipe.task
 
 
@@ -366,7 +391,7 @@ def register_tabular_pipeline(
     )
     task = Task.current_task()
     task_params = task.get_parameters() if task else {}
-    connected = {**defaults, **{key: value for key, value in task_params.items() if key in defaults}}
+    connected = pipeline_params_from_task(defaults, task_params)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected)
 
     _add_plan_steps(pipe, plan)
