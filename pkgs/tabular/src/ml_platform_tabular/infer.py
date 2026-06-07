@@ -22,17 +22,123 @@ PREDICTION_SCHEMA_VERSION = "v2.2"
 RESERVED_PREDICTION_COLUMNS = {"prediction", "model_name", "artifact_kind", "model_artifact_id", "prediction_run_id"}
 
 
+def _safe_name(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in value)
+    return safe or "model"
+
+
+def _model_selector(cfg: dict[str, Any]) -> str:
+    return str(cfg.get("model", {}).get("model_selector") or "best").strip()
+
+
+def _model_source_type(cfg: dict[str, Any]) -> str:
+    return str(cfg.get("model", {}).get("source_type") or "local_path").strip()
+
+
+def _is_url(value: str) -> bool:
+    return "://" in value
+
+
+def _json_path(cfg: dict[str, Any], key: str) -> Path | None:
+    value = cfg.get("model", {}).get(key)
+    return Path(value) if value else None
+
+
+def _read_json_if_exists(path: Path | None) -> dict[str, Any]:
+    if path is not None and path.exists():
+        return read_json(path)
+    return {}
+
+
+def _info_says_ensemble(path: Path) -> bool:
+    info_path = path.parent / "model_info.json"
+    info = _read_json_if_exists(info_path)
+    return str(info.get("artifact_kind") or "").lower() == "ensemble"
+
+
+def _selector_candidates(directory: Path, selector: str) -> list[Path]:
+    selector = selector.strip()
+    if selector == "best":
+        return [
+            directory / "evaluate_models" / "best_model.joblib",
+            directory / "best_model.joblib",
+            directory / "model.joblib",
+        ]
+    if selector == "ensemble":
+        return [
+            directory / "build_ensemble" / "model.joblib",
+            directory / "model.joblib",
+        ]
+    return [
+        directory / f"train_{_safe_name(selector)}" / "model.joblib",
+        directory / f"train_{selector}" / "model.joblib",
+        directory / "model.joblib",
+    ]
+
+
+def _resolve_directory_model_path(directory: Path, selector: str, *, strict: bool = True) -> Path | None:
+    for candidate in _selector_candidates(directory, selector):
+        if not candidate.exists():
+            continue
+        if selector == "ensemble" and candidate.name == "model.joblib" and candidate.parent == directory:
+            if not _info_says_ensemble(candidate):
+                continue
+        if selector not in {"best", "ensemble"} and candidate.parent == directory:
+            info = _read_json_if_exists(candidate.parent / "model_info.json")
+            name = str(info.get("model_name") or info.get("best_model_name") or "")
+            if name and name != selector:
+                continue
+        return candidate
+    if strict:
+        raise ValueError(f"Could not resolve model_selector={selector!r} under directory: {directory}")
+    return None
+
+
+def _path_from_value(value: Any, selector: str, *, strict: bool = True) -> Path | None:
+    if not value:
+        return None
+    text = str(value)
+    if _is_url(text):
+        raise ValueError("Remote model URLs must be resolved by clearml/adapter.py before package inference.")
+    path = Path(text)
+    if path.is_dir():
+        return _resolve_directory_model_path(path, selector, strict=strict)
+    return path
+
+
+def _latest_training_pipeline_model(output_dir: Path, selector: str) -> Path | None:
+    latest_training = output_dir / "latest_training_pipeline"
+    if not latest_training.exists():
+        return None
+    return _resolve_directory_model_path(latest_training, selector, strict=selector != "best")
+
+
 def _model_artifact_path(cfg: dict[str, Any], output_dir: Path) -> Path:
-    value = cfg.get("model", {}).get("artifact_path")
-    return Path(value) if value else default_model_path(output_dir)
+    model_cfg = cfg.get("model", {})
+    selector = _model_selector(cfg)
+    for key in ("artifact_path", "local_model_path", "model_artifact_url"):
+        path = _path_from_value(model_cfg.get(key), selector)
+        if path is not None:
+            return path
+
+    latest_training = _latest_training_pipeline_model(output_dir, selector)
+    if latest_training is not None:
+        return latest_training
+    return default_model_path(output_dir)
 
 
 def _model_info_path(cfg: dict[str, Any], model_path: Path) -> Path | None:
     value = cfg.get("model", {}).get("info_path")
     if value:
         return Path(value)
-    candidate = model_path.parent / "model_info.json"
-    return candidate if candidate.exists() else None
+    for candidate in (
+        model_path.parent / "model_info.json",
+        model_path.parent / "best_model.json",
+        model_path.parent / "ensemble_info.json",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _load_model_info(cfg: dict[str, Any], model_path: Path) -> dict[str, Any]:
@@ -40,7 +146,57 @@ def _load_model_info(cfg: dict[str, Any], model_path: Path) -> dict[str, Any]:
     return read_json(info_path) if info_path else {}
 
 
-def _features_for_inference(df, cfg: dict[str, Any], model_path: Path) -> list[str]:
+def _feature_spec_path(cfg: dict[str, Any], model_path: Path) -> Path | None:
+    explicit = _json_path(cfg, "feature_spec_path")
+    if explicit:
+        return explicit
+    for candidate in (
+        model_path.parent / "feature_spec.json",
+        model_path.parent.parent / "preprocess_features" / "feature_spec.json",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _preprocess_bundle_path(cfg: dict[str, Any], model_path: Path) -> Path | None:
+    explicit = _json_path(cfg, "preprocess_bundle_path")
+    if explicit:
+        return explicit
+    for candidate in (
+        model_path.parent / "preprocess_bundle.joblib",
+        model_path.parent.parent / "preprocess_features" / "preprocess_bundle.joblib",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _load_feature_spec(cfg: dict[str, Any], model_path: Path) -> dict[str, Any]:
+    return _read_json_if_exists(_feature_spec_path(cfg, model_path))
+
+
+def _estimator_feature_columns(estimator: Any) -> list[str] | None:
+    columns = getattr(estimator, "feature_columns", None)
+    if isinstance(columns, list):
+        return [str(col) for col in columns]
+    estimators = getattr(estimator, "estimators", None)
+    if estimators:
+        columns = getattr(estimators[0], "feature_columns", None)
+        if isinstance(columns, list):
+            return [str(col) for col in columns]
+    return None
+
+
+def _features_for_inference(
+    df,
+    cfg: dict[str, Any],
+    *,
+    model_path: Path,
+    estimator: Any,
+    model_info: dict[str, Any],
+    feature_spec: dict[str, Any],
+) -> list[str]:
     data_cfg = cfg.get("data", {})
     explicit = data_cfg.get("feature_columns")
     if explicit:
@@ -51,15 +207,18 @@ def _features_for_inference(df, cfg: dict[str, Any], model_path: Path) -> list[s
             id_columns=data_cfg.get("id_columns"),
         )
 
-    info = _load_model_info(cfg, model_path)
-    feature_columns = info.get("feature_columns")
-    if feature_columns:
-        return select_features(
-            df,
-            target_column=data_cfg.get("target_column"),
-            feature_columns=feature_columns,
-            id_columns=data_cfg.get("id_columns"),
-        )
+    for feature_columns in (
+        model_info.get("feature_columns"),
+        _estimator_feature_columns(estimator),
+        feature_spec.get("feature_columns"),
+    ):
+        if feature_columns:
+            return select_features(
+                df,
+                target_column=data_cfg.get("target_column"),
+                feature_columns=feature_columns,
+                id_columns=data_cfg.get("id_columns"),
+            )
 
     return select_features(
         df,
@@ -144,9 +303,17 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
     model_path = _model_artifact_path(cfg, output_dir)
     estimator = load_joblib(model_path)
     model_info = _load_model_info(cfg, model_path)
+    feature_spec = _load_feature_spec(cfg, model_path)
 
     df = load_dataset(cfg)
-    features = _features_for_inference(df, cfg, model_path)
+    features = _features_for_inference(
+        df,
+        cfg,
+        model_path=model_path,
+        estimator=estimator,
+        model_info=model_info,
+        feature_spec=feature_spec,
+    )
 
     prediction_name = cfg.get("output", {}).get("prediction_name", "predictions.csv")
     model_artifact_id = _model_artifact_id(model_info, model_path)
@@ -180,17 +347,34 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
     info_path = _model_info_path(cfg, model_path)
     if info_path:
         artifacts["model_info"] = info_path
+    feature_spec_path = _feature_spec_path(cfg, model_path)
+    if feature_spec_path and feature_spec_path.exists():
+        artifacts["feature_spec"] = feature_spec_path
+    preprocess_bundle_path = _preprocess_bundle_path(cfg, model_path)
+    if preprocess_bundle_path and preprocess_bundle_path.exists():
+        artifacts["preprocess_bundle"] = preprocess_bundle_path
     manifest_inputs = {
         **artifacts,
         "model_source": model_path,
     }
     tables = {"predictions": predictions_path}
     data_cfg = cfg.get("data", {})
+    model_cfg = cfg.get("model", {})
     manifest_extra = {
         "prediction_rows": int(len(df)),
         "prediction_file": prediction_name,
         "prediction_schema_version": PREDICTION_SCHEMA_VERSION,
+        "source_type": _model_source_type(cfg),
+        "source_task_id": model_cfg.get("source_task_id"),
+        "model_selector": _model_selector(cfg),
+        "model_artifact_url": model_cfg.get("model_artifact_url"),
+        "clearml_model_id": model_cfg.get("clearml_model_id"),
+        "local_model_path": model_cfg.get("local_model_path"),
         "model_source": str(model_path),
+        "resolved_model_path": str(model_path),
+        "model_info_path": str(info_path) if info_path else None,
+        "feature_spec_path": str(feature_spec_path) if feature_spec_path else None,
+        "preprocess_bundle_path": str(preprocess_bundle_path) if preprocess_bundle_path else None,
         "model_name": str(model_info.get("model_name") or model_info.get("best_model_name") or "unknown"),
         "artifact_kind": str(model_info.get("artifact_kind") or "model"),
         "model_artifact_id": model_artifact_id,

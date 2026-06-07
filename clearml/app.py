@@ -38,7 +38,9 @@ def main() -> None:
     try:
         connected = adapter.connect_params(default_ui_params(cfg))
         resolved_local_path = None
-        if "data" in cfg:
+        stage = connected.get("Run/stage") or cfg.get("run", {}).get("stage")
+        needs_dataset = "data" in cfg and not (cfg.get("task") == "tabular_stage" and stage != "preprocess_features")
+        if needs_dataset:
             dataset_file = connected.get("Input/dataset_file") or cfg.get("data", {}).get("dataset_file")
             resolved_local_path = adapter.resolve_dataset(
                 connected.get("Input/clearml_dataset_id"),
@@ -46,9 +48,13 @@ def main() -> None:
                 dataset_file=dataset_file,
             )
         cfg = apply_ui_params(cfg, connected, resolved_local_path=resolved_local_path)
-        artifact_path = cfg.get("model", {}).get("artifact_path")
-        if artifact_path:
-            cfg["model"]["artifact_path"] = adapter.resolve_artifact_path(artifact_path)
+        if cfg.get("task") == "tabular_infer":
+            cfg = adapter.resolve_infer_model_source(cfg)
+        else:
+            artifact_path = cfg.get("model", {}).get("artifact_path")
+            if artifact_path:
+                cfg["model"]["artifact_path"] = adapter.resolve_artifact_path(artifact_path)
+        cfg = adapter.resolve_stage_inputs(cfg)
         result = run_task(cfg)
         report_result(adapter, result)
     finally:

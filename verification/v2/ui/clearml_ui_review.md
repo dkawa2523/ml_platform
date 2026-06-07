@@ -1,5 +1,9 @@
 # V2 ClearML UI Usability Review
 
+> Historical note: this file reviews the old four-template compatibility UI and
+> fixed `train -> eval -> infer` pipeline. It is not current product readiness
+> evidence for the official stage-based training or optimization pipelines.
+
 Date: 2026-05-28 JST
 
 ## Review Basis
@@ -43,7 +47,8 @@ or dataset-specific template was added.
 - Comparison and ensemble reuse the same train template and artifacts, avoiding template sprawl.
 - Optimization is visible in the same train template through `Model/search_*` without child tasks or a separate optimize template.
 - Generic reporting uploads metrics, artifacts, and tables, so `leaderboard`, `optimization_trials`, `optimization_summary`, `best_params`, `ensemble_predictions`, `evaluation_predictions`, and `predictions` are visible as ClearML artifacts/tables.
-- Pipeline graph remains fixed and understandable: `train -> eval -> infer`.
+- Historical compatibility pipeline graph remains fixed and understandable:
+  `train -> eval -> infer`.
 - Pipeline handoff is clear in dry-run: eval and infer receive `Model/artifact_path=${train.artifacts.model.url}`.
 
 ## Confusing Points
@@ -114,9 +119,8 @@ Potential future polish:
 
 ## V2 UI Readiness
 
-V2 UI status: partially ready.
+V2 UI status: partially ready for that historical compatibility surface.
 
 - Ready by design/dry-run: template count, parameter grouping, artifact upload path, and fixed pipeline graph.
 - Ready by existing remote evidence: V1.3 comparison, weighted ensemble, eval, infer, and weighted pipeline task execution.
 - Pending before full V2 UI release: real ClearML dev runs for V2.1 optimization artifacts and V2.2 `Output/chunk_size` inference artifact review.
-

@@ -4,68 +4,169 @@ This backlog is planning material, not current product scope. The current
 supported, experimental, future, and discarded scope remains defined in
 `docs/SPEC.md`.
 
-Do not implement multiple backlog items in one pass. Each item must preserve the
-current V2 boundary: three ClearML task templates plus one Pipeline-tab draft,
-`config/tasks` plus `config/profiles`, ClearML SDK under `clearml/`, and
-ClearML-free `pkgs`.
+Do not implement multiple backlog items in one pass. Phase A-F replace the
+compatibility full-run product role with the stage-based training, inference,
+and optimization scope defined in `docs/SPEC.md`, while keeping historical
+verification evidence indexed instead of deleted.
 
 ## Priority
 
 | priority | bucket | title | reason |
 | --- | --- | --- | --- |
-| P0 | V2 patch | ClearML remote verification for pipeline modes | Confirms the new Pipeline-tab product flow before promoting it as fully verified. |
-| P1 | V2 patch | Verification scope index | Prevents accidental promotion of experimental features. |
-| P2 | V2.1 | Remote verification for experimental sklearn models | Smallest path to promote selected models to supported. |
-| P3 | V2.1 | Evaluation table improvement | Useful product artifact without changing templates. |
-| P4 | V2.1 | Inference id column and manifest polish | Improves operational use of predictions. |
-| P5 | V3 | Heavy model optional extras | Valuable, but dependency and runtime risk are higher. |
-| P6 | V3 | Advanced optimization and child tasks | Requires a larger ClearML design decision. |
-| P7 | V3 | Analysis modes and advanced plots | Useful later, but outside the scalar regression core. |
+| P1 | V2 patch | Remote verification for ClearML stage-based training and optimization pipelines | Promotes or blocks the new Pipeline-tab drafts with evidence. |
+| P2 | V2 patch | Remote verification for inference model source resolution | Confirms `task_id` best/ensemble inference from ClearML UI. |
+| P3 | V2.1 | Remote verification for experimental sklearn models | Smallest path to promote selected models to supported. |
+| P4 | V2.1 | Evaluation table improvement | Useful product artifact without changing templates. |
+| P5 | V2.1 | Inference id column and manifest polish | Improves operational use of predictions. |
+| P6 | V2.1 | ClearML UI operator examples | Helps operators use existing task templates without adding parameters. |
+| P8 | V3 | Heavy model optional extras | Valuable, but dependency and runtime risk are higher. |
+| P9 | V3 | Stacking ensemble | Requires leakage policy and verification before implementation. |
+| P10 | V3 | Advanced optimization and child tasks | Requires a larger ClearML design decision. |
+| P11 | V3 | Advanced plots and reporting | Useful only after table artifacts are stable. |
+| P12 | V3 | Large dataset inference | Requires explicit memory and IO design. |
+| P13 | V3 | Analysis modes | Useful later, but outside the scalar regression core. |
 
-If implementing one item next, start with P0.
+Phase B-F implementation and docs cleanup are present. If implementing one item
+next, start with P1 remote verification.
 
 ## V2 Patch
 
-### P0: ClearML Remote Verification For Pipeline Modes
+### Completed: Local Training Pipeline Graph
 
-- title: ClearML remote verification for pipeline modes.
-- purpose: Confirm the Pipeline-tab product flow after adding explicit
-  `Run/pipeline_mode`.
-- scope: Run the `tabular_pipeline_template` Pipeline-tab draft for
-  `compare`, `ensemble`, and `optimize` using a small ClearML Dataset.
-  Record the train/eval/infer task URLs and artifact evidence.
-- affected files: existing `verification/*` summaries, `docs/SPEC.md`, and
-  `docs/CODEX_HANDOFF.md` only if support status changes.
-- ClearML impact: Uses the existing Pipeline-tab draft and fixed train -> eval
-  -> infer graph. No new template or task YAML.
-- complexity risk: Low to medium because remote Agent capacity and artifact
-  storage can fail independently of code.
-- acceptance criteria: Pipeline graph has exactly three steps; train uploads the
-  standard `model` artifact; eval/infer receive it; comparison has
-  `leaderboard`; ensemble has `ensemble_predictions`; optimization has
-  `optimization_trials`, `optimization_summary`, and `best_params`.
-- do-not-do: Do not add per-model steps, a runtime leaderboard step,
-  train_ensemble_full, child tasks, or optimization-specific templates.
+- title: Implement the local stage-based training pipeline.
+- purpose: Replace the misleading local compatibility full-run with the intended
+  training flow: preprocess, multiple model training, optional ensemble, and
+  evaluation.
+- scope: Add local orchestration for
+  `preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models`.
+  Reuse existing train/evaluate/ensemble/search functions where possible.
+- affected files: `pkgs/tabular`, `config/tasks`, focused tests, and existing
+  docs.
+- ClearML impact: None in this phase. ClearML was added in Phase C.
+- complexity risk: Medium because artifact handoff must be made explicit without
+  adding a framework.
+- acceptance criteria: Local graph outputs `preprocess_bundle`,
+  `feature_spec.json`, per-model model artifacts, `leaderboard.csv`, optional
+  `ensemble_info.json`, optional ensemble artifact, `validation_predictions.csv`
+  per model, `evaluation_report.json`, `metrics.json`, and `manifest.json`.
+- do-not-do: Do not create ClearML templates, copy legacy repo code, add a
+  dynamic DAG framework, or mix inference into the training pipeline.
 
-### P1: Verification Scope Index
+### Completed: ClearML Stage-Based Training Pipeline Graph
+
+- title: Implement the ClearML training pipeline graph with a generic internal
+  stage template.
+- purpose: Make the training pipeline readable from the ClearML Pipeline tab.
+- scope: Add user-facing training pipeline templates and one internal
+  `tabular_stage_template` so PipelineController can show preprocess,
+  per-model train, optional ensemble, and evaluate stages.
+- affected files: `clearml`, `config/tasks`, `docs/SPEC.md`, focused tests, and
+  verification.
+- ClearML impact: Replaces the deprecated `tabular_pipeline_template` product
+  role with stage-based training pipeline templates. Existing task templates
+  remain compatible.
+- complexity risk: Medium to high because task artifact references and Pipeline
+  UI parameters must remain understandable.
+- acceptance criteria: Pipeline graph shows `preprocess_features`,
+  `train_<model>*`, optional `build_ensemble`, and `evaluate_models`; no
+  model-specific templates are created.
+- do-not-do: Do not create one template per model, one template per ensemble, or
+  per-trial ClearML child tasks in this phase.
+
+### Completed: Stage-Based Optimization Pipeline
+
+- title: Implement local and dry-run ClearML optimization graph.
+- purpose: Treat optimization as
+  `preprocess_features -> search_trials -> retrain_best -> evaluate_best`
+  instead of hiding it as a train-internal-only option.
+- scope: Add shared grid/random search helpers, local optimization stages,
+  ClearML dry-run graph generation, and verification.
+- affected files: `pkgs/tabular`, `clearml/pipelines.py`, focused tests,
+  docs, and `verification/optimization/optimization_pipeline.md`.
+- ClearML impact: Uses the existing `tabular_stage_template`; no
+  optimize-specific template or per-trial child task was added.
+- complexity risk: Medium because optimization and ensemble remain mutually
+  exclusive and remote execution is still pending.
+- acceptance criteria: Local optimization run and ClearML dry-run produce
+  `search_trials`, `retrain_best`, and `evaluate_best` artifacts.
+- do-not-do: Do not add Optuna, Ray Tune, Bayesian search, or trial child tasks
+  before remote verification.
+
+### P1: Remote Verification For ClearML Stage-Based Training Pipelines
+
+- title: Verify `tabular_train_pipeline_template` and
+  `tabular_train_full_ensemble_pipeline_template` on the dev ClearML server.
+- purpose: Decide whether the new Pipeline-tab drafts are ready for supported
+  scope or remain experimental.
+- scope: Sync templates, run the two pipeline drafts from the Pipeline tab, and
+  record graph, parameters, artifacts, and failure logs.
+- affected files: `verification/training_pipeline/clearml_training_pipeline.md`
+  and optionally small docs corrections.
+- ClearML impact: No template or code changes unless verification exposes a
+  concrete bug.
+- complexity risk: Medium because worker capacity and artifact URL reachability
+  are environment-dependent.
+- acceptance criteria: Pipeline graph and artifacts match `docs/SPEC.md`, or
+  blockers are documented without calling the feature supported.
+- do-not-do: Do not change prod, clean up old tasks, add templates, or store
+  secrets/screenshots/raw logs in the repo.
+
+### Completed: Inference Model Reference Implementation
+
+- title: Implement explicit inference model source resolution.
+- purpose: Keep inference separate from training pipeline execution while making
+  best-model and ensemble inference usable from ClearML UI.
+- scope: Add `source_type`, `source_task_id`, `model_selector`,
+  `model_artifact_url`, `clearml_model_id`, and `local_model_path` handling for
+  `tabular_infer_template`.
+- affected files: `clearml/adapter.py`, `clearml/app.py`,
+  `config/tasks/tabular_infer.yaml`, `pkgs/tabular` inference validation, docs,
+  and focused tests.
+- ClearML impact: Resolves task artifacts, artifact URLs, or ClearML model IDs
+  before passing a local `model.artifact_path` into ClearML-free inference code.
+- complexity risk: Medium because selector resolution depends on training
+  pipeline artifact contracts.
+- acceptance criteria: `source_type=task_id` with `model_selector=best` and
+  `model_selector=ensemble` works; `artifact_url` and local path flows remain
+  compatible; no inference pipeline is introduced.
+- do-not-do: Do not add online serving, a streaming reader, or ClearML imports
+  under `pkgs`.
+
+### P2: Remote Verification For Inference Model Source Resolution
+
+- title: Verify `tabular_infer_template` source resolution on the dev ClearML
+  server.
+- purpose: Confirm that ClearML UI users can run inference from a training
+  pipeline controller task id with `model_selector=best` and `ensemble`.
+- scope: Run `tabular_infer_template` from the UI with `source_type=task_id`,
+  record artifact resolution, predictions, manifest, and any blockers.
+- affected files: `verification/inference/infer_task_reference.md` and
+  optionally small docs corrections.
+- ClearML impact: No code changes unless task-id resolution fails in dev.
+- complexity risk: Medium because prior training pipeline artifacts and
+  Dataset artifact URL reachability are environment-dependent.
+- acceptance criteria: Best and ensemble selectors either pass remotely or
+  blockers are documented without calling the feature supported.
+- do-not-do: Do not add an inference pipeline, online serving, or extra source
+  types during verification.
+
+### Completed: Verification Scope Index
 
 - title: Add a compact verification scope index.
 - purpose: Make it clear which evidence supports supported features and which
   evidence only supports experimental features.
-- scope: Add a short table to the existing verification summary or docs that
-  maps feature/model groups to local, ClearML task, and ClearML pipeline
-  evidence.
-- affected files: `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`, existing
-  `verification/*/summary.md` files if needed.
+- scope: Add `verification/README.md` and historical banners to high-risk old
+  release summaries.
+- affected files: `verification/README.md`, selected historical verification
+  summaries, `docs/SPEC.md`, and `docs/CODEX_HANDOFF.md`.
 - ClearML impact: None.
 - complexity risk: Low.
-- acceptance criteria: Official supported models have explicit local/task/pipeline
-  evidence; experimental sklearn models are not described as fully supported
-  unless evidence exists; no new verification directory is required.
+- acceptance criteria: Current product evidence, experimental evidence, and
+  historical compatibility evidence are visibly separated.
 - do-not-do: Do not generate a large matrix for every historical run, and do not
   require real ClearML server tests in pytest.
 
-### P2: ClearML UI Parameter Polish
+### Additional: ClearML UI Parameter Polish
 
 - title: Reduce ClearML UI parameter ambiguity without changing the product
   surface.
@@ -78,13 +179,13 @@ If implementing one item next, start with P0.
 - ClearML impact: Potentially changes template defaults only. Existing
   `Model/*`, `Input/*`, `Run/*`, and `Output/*` keys must remain compatible.
 - complexity risk: Low to medium.
-- acceptance criteria: Template sync dry-run still reports exactly four
-  templates; existing parameter overrides still work; no model-specific branch
-  is added.
+- acceptance criteria: Template sync dry-run reports the current default targets
+  from `docs/SPEC.md`; existing parameter overrides still work; no
+  model-specific branch is added.
 - do-not-do: Do not rename public parameters without a compatibility path, and
   do not add UI groups beyond `Input`, `Run`, `Model`, and `Output`.
 
-### P3: Artifact Naming Consistency Review
+### Additional: Artifact Naming Consistency Review
 
 - title: Review artifact naming before adding new artifacts.
 - purpose: Keep ClearML artifact tabs readable as evaluation and inference
@@ -104,25 +205,27 @@ If implementing one item next, start with P0.
 
 ## V2.1
 
-### P4: Remote Verification For Experimental Sklearn Models
+### P3: Remote Verification For Experimental Sklearn Models
 
 - title: Verify selected experimental sklearn models remotely.
 - purpose: Promote only models with local and ClearML remote evidence to
   supported.
 - scope: Run small ClearML task verification for `elasticnet`, `extra_trees`,
-  `knn`, `svr`, and `mlp`; keep `lasso` evidence as a reference. Add pipeline
-  verification only for models intended to become supported.
+  `knn`, `svr`, and `mlp`; keep `lasso` evidence as a reference. Add
+  compatibility full-run or stage-based training pipeline verification only for
+  models intended to become supported.
 - affected files: `verification/*`, `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`.
-- ClearML impact: Uses existing train/eval/infer task templates and Pipeline-tab
-  draft. No new template or task YAML.
+- ClearML impact: Uses existing train/eval/infer task templates and the current
+  approved full-run or training pipeline entrypoint for the active phase.
 - complexity risk: Medium because runtime behavior differs by model.
-- acceptance criteria: Each promoted model has local train/eval/infer/pipeline
-  evidence and ClearML task/pipeline evidence; runtime caveats such as `mlp`
-  convergence warnings are documented; unverified models remain experimental.
+- acceptance criteria: Each promoted model has local train/eval/infer evidence,
+  appropriate full-run or stage-pipeline evidence, and ClearML task evidence;
+  runtime caveats such as `mlp` convergence warnings are documented; unverified
+  models remain experimental.
 - do-not-do: Do not promote all implemented models at once, and do not add
   optional heavy dependencies.
 
-### P5: Evaluation Table Improvement
+### P4: Evaluation Table Improvement
 
 - title: Add minimal evaluation error columns.
 - purpose: Make `evaluation_predictions` more useful for data scientists without
@@ -140,7 +243,7 @@ If implementing one item next, start with P0.
 - do-not-do: Do not add plot generation, diagnostics packages, or separate eval
   templates in this item.
 
-### P6: Inference Id Column And Manifest Polish
+### P5: Inference Id Column And Manifest Polish
 
 - title: Make `id_columns` behavior explicit in inference outputs.
 - purpose: Help operators join predictions back to source records.
@@ -155,7 +258,7 @@ If implementing one item next, start with P0.
 - do-not-do: Do not add a new output schema version unless columns actually
   change, and do not drop source columns from predictions.
 
-### P7: ClearML UI Operator Examples
+### P6: ClearML UI Operator Examples
 
 - title: Add compact operator examples for common ClearML runs.
 - purpose: Reduce clone-run mistakes without expanding the UI parameter surface.
@@ -275,15 +378,17 @@ If implementing one item next, start with P0.
 
 - title: Discard model-, dataset-, leaderboard-, ensemble-, and optimization-
   specific templates.
-- purpose: Preserve the product's simple ClearML operation model.
-- scope: Keep exactly three task templates plus one Pipeline-tab draft unless a
-  future product review explicitly changes this boundary.
+- purpose: Preserve a small, understandable ClearML operation model.
+- scope: Do not recreate legacy template sprawl. The approved user-facing
+  training pipeline templates plus one internal `tabular_stage_template` are the
+  exception; still avoid model-, dataset-, ensemble-, and optimization-specific
+  templates.
 - affected files: `clearml/templates.py`, `docs/SPEC.md`,
   `docs/CODEX_HANDOFF.md`.
 - ClearML impact: Prevents UI sprawl and clone-run confusion.
 - complexity risk: Low.
-- acceptance criteria: Template sync dry-run reports three task templates and
-  one Pipeline-tab draft.
+- acceptance criteria: Template sync dry-run reports only the current approved
+  task/pipeline templates for the active phase.
 - do-not-do: Do not import legacy template YAML or recreate legacy task trees.
 
 ### D2: Legacy Contracts, Checklists, Diagnostics, And Helpers

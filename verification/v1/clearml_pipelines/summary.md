@@ -1,5 +1,9 @@
 # V1 ClearML Pipeline Verification Summary
 
+> Historical note: this file records the V1 fixed `train -> eval -> infer`
+> compatibility pipeline. It is not current product readiness evidence for the
+> official stage-based training pipeline.
+
 ## Run Metadata
 
 - Date: 2026-05-24
@@ -24,7 +28,10 @@
 
 ## Model Pipeline Evaluation
 
-All four V1 official supported models were executed through the same fixed `train -> eval -> infer` ClearML pipeline template. Each train step produced a `model` artifact, each eval step reported metrics, and each infer step uploaded `predictions`.
+All four V1 official supported models were executed through the same historical
+compatibility fixed `train -> eval -> infer` ClearML pipeline template. Each
+train step produced a `model` artifact, each eval step reported metrics, and
+each infer step uploaded `predictions`.
 
 ## Pipeline UI Operability
 
@@ -47,4 +54,4 @@ All four V1 official supported models were executed through the same fixed `trai
 
 ## Decision
 
-- V1 pipeline ready: `yes`
+- V1 compatibility pipeline ready: `yes` (historical evidence only)

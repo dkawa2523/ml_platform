@@ -1,5 +1,10 @@
 # V1.3 Remote Release Gate
 
+> Historical note: this file records the old task-template and fixed
+> `train -> eval -> infer` compatibility pipeline gate. It is not current
+> product readiness evidence for the stage-based training or optimization
+> pipelines.
+
 Date: 2026-05-25T23:24:46Z
 Implementation commit: c237e12
 Branch: main
@@ -36,7 +41,7 @@ Result: pass. Exactly four templates were synced.
 | Gate | Status | Notes |
 | --- | --- | --- |
 | Weighted ensemble pipeline | pass | controller completed; train, eval, infer step tasks completed |
-| Pipeline graph | pass | ClearML PipelineController created fixed train -> eval -> infer graph |
+| Pipeline graph | pass | ClearML PipelineController created historical compatibility fixed train -> eval -> infer graph |
 | Artifact handoff | pass | eval/infer consumed train step model artifact |
 | Worker capacity | pass | controller and step tasks completed on dev queue |
 
@@ -48,4 +53,5 @@ Result: pass. Exactly four templates were synced.
 - The operator workstation could not download `clearml-fileserver` artifacts directly without DNS/auth translation; this is an environment access difference, not a task runtime failure.
 - No secrets, raw logs, screenshots, or output files are stored in this verification.
 
-Release decision: V1.3 remote gate ready.
+Release decision: V1.3 remote compatibility gate ready for that historical phase
+only.

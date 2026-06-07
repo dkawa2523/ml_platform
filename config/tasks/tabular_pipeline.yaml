@@ -1,18 +1,61 @@
 task: tabular_pipeline
 
 run:
-  name: tabular_pipeline
+  name: tabular_training_pipeline
   seed: 42
-  pipeline_mode: auto
 
-# Local pipeline orchestration reuses the three simple task configs.
-# ClearML PipelineController is intentionally kept in clearml/pipelines.py and
-# is not part of pkgs/tabular.
-train:
-  task_config: config/tasks/tabular_train.yaml
+# Local training pipeline default.
+# Default graph: preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models.
+# Search-enabled graph: preprocess_features -> search_trials -> retrain_best -> evaluate_best.
+# Inference remains a separate tabular_infer_template task.
 
-eval:
-  task_config: config/tasks/tabular_eval.yaml
+data:
+  local_path: data/sample_train.csv
+  clearml_dataset_id: null
+  dataset_file: null
+  target_column: target
+  feature_columns: null
+  id_columns: [id]
 
-infer:
-  task_config: config/tasks/tabular_infer.yaml
+split:
+  method: random
+  valid_size: 0.2
+
+metrics:
+  names: [mae, rmse, r2]
+
+features:
+  preset: basic
+  params: {}
+
+model:
+  name: ridge
+  params:
+    ridge:
+      alpha: 1.0
+    random_forest:
+      n_estimators: 20
+      random_state: 42
+      n_jobs: 1
+    gradient_boosting:
+      n_estimators: 20
+      random_state: 42
+  candidates:
+    - linear
+    - ridge
+    - random_forest
+    - gradient_boosting
+  selection_metric: rmse
+  search:
+    # Phase E: keep disabled by default. Set enabled=true and ensemble.enabled=false
+    # to run the optimization graph:
+    # preprocess_features -> search_trials -> retrain_best -> evaluate_best.
+    enabled: false
+    method: grid
+    max_trials: 20
+    search_space: {}
+    retrain_best: true
+  ensemble:
+    enabled: true
+    method: mean_topk
+    top_k: 3

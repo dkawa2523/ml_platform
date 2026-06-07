@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import itertools
 import json
-import math
-import random
 from pathlib import Path
 from typing import Any
 
@@ -19,80 +16,17 @@ from ml_platform_core.io import dump_joblib, write_json, write_table
 from ml_platform_core.result import RunResult
 
 from .data import load_dataset, split_xy, train_valid_split
+from .ensemble import ensemble_config as _ensemble_cfg
+from .ensemble import ensemble_weights as _ensemble_weights
+from .ensemble import metric_value as _metric_value
 from .features import build_feature_pipeline
 from .metrics import DEFAULT_REGRESSION_METRICS, regression_metrics
 from .model_artifact import write_model_info
-from .models import MeanTopKEnsemble, TabularEstimator, build_model
+from .models import MeanTopKEnsemble, TabularEstimator, build_model, model_candidates
+from .search import optimization_trial_rows, search_config, search_trials
 
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
 SELECTION_METRICS = {"rmse", "mae", "r2"}
-WEIGHT_EPSILON = 1e-12
-SEARCH_METHODS = {"grid", "random"}
-
-
-def _as_bool(value: Any, *, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"", "none", "null"}:
-            return default
-        return text in {"1", "true", "yes", "y", "on"}
-    return bool(value)
-
-
-def _candidate_params(model_params: Any, name: str) -> dict[str, Any]:
-    if not model_params:
-        return {}
-    if not isinstance(model_params, dict):
-        raise ValueError("model.params must be a mapping.")
-    value = model_params.get(name)
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"model.params.{name} must be a mapping.")
-    return dict(value)
-
-
-def _model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_candidates = model_cfg.get("candidates") or []
-    model_params = model_cfg.get("params") or {}
-    if not raw_candidates:
-        if not isinstance(model_params, dict):
-            raise ValueError("model.params must be a mapping.")
-        return [
-            {
-                "name": model_cfg.get("name", "ridge"),
-                "params": dict(model_params),
-            }
-        ]
-    if not isinstance(raw_candidates, list):
-        raise ValueError("model.candidates must be a list of model names or model definitions.")
-
-    candidates: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_candidates):
-        if isinstance(item, str):
-            name = item.strip()
-            if not name:
-                raise ValueError(f"model.candidates[{index}] must not be empty.")
-            params = _candidate_params(model_params, name)
-        elif isinstance(item, dict):
-            name = item.get("name")
-            if not name:
-                raise ValueError(f"model.candidates[{index}].name is required.")
-            name = str(name)
-            params = item.get("params")
-            if params is None:
-                params = _candidate_params(model_params, name)
-            if not isinstance(params, dict):
-                raise ValueError(f"model.candidates[{index}].params must be a mapping.")
-            params = dict(params)
-        else:
-            raise ValueError(f"model.candidates[{index}] must be a model name or mapping.")
-        candidates.append({"name": str(name), "params": dict(params)})
-    return candidates
 
 
 def _metric_name(value: Any) -> str:
@@ -149,166 +83,9 @@ def _leaderboard_rows(
     return rows
 
 
-def _ensemble_cfg(model_cfg: dict[str, Any]) -> dict[str, Any]:
-    raw = model_cfg.get("ensemble") or {}
-    if not isinstance(raw, dict):
-        raise ValueError("model.ensemble must be a mapping.")
-    enabled = _as_bool(raw.get("enabled"))
-    method = str(raw.get("method") or "mean_topk")
-    top_k = int(raw.get("top_k") or 3)
-    if top_k < 1:
-        raise ValueError("model.ensemble.top_k must be >= 1.")
-    if enabled and method not in {"mean_topk", "weighted"}:
-        raise ValueError("model.ensemble.method must be one of: mean_topk, weighted.")
-    return {"enabled": enabled, "method": method, "top_k": top_k}
-
-
-def _search_cfg(model_cfg: dict[str, Any]) -> dict[str, Any]:
-    raw = model_cfg.get("search") or {}
-    if not isinstance(raw, dict):
-        raise ValueError("model.search must be a mapping.")
-    enabled = _as_bool(raw.get("enabled"))
-    method = str(raw.get("method") or "grid").strip().lower()
-    max_trials = int(raw.get("max_trials") or 20)
-    search_space = raw.get("search_space") or {}
-    if not isinstance(search_space, dict):
-        raise ValueError("model.search.search_space must be a mapping.")
-    if max_trials < 1:
-        raise ValueError("model.search.max_trials must be >= 1.")
-    if enabled and method not in SEARCH_METHODS:
-        raise ValueError("model.search.method must be one of: grid, random.")
-    return {
-        "enabled": enabled,
-        "method": method,
-        "max_trials": max_trials,
-        "search_space": search_space,
-        "retrain_best": _as_bool(raw.get("retrain_best"), default=True),
-    }
-
-
-def _parameter_grid(search_space: dict[str, Any]) -> list[dict[str, Any]]:
-    if not search_space:
-        return [{}]
-    keys = list(search_space)
-    values = []
-    for key in keys:
-        raw_value = search_space[key]
-        if not isinstance(raw_value, list) or not raw_value:
-            raise ValueError(f"model.search.search_space.{key} must be a non-empty list.")
-        values.append(raw_value)
-    return [dict(zip(keys, combination)) for combination in itertools.product(*values)]
-
-
-def _search_space_for_candidate(
-    search_space: dict[str, Any],
-    model_name: str,
-    *,
-    comparison: bool,
-) -> dict[str, Any]:
-    if comparison:
-        raw = search_space.get(model_name, {})
-        if raw is None:
-            return {}
-        if not isinstance(raw, dict):
-            raise ValueError(f"model.search.search_space.{model_name} must be a mapping.")
-        return raw
-    return search_space
-
-
-def _search_trials(
-    candidates: list[dict[str, Any]],
-    search_cfg: dict[str, Any],
-    *,
-    comparison: bool,
-    seed: int,
-) -> list[dict[str, Any]]:
-    if not search_cfg["enabled"]:
-        return [
-            {
-                "trial": index,
-                "model_name": candidate["name"],
-                "model_params": candidate["params"],
-            }
-            for index, candidate in enumerate(candidates, start=1)
-        ]
-
-    trials: list[dict[str, Any]] = []
-    for candidate in candidates:
-        space = _search_space_for_candidate(search_cfg["search_space"], candidate["name"], comparison=comparison)
-        for params in _parameter_grid(space):
-            trial_params = {**candidate["params"], **params}
-            trials.append(
-                {
-                    "trial": 0,
-                    "model_name": candidate["name"],
-                    "model_params": trial_params,
-                }
-            )
-
-    if search_cfg["method"] == "random":
-        rng = random.Random(seed)
-        rng.shuffle(trials)
-    trials = trials[: int(search_cfg["max_trials"])]
-    for index, trial in enumerate(trials, start=1):
-        trial["trial"] = index
-    return trials
-
-
 def _base_model_path(base_dir: Path, rank: int, model_name: str) -> Path:
     safe_name = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in model_name)
     return base_dir / f"{rank:02d}_{safe_name}.joblib"
-
-
-def _metric_value(metrics: dict[str, float], selection_metric: str) -> float:
-    if selection_metric not in metrics:
-        raise ValueError(f"selection_metric is missing from metrics: {selection_metric}")
-    value = float(metrics[selection_metric])
-    if not math.isfinite(value):
-        raise ValueError(f"selection_metric must be finite: {selection_metric}")
-    return value
-
-
-def _ensemble_weights(selected_results: list[dict[str, Any]], method: str, selection_metric: str) -> list[float]:
-    if not selected_results:
-        raise ValueError("At least one selected model is required for ensemble.")
-    if method == "mean_topk":
-        return [1.0 / len(selected_results)] * len(selected_results)
-    if method != "weighted":
-        raise ValueError("model.ensemble.method must be one of: mean_topk, weighted.")
-
-    if selection_metric in {"rmse", "mae"}:
-        raw_weights = [1.0 / max(_metric_value(item["metrics"], selection_metric), WEIGHT_EPSILON) for item in selected_results]
-    elif selection_metric == "r2":
-        raw_weights = [max(_metric_value(item["metrics"], selection_metric), 0.0) for item in selected_results]
-        if sum(raw_weights) <= WEIGHT_EPSILON:
-            return [1.0 / len(selected_results)] * len(selected_results)
-    else:
-        raise ValueError("model.selection_metric must be one of: mae, rmse, r2.")
-
-    total = sum(raw_weights)
-    if not math.isfinite(total) or total <= WEIGHT_EPSILON:
-        return [1.0 / len(selected_results)] * len(selected_results)
-    return [float(weight) / total for weight in raw_weights]
-
-
-def _optimization_trial_rows(candidate_results: list[dict[str, Any]], selection_metric: str) -> list[dict[str, Any]]:
-    rows = []
-    for item in candidate_results:
-        metrics = item["metrics"]
-        rows.append(
-            {
-                "trial": item["trial"],
-                "model_name": item["model_name"],
-                "model_params": json.dumps(item["model_params"], sort_keys=True, default=str),
-                "selection_metric": selection_metric,
-                "selection_value": _metric_value(metrics, selection_metric),
-                "mae": metrics.get("mae"),
-                "rmse": metrics.get("rmse"),
-                "r2": metrics.get("r2"),
-                "status": "completed",
-            }
-        )
-    return rows
 
 
 def run_train(cfg: dict[str, Any]) -> RunResult:
@@ -327,11 +104,11 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     model_cfg = cfg.get("model", {})
     metric_names = cfg.get("metrics", {}).get("names")
     selection_metric = _metric_name(model_cfg.get("selection_metric") or "rmse")
-    candidates = _model_candidates(model_cfg)
+    candidates = model_candidates(model_cfg)
     comparison = bool(model_cfg.get("candidates"))
     ensemble_cfg = _ensemble_cfg(model_cfg)
     ensemble_enabled = bool(ensemble_cfg["enabled"])
-    search_cfg = _search_cfg(model_cfg)
+    search_cfg = search_config(model_cfg)
     search_enabled = bool(search_cfg["enabled"])
     if ensemble_enabled and not comparison:
         raise ValueError("model.ensemble.enabled=true requires model.candidates.")
@@ -342,7 +119,7 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     train_metric_names = _metric_names_for_training(metric_names, selection_metric, comparison=comparison or search_enabled)
 
     candidate_results = []
-    trials = _search_trials(
+    trials = search_trials(
         candidates,
         search_cfg,
         comparison=comparison,
@@ -496,7 +273,7 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         tables["ensemble_predictions"] = ensemble_predictions_path
     if search_enabled:
         optimization_trials_path = write_table(
-            pd.DataFrame(_optimization_trial_rows(candidate_results, selection_metric)),
+            pd.DataFrame(optimization_trial_rows(candidate_results, selection_metric)),
             run_dir / "optimization_trials.csv",
         )
         optimization_summary = {

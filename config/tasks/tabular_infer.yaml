@@ -1,5 +1,8 @@
 task: tabular_infer
 
+# User-facing inference task. Inference is intentionally separate from the
+# training and optimization pipeline graphs.
+
 run:
   name: tabular_infer
   seed: 42
@@ -12,7 +15,17 @@ data:
   id_columns: []
 
 model:
+  source_type: local_path
+  source_task_id: null
+  model_selector: best
+  model_artifact_url: null
+  clearml_model_id: null
+  local_model_path: null
+  feature_spec_path: null
+  preprocess_bundle_path: null
+  # Deprecated compatibility path. Prefer source_type plus the matching source field.
   artifact_path: null
+  info_path: null
 
 output:
   prediction_name: predictions.csv

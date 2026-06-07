@@ -1,5 +1,9 @@
 # Extended ClearML UI review
 
+> Historical note: this file reviews the old four-template UI surface and fixed
+> `train -> eval -> infer` compatibility pipeline. It is not current product
+> readiness evidence for the stage-based training or optimization pipelines.
+
 Run date: 2026-05-25 08:45 +09:00
 Git commit: 0756d3b
 
@@ -12,7 +16,7 @@ This review covers the current extended surface after V1.1/V1.2/V1.3 changes:
 - `leaderboard.csv` table artifact
 - `mean_topk` and `weighted` ensemble modes
 - standardized inference `predictions.csv`
-- fixed train -> eval -> infer pipeline template
+- historical compatibility fixed train -> eval -> infer pipeline template
 
 No screenshot was captured. No secrets, raw logs, or screenshots are stored.
 
@@ -100,7 +104,7 @@ Command:
 
 Result: pass.
 
-Pipeline graph:
+Historical compatibility pipeline graph:
 
 ```text
 train -> eval -> infer
@@ -123,7 +127,8 @@ Previously recorded dev-server evidence remains valid for the base V1 surface:
 - four official model pipelines completed in ClearML
 - comparison train produced `leaderboard`
 - comparison eval/infer consumed the best model artifact
-- fixed train -> eval -> infer pipeline graph was visible
+- historical compatibility fixed train -> eval -> infer pipeline graph was
+  visible
 
 Files:
 
@@ -212,9 +217,10 @@ Do not add:
 
 ## Decision
 
-Local and template compatibility are ready. Extended ClearML remote task/pipeline
-verification is not complete until the current code is committed, pushed, and
-run by the dev Agent from GitHub `main`.
+Local and template compatibility were ready for this historical review. Extended
+ClearML remote task/pipeline verification was not complete until that phase's
+code was committed, pushed, and run by the dev Agent from GitHub `main`.
 
-Release decision for the extended ClearML UI gate: not ready yet for a remote
-reverification claim; ready to proceed to commit/push and dev-server rerun.
+Release decision for the historical extended ClearML UI gate: not ready yet for
+a remote reverification claim; ready to proceed to commit/push and dev-server
+rerun for that phase only.

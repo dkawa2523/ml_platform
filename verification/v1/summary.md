@@ -1,11 +1,17 @@
 # V1 Verification Summary
 
+> Historical note: this file mixes current task evidence with the old fixed
+> `train -> eval -> infer` compatibility pipeline evidence. Use
+> `verification/README.md` and `docs/SPEC.md` for current product readiness.
+
 ## Supported Scope
 
 - Official models: `linear`, `ridge`, `random_forest`, `gradient_boosting`
-- Verified local execution: train, eval, infer, and train -> eval -> infer pipeline
+- Verified local execution: train, eval, infer, and historical compatibility
+  `train -> eval -> infer` pipeline
 - Verified ClearML task execution: train, eval, infer for each official model
-- Verified ClearML pipeline execution: train -> eval -> infer for each official model
+- Verified historical compatibility ClearML pipeline execution:
+  `train -> eval -> infer` for each official model
 - Verified comparison mode: `Model/candidates` plus `Model/selection_metric` writes `leaderboard.csv` and saves only the best model artifact
 
 ## Evidence
@@ -43,4 +49,5 @@
 
 ## Decision
 
-- V1 ready for the verified scope: yes
+- V1 verified scope ready: yes, including historical compatibility pipeline
+  evidence only

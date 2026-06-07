@@ -497,6 +497,34 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
         run_infer(infer_cfg)
 
 
+def test_infer_accepts_resolved_model_artifact_url_path(tmp_path):
+    rng = np.random.default_rng(7)
+    df = pd.DataFrame({"id": range(30), "x1": rng.normal(size=30), "x2": rng.normal(size=30)})
+    df["target"] = 0.5 * df["x1"] + df["x2"]
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target"]).head(5).to_csv(infer_path, index=False)
+
+    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["name"] = "linear"
+    train_result = run_train(cfg)
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_cfg["model"]["source_type"] = "artifact_url"
+    infer_cfg["model"]["model_artifact_url"] = str(train_result.artifacts["model"])
+    infer_result = run_infer(infer_cfg)
+
+    assert infer_result.tables["predictions"].exists()
+    manifest = read_json(infer_result.artifacts["manifest"])
+    assert manifest["extra"]["source_type"] == "artifact_url"
+    assert manifest["extra"]["resolved_model_path"] == str(train_result.artifacts["model"])
+
+
 def test_regression_metrics_can_select_mse():
     values = regression_metrics([1.0, 2.0, 3.0], [1.0, 2.0, 5.0], metrics=["mse", "rmse"])
     assert list(values) == ["mse", "rmse"]

@@ -1,5 +1,9 @@
 # V1 Full Model / Full Pipeline Summary
 
+> Historical note: this file records V1 task evidence plus the old fixed
+> full-run compatibility pipeline. It is not current product readiness evidence
+> for the official stage-based training pipeline.
+
 ## Run Metadata
 
 - Date: 2026-05-24
@@ -82,4 +86,6 @@
 
 ## V1 Decision
 
-V1 ready for the stated scope: four verified tabular scalar regression models through local execution and ClearML task/pipeline execution.
+V1 historical scope ready: four verified tabular scalar regression models
+through local execution and ClearML task execution, plus old compatibility
+pipeline execution.

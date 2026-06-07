@@ -1,5 +1,9 @@
 # ClearML UI Review
 
+> Historical note: this file reviews the old full-run compatibility flow and its
+> fixed `train -> eval -> infer` graph. It is not current product readiness
+> evidence for the official stage-based training pipeline.
+
 ## Evidence Reviewed
 
 - Template sync evidence for four templates.
@@ -19,7 +23,7 @@
 - Model switching is simple: edit `Model/name` and `Model/params`.
 - Metrics are visible for train and eval tasks.
 - Artifacts are named plainly: `metrics`, `manifest`, `model`, `model_info`, `validation_predictions`, `evaluation_predictions`, and `predictions`.
-- Pipeline evidence shows a fixed `train -> eval -> infer` graph with traceable model artifact handoff.
+- Pipeline evidence shows the historical compatibility fixed `train -> eval -> infer` graph with traceable model artifact handoff.
 - Raw console logs were not stored because Agent configuration output can include credentials.
 
 ## Data Scientist View
@@ -47,4 +51,5 @@
 
 ## Decision
 
-Accepted for v1. UI evidence is sufficient for the release gate, with optional manual screenshots as a post-gate enhancement.
+Accepted for the historical v1 compatibility flow. UI evidence is sufficient for
+that release gate, with optional manual screenshots as a post-gate enhancement.

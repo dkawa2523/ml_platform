@@ -36,7 +36,7 @@ def normalize_pipeline_mode(value: Any) -> str:
 def _has_candidates(model_cfg: dict[str, Any]) -> bool:
     candidates = model_cfg.get("candidates") or []
     if not isinstance(candidates, list):
-        raise ValueError("model.candidates must be a list for pipeline execution.")
+        raise ValueError("model.candidates must be a list for compatibility full-run execution.")
     return bool(candidates)
 
 

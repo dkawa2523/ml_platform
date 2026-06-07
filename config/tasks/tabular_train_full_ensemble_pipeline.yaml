@@ -1,0 +1,83 @@
+task: tabular_train_full_ensemble_pipeline
+
+# User-facing ClearML Pipeline-tab draft config for the experimental full
+# implemented-model training graph with ensemble. No ensemble-specific template
+# is created.
+
+run:
+  name: tabular_train_full_ensemble_pipeline
+  seed: 42
+
+# Experimental: implemented sklearn models only. External models such as
+# LightGBM, XGBoost, and CatBoost remain future and are not enabled here.
+data:
+  local_path: data/sample_train.csv
+  clearml_dataset_id: null
+  dataset_file: null
+  target_column: target
+  feature_columns: null
+  id_columns: [id]
+
+split:
+  method: random
+  valid_size: 0.2
+
+metrics:
+  names: [mae, rmse, r2]
+
+features:
+  preset: basic
+  params: {}
+
+model:
+  params:
+    ridge:
+      alpha: 1.0
+    random_forest:
+      n_estimators: 20
+      random_state: 42
+      n_jobs: 1
+    gradient_boosting:
+      n_estimators: 20
+      random_state: 42
+    lasso:
+      alpha: 0.01
+      max_iter: 5000
+    elasticnet:
+      alpha: 0.01
+      l1_ratio: 0.5
+      max_iter: 5000
+      random_state: 42
+    extra_trees:
+      n_estimators: 50
+      random_state: 42
+      n_jobs: 1
+    knn:
+      n_neighbors: 5
+      weights: distance
+    svr:
+      kernel: rbf
+      C: 1.0
+      epsilon: 0.1
+      gamma: scale
+    mlp:
+      hidden_layer_sizes: [32]
+      solver: lbfgs
+      max_iter: 500
+      random_state: 42
+  candidates:
+    - linear
+    - ridge
+    - random_forest
+    - gradient_boosting
+    - lasso
+    - elasticnet
+    - extra_trees
+    - knn
+    - svr
+    - mlp
+  selection_metric: rmse
+  ensemble:
+    enabled: true
+    method: mean_topk
+    top_k: 3

@@ -4,7 +4,12 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 
 ## Current State
 
-- Local train/eval/infer/pipeline and tabular 1D output run successfully.
+- Local train/eval/infer, stage-based training pipeline, deprecated
+  compatibility simple full-run fallback, and tabular 1D output run
+  successfully.
+- Local stage-based optimization pipeline runs as
+  `preprocess_features -> search_trials -> retrain_best -> evaluate_best`
+  when `model.search.enabled=true` and `model.ensemble.enabled=false`.
 - ClearML task entrypoint, adapter, reports, templates, and pipeline controller are implemented.
 - ClearML SDK usage is contained under `clearml/`.
 - `pkgs/core` and `pkgs/tabular` do not import ClearML.
@@ -13,19 +18,43 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - Official supported regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
 - Experimental sklearn regressors are implemented: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
 - `scikit-learn` is a required runtime dependency.
-- Verification evidence lives under `verification/v1/`, `verification/v1_2/`, `verification/v1_3/`, `verification/v2_1/`, `verification/v2_2/`, and `verification/v2_remote/`.
+- Verification evidence lives under `verification/v1/`, `verification/v1_2/`,
+  `verification/v1_3/`, `verification/v2_1/`, `verification/v2_2/`,
+  `verification/v2_remote/`, `verification/training_pipeline/`,
+  `verification/inference/`, and `verification/optimization/`. Start with
+  `verification/README.md` to understand which evidence is current product
+  evidence and which evidence is historical compatibility evidence.
 - V1 single-model switching uses `Model/name` and `Model/params`.
-- Pipeline-tab runs use `Run/pipeline_mode`: `auto`, `single`, `compare`, `ensemble`, or `optimize`.
+- Deprecated compatibility Pipeline-tab full-run uses `Run/pipeline_mode`:
+  `auto`, `single`, `compare`, `ensemble`, or `optimize`.
 - Comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
 - Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
-- Search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; it writes `optimization_trials.csv`, `optimization_summary.json`, and `best_params.json`, then saves the best params as the standard retrained `model` artifact.
-- Inference adds `model_artifact_id` to `predictions.csv` and supports optional CSV chunked prediction with `Output/chunk_size`.
+- Search uses `Model/search_enabled`, `Model/search_method`, `Model/search_space`, and `Model/max_trials`; train tasks still support train-time search, and stage-based pipelines use these parameters to switch to the optimization graph.
+- Inference resolves `task_id`, `artifact_url`, `clearml_model_id`, or
+  `local_path` sources, adds `model_artifact_id` to `predictions.csv`, and
+  supports optional CSV chunked prediction with `Output/chunk_size`.
 
 ## Scope Rules
 
 `docs/SPEC.md` is the source of truth for supported, experimental, future, and
-discarded scope. Do not promote an experimental or future feature to supported
-without local and ClearML remote verification evidence.
+discarded scope. Do not promote an experimental or future ClearML feature to
+supported without local and ClearML remote verification evidence.
+
+The official training pipeline definition is:
+
+```text
+preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models
+```
+
+`config/tasks/tabular_pipeline.yaml` and `pkgs/tabular.pipeline.run_pipeline()`
+implement this graph locally. ClearML Pipeline-tab drafts implement the same
+graph through the internal `tabular_stage_template`; these ClearML pipeline
+drafts remain experimental until remote evidence is recorded. The old
+`tabular_pipeline_template` remains a deprecated compatibility full-run
+entrypoint for `train -> eval -> infer`.
+
+Inference is a separate `tabular_infer_template` task. Do not fold inference
+into the training pipeline redesign.
 
 ## Required Local Check
 
@@ -34,7 +63,10 @@ python scripts/make_sample_data.py
 python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile config/profiles/local.yaml
 python scripts/local_run.py --task config/tasks/tabular_eval.yaml --profile config/profiles/local.yaml
 python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+# Local stage-based training pipeline. Inference is intentionally separate.
 python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
+# Local stage-based optimization pipeline. Quote JSON-like overrides in PowerShell.
+python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set model.ensemble.enabled=false --set 'model.candidates=[]' --set model.name=ridge --set 'model.params={}' --set model.search.enabled=true --set model.search.method=grid --set model.search.max_trials=2 --set 'model.search.search_space={"alpha":[0.1,1.0]}'
 python scripts/local_run.py --task config/tasks/tabular_1d_output.yaml --profile config/profiles/local.yaml
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
 ```
@@ -63,6 +95,7 @@ Dry-run:
 ```powershell
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
 python clearml/pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+python clearml/pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run --set model.ensemble.enabled=false --set 'model.candidates=[]' --set model.name=ridge --set 'model.params={}' --set model.search.enabled=true --set model.search.method=grid --set model.search.max_trials=2 --set 'model.search.search_space={"alpha":[0.1,1.0]}'
 ```
 
 Real sync:
@@ -71,19 +104,35 @@ Real sync:
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
-Pipeline Agent capacity:
+PipelineController Agent capacity:
 
-- Remote pipeline execution needs at least two worker slots on the execution queue: one for the pipeline controller task and one for step tasks. Alternatively, use separate controller and step queues.
+- Remote training pipeline execution needs enough worker slots on the execution
+  queue for the controller and stage tasks. Alternatively, use separate
+  controller and step queues.
 
 Manual UI checks:
 
-- Clone `tabular_train_template`, set `Input/*`, `Run/*`, `Model/*`, and run.
-- Clone `tabular_eval_template`, set the dataset and model artifact when needed, and run.
-- Clone `tabular_infer_template`, set the dataset and model artifact when needed, and run.
-- Open `tabular_pipeline_template` from the Pipeline tab and verify exactly three steps: train, eval, infer.
-- Set `Run/pipeline_mode` explicitly for compare, ensemble, and optimize checks.
-- Confirm train uploads the `model` artifact and eval/infer receive it as `Model/artifact_path`.
-- Confirm mode artifacts on the train step: `leaderboard`, `ensemble_predictions`, or optimization trial artifacts.
+- Clone `tabular_infer_template`, set the inference dataset, then choose a
+  model source:
+  `Model/source_type=task_id`, `Model/source_task_id=<pipeline or stage task id>`,
+  and `Model/model_selector=best` or `ensemble`.
+- For local-path style checks, use `Model/source_type=local_path` and
+  `Model/local_model_path=<training pipeline run dir or model file>`.
+- Open `tabular_train_pipeline_template` from the Pipeline tab and verify:
+  preprocess_features -> train_linear/ridge/random_forest/gradient_boosting ->
+  evaluate_models.
+- Open `tabular_train_full_ensemble_pipeline_template` from the Pipeline tab and
+  verify: preprocess_features -> train_<model>* -> build_ensemble ->
+  evaluate_models.
+- Open `tabular_pipeline_template` only if intentionally checking deprecated
+  compatibility behavior.
+- Confirm stage artifacts: preprocess bundle, feature spec, per-model model
+  artifacts, leaderboard, best model, optional ensemble artifact.
+- For optimization checks, set `Model/search_enabled=true` and
+  `Model/ensemble_enabled=false`; confirm the graph is
+  preprocess_features -> search_trials -> retrain_best -> evaluate_best and
+  artifacts include `optimization_trials`, `optimization_summary`,
+  `best_params`, retrained `model`, and `best_model`.
 
 Useful logs on failure:
 
@@ -111,8 +160,10 @@ See `deploy/README.md`. At minimum verify:
 - Do not expand UI parameters without a current product need.
 - Do not copy legacy repo files or directory structures.
 - Do not add broad diagnostics, contract docs, checklist docs, old adapter splits, live cleanup, or abstract base classes.
-- Do not add all-model pipeline DAGs, stacking, train_ensemble_full, or separate runtime leaderboard tasks.
-- Do not add separate pipeline nodes for leaderboard, ensemble, or optimization in V2.3.
+- Do not recreate legacy `train_ensemble_full`, stacking, or separate runtime
+  leaderboard tasks.
+- Do not add new stage nodes to the deprecated `tabular_pipeline_template`; use
+  `tabular_stage_template` through the user-facing training pipeline drafts.
 - Do not add model-specific or dataset-specific ClearML templates.
 - Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
 - Do not add stacking or weight optimization to ensemble without a new verification phase.

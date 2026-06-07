@@ -1,5 +1,9 @@
 # V2 Remote ClearML UI Review
 
+> Historical note: this file reviews V2.1/V2.2 task behavior and the old fixed
+> `train -> eval -> infer` compatibility pipeline. It is not current product
+> readiness evidence for the stage-based training or optimization pipelines.
+
 Date: 2026-06-01T02:00:00+09:00
 Git commit under test: `d864267`
 
@@ -105,8 +109,9 @@ infer receives Model/artifact_path=${train.artifacts.model.url}
 Process completed successfully
 ```
 
-This is sufficient evidence that the V2 remote pipeline ran as
-`train -> eval -> infer` with model artifact handoff. Final human UI review
+This is sufficient evidence that the historical V2 remote compatibility
+pipeline ran as `train -> eval -> infer` with model artifact handoff. Final
+human UI review
 should open the pipeline URL and inspect Step details for the train HPO
 artifacts, eval metrics, and infer predictions.
 
@@ -125,7 +130,7 @@ raw agent config or credentials.
 
 ## Product Assessment
 
-V2 remote UI gate is acceptable:
+V2 remote UI gate is acceptable for that historical compatibility surface:
 
 - V2.1 optimization artifacts are visible and named clearly.
 - V2.2 chunked inference exposes the `predictions` artifact.

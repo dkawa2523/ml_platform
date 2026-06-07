@@ -1,5 +1,9 @@
 # ClearML Dev Full Verification Summary
 
+> Historical note: this file records the old MVP task templates and fixed
+> `train -> eval -> infer` compatibility pipeline. It is not current product
+> readiness evidence for the official stage-based training pipeline.
+
 ## Run Metadata
 
 - Date: 2026-05-24 15:47 JST
@@ -84,7 +88,8 @@ ClearML task and pipeline execution was performed through the ClearML SDK by clo
 ClearML dev verification is v1-acceptable for the MVP scope:
 
 - train/eval/infer templates work for `ridge` and `linear`.
-- pipeline template runs fixed `train -> eval -> infer`.
+- pipeline template runs the historical compatibility fixed
+  `train -> eval -> infer` graph.
 - eval and infer receive the train model through a ClearML artifact URL.
 - metrics and artifacts are visible from task metadata.
 - `pkgs` remain ClearML-free.

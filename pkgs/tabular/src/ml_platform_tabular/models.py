@@ -20,6 +20,62 @@ AVAILABLE_MODELS = [
 ]
 
 
+def candidate_params(model_params: Any, name: str) -> dict[str, Any]:
+    if not model_params:
+        return {}
+    if not isinstance(model_params, dict):
+        raise ValueError("model.params must be a mapping.")
+    value = model_params.get(name)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"model.params.{name} must be a mapping.")
+    return dict(value)
+
+
+def model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_candidates = model_cfg.get("candidates") or []
+    model_params = model_cfg.get("params") or {}
+    if not raw_candidates:
+        if not isinstance(model_params, dict):
+            raise ValueError("model.params must be a mapping.")
+        return [
+            {
+                "name": model_cfg.get("name", "ridge"),
+                "params": dict(model_params),
+            }
+        ]
+    if not isinstance(raw_candidates, list):
+        raise ValueError("model.candidates must be a list of model names or model definitions.")
+
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw_candidates):
+        if isinstance(item, str):
+            name = item.strip()
+            if not name:
+                raise ValueError(f"model.candidates[{index}] must not be empty.")
+            params = candidate_params(model_params, name)
+        elif isinstance(item, dict):
+            name = item.get("name")
+            if not name:
+                raise ValueError(f"model.candidates[{index}].name is required.")
+            name = str(name)
+            params = item.get("params")
+            if params is None:
+                params = candidate_params(model_params, name)
+            if not isinstance(params, dict):
+                raise ValueError(f"model.candidates[{index}].params must be a mapping.")
+            params = dict(params)
+        else:
+            raise ValueError(f"model.candidates[{index}] must be a model name or mapping.")
+        if name in seen:
+            raise ValueError(f"model.candidates contains duplicate model name: {name}")
+        seen.add(name)
+        candidates.append({"name": str(name), "params": dict(params)})
+    return candidates
+
+
 @dataclass
 class LinearRegressor:
     coef_: np.ndarray | None = None

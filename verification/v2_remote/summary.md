@@ -1,5 +1,10 @@
 # V2 Remote Release Gate Summary
 
+> Historical note: this file records V2.1/V2.2 task behavior and the deprecated
+> fixed `train -> eval -> infer` compatibility pipeline. It is not current
+> product readiness evidence for the stage-based training or optimization
+> pipelines.
+
 Date: 2026-06-01
 Execution date: 2026-05-28T22:23:38+09:00
 Git commit: `d864267`
@@ -24,8 +29,8 @@ Profile: `config/profiles/clearml-dev.yaml`
 | `tabular_infer_template` | `a6c147c9768b4c0f9de5cef470ad8257` | synced |
 | `tabular_pipeline_template` | `d8d4fe66b7f8499bbe69178a09eaece2` | synced |
 
-Template count remains four. No model-, ensemble-, optimization-, leaderboard-,
-or dataset-specific template was added.
+Historical compatibility template count remains four. No model-, ensemble-,
+optimization-, leaderboard-, or dataset-specific template was added.
 
 ## Remote Task And Pipeline Matrix
 
@@ -65,7 +70,8 @@ The checked artifacts cover `optimization_trials.csv`,
 
 ## Pipeline Handoff
 
-The optimization pipeline completed with fixed graph `train -> eval -> infer`.
+The historical compatibility optimization pipeline completed with fixed graph
+`train -> eval -> infer`.
 The controller log records model artifact handoff:
 
 ```text
@@ -102,4 +108,6 @@ None.
 
 ## Release Decision
 
-V2 remote gate status: ready. Proceed to V2 release gate.
+V2 remote compatibility gate status: ready for that historical phase only. Do
+not use this as current stage-based training or optimization pipeline product
+readiness evidence.
