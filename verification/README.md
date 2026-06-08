@@ -2,17 +2,16 @@
 
 This directory contains both current product evidence and older compatibility
 evidence. Historical records are preserved, but they are not the readiness gate
-for the current stage-based training, inference, or optimization specifications.
+for the current stage-based training or inference specifications.
 
 ## Current Product Evidence
 
 | area | evidence | status |
 | --- | --- | --- |
-| Release gate | `verification/training_pipeline/release_gate.md` | Current gate. Local/dry-run pass; remote ClearML execution blocked until commit/push. |
+| Release gate | `verification/training_pipeline/release_gate.md` | Current gate. Local/dry-run pass; remote ClearML execution pending. |
 | Local training pipeline | `verification/training_pipeline/local_training_pipeline.md` | Current local pass for `preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models`. |
 | ClearML training pipeline | `verification/training_pipeline/clearml_training_pipeline.md` | Dry-run pass. Remote ClearML run is still required before support promotion. |
 | Inference task | `verification/inference/infer_task_reference.md` | Current evidence for `tabular_infer_template` source resolution. Remote best/ensemble task-id runs may still be blocked or pending. |
-| Optimization pipeline | `verification/optimization/optimization_pipeline.md` | Current local and ClearML dry-run pass for `preprocess_features -> search_trials -> retrain_best -> evaluate_best`. Remote ClearML run is still required before support promotion. |
 
 ## Experimental Evidence
 
@@ -21,6 +20,8 @@ themselves make a feature supported:
 
 - ClearML stage-based training and optimization dry-runs without matching
   remote dev-server runs.
+- `verification/optimization/optimization_pipeline.md`, which records future /
+  experimental optimization evidence only.
 - Implemented but not fully remote-verified sklearn models such as `lasso`,
   `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
 - Historical ensemble and optimization task evidence that predates the current

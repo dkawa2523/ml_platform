@@ -2,7 +2,8 @@ task: tabular_stage
 
 # Internal PipelineController stage task. Do not clone this as a user-facing
 # model-, ensemble-, or optimize-specific template. Run/stage selects the
-# training or optimization stage behavior.
+# stage behavior. Primary stages are preprocess_features, train_model,
+# build_ensemble, and evaluate_models. Optimization stages are future.
 
 run:
   name: tabular_stage
@@ -33,12 +34,6 @@ model:
   params: {}
   candidates: []
   selection_metric: rmse
-  search:
-    enabled: false
-    method: grid
-    max_trials: 20
-    search_space: {}
-    retrain_best: true
   ensemble:
     enabled: false
     method: mean_topk
@@ -51,7 +46,3 @@ stage_inputs:
   processed_valid: null
   model_refs: []
   ensemble_ref: null
-  best_params: null
-  optimization_summary: null
-  model: null
-  model_info: null

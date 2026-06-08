@@ -1,7 +1,8 @@
 task: tabular_train_pipeline
 
-# User-facing ClearML Pipeline-tab draft config for the official sklearn
-# training graph. No model-specific or ensemble-specific template is created.
+# Deprecated duplicate config. The primary user-facing template
+# tabular_train_pipeline_template now uses config/tasks/tabular_pipeline.yaml.
+# Keep this file only as a temporary compatibility reference.
 
 run:
   name: tabular_train_pipeline

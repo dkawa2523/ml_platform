@@ -15,7 +15,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
 
 from adapter import as_bool, as_candidates, as_dict, as_list, import_clearml_automation, import_clearml_sdk, import_clearml_symbol
 from ml_platform_core.config import apply_overrides, load_yaml
-from ml_platform_tabular.models import AVAILABLE_MODELS, candidate_params, model_candidates
+from ml_platform_tabular.models import candidate_params, model_candidates
 from ml_platform_tabular.pipeline_modes import apply_pipeline_mode_defaults
 
 
@@ -23,8 +23,9 @@ PIPELINE_ARG_PREFIX = "Args/"
 STAGE_TASK_CONFIG = "config/tasks/tabular_stage.yaml"
 STAGE_TEMPLATE = "tabular_stage_template"
 OFFICIAL_SKLEARN_MODELS = ["linear", "ridge", "random_forest", "gradient_boosting"]
-IMPLEMENTED_SKLEARN_MODELS = list(AVAILABLE_MODELS)
 LEGACY_MODEL_ARTIFACT_REF = "${train.artifacts.model.url}"
+# Legacy compatibility support for old train -> eval -> infer configs. These
+# templates and Run/pipeline_mode are not primary product entrypoints.
 LEGACY_TASK_TO_TEMPLATE = {
     "tabular_train": "tabular_train_template",
     "tabular_eval": "tabular_eval_template",
@@ -88,9 +89,6 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any]) -> dict[str, Any]
     ensemble = model.get("ensemble", {}) or {}
     if not isinstance(ensemble, dict):
         ensemble = {}
-    search = model.get("search", {}) or {}
-    if not isinstance(search, dict):
-        search = {}
     return {
         "Run/task": pipeline_cfg.get("task"),
         "Run/name": run.get("name"),
@@ -104,10 +102,6 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any]) -> dict[str, Any]
         "Model/candidates": _json(model.get("candidates", []) or []),
         "Model/params": _json(model.get("params", {}) or {}),
         "Model/selection_metric": model.get("selection_metric", "rmse"),
-        "Model/search_enabled": as_bool(search.get("enabled")),
-        "Model/search_method": search.get("method", "grid"),
-        "Model/search_space": _json(search.get("search_space", {}) or {}),
-        "Model/max_trials": int(search.get("max_trials") or 20),
         "Model/ensemble_enabled": as_bool(ensemble.get("enabled")),
         "Model/ensemble_method": ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
@@ -373,20 +367,6 @@ def _ensemble_ref() -> dict[str, Any]:
     }
 
 
-def _search_refs() -> dict[str, str]:
-    return {
-        "Input/best_params": _artifact_ref("search_trials", "best_params"),
-        "Input/optimization_summary": _artifact_ref("search_trials", "optimization_summary"),
-    }
-
-
-def _retrained_model_refs() -> dict[str, str]:
-    return {
-        "Input/model": _artifact_ref("retrain_best", "model"),
-        "Input/model_info": _artifact_ref("retrain_best", "model_info"),
-    }
-
-
 def _stage_step(
     *,
     name: str,
@@ -411,100 +391,6 @@ def _stage_step(
     }
 
 
-def _build_optimization_plan(
-    pipeline_cfg: dict[str, Any],
-    profile: dict[str, Any],
-    task_path: str | Path,
-    profile_path: str | Path,
-    ui_params: dict[str, Any] | None,
-) -> dict[str, Any]:
-    project_root, templates_project, pipelines_project = _template_project(profile)
-    clearml_cfg = profile.get("clearml", {})
-    default_params = _training_pipeline_ui_params(pipeline_cfg)
-    effective_params = {**default_params, **(ui_params or {})}
-    model_cfg = _pipeline_model_cfg(pipeline_cfg, effective_params)
-    ensemble_cfg = model_cfg.get("ensemble", {}) or {}
-    if not isinstance(ensemble_cfg, dict):
-        ensemble_cfg = {}
-    if as_bool(ensemble_cfg.get("enabled")):
-        raise ValueError("model.search.enabled=true cannot be combined with model.ensemble.enabled=true in Phase E.")
-
-    search_cfg = model_cfg.get("search", {}) or {}
-    if not isinstance(search_cfg, dict):
-        search_cfg = {}
-    candidates = model_candidates(model_cfg)
-    if not candidates:
-        raise ValueError("Optimization pipeline requires at least one model candidate.")
-    selection_metric = str(model_cfg.get("selection_metric") or "rmse")
-    data_overrides = _data_overrides(effective_params)
-
-    steps: list[dict[str, Any]] = [
-        _stage_step(
-            name="preprocess_features",
-            stage="preprocess_features",
-            templates_project=templates_project,
-            overrides={
-                **data_overrides,
-                "Model/feature_preset": effective_params.get("Model/feature_preset"),
-            },
-        ),
-        _stage_step(
-            name="search_trials",
-            stage="search_trials",
-            templates_project=templates_project,
-            parents=["preprocess_features"],
-            overrides={
-                **_preprocess_refs(),
-                "Model/name": model_cfg.get("name"),
-                "Model/params": _json(model_cfg.get("params", {}) or {}),
-                "Model/candidates": _json(model_cfg.get("candidates", []) or []),
-                "Model/selection_metric": selection_metric,
-                "Model/search_enabled": True,
-                "Model/search_method": search_cfg.get("method", "grid"),
-                "Model/search_space": _json(search_cfg.get("search_space", {}) or {}),
-                "Model/max_trials": int(search_cfg.get("max_trials") or 20),
-                "Model/ensemble_enabled": False,
-            },
-        ),
-        _stage_step(
-            name="retrain_best",
-            stage="retrain_best",
-            templates_project=templates_project,
-            parents=["search_trials"],
-            overrides={
-                **_preprocess_refs(),
-                "Input/best_params": _artifact_ref("search_trials", "best_params"),
-                "Model/selection_metric": selection_metric,
-            },
-        ),
-        _stage_step(
-            name="evaluate_best",
-            stage="evaluate_best",
-            templates_project=templates_project,
-            parents=["retrain_best"],
-            overrides={
-                **_search_refs(),
-                **_retrained_model_refs(),
-                "Model/selection_metric": selection_metric,
-            },
-        ),
-    ]
-
-    return {
-        "kind": "optimization",
-        "project": pipelines_project,
-        "name": pipeline_cfg.get("run", {}).get("name", "tabular_optimization_pipeline"),
-        "version": "0.3.0",
-        "pipeline_mode": "optimization",
-        "queue": clearml_cfg.get("queue", "default"),
-        "candidate_models": [candidate["name"] for candidate in candidates],
-        "ensemble_enabled": False,
-        "steps": steps,
-        "task_config": str(task_path),
-        "profile_config": str(profile_path),
-    }
-
-
 def _build_training_plan(
     pipeline_cfg: dict[str, Any],
     profile: dict[str, Any],
@@ -521,7 +407,11 @@ def _build_training_plan(
     if not isinstance(search_cfg, dict):
         search_cfg = {}
     if as_bool(search_cfg.get("enabled")):
-        return _build_optimization_plan(pipeline_cfg, profile, task_path, profile_path, effective_params)
+        raise ValueError(
+            "model.search.enabled=true is future/experimental and is not part of the "
+            "primary ClearML training pipeline graph. Use search_enabled=false for "
+            "preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models."
+        )
     candidates = model_candidates(model_cfg)
     if not candidates:
         raise ValueError("Training pipeline requires at least one model candidate.")
@@ -719,7 +609,7 @@ def _find_pipeline_draft(Task: Any, task_name: str):
 
 
 def sync_pipeline_draft(
-    task_path: str | Path = "config/tasks/tabular_train_pipeline.yaml",
+    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
     *,
     template_name: str = "tabular_train_pipeline_template",
@@ -779,7 +669,7 @@ def sync_pipeline_draft(
 
 
 def register_tabular_pipeline(
-    task_path: str | Path = "config/tasks/tabular_train_pipeline.yaml",
+    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
     *,
     overrides: list[str] | dict[str, Any] | None = None,

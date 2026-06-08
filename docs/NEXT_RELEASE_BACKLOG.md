@@ -5,15 +5,15 @@ supported, experimental, future, and discarded scope remains defined in
 `docs/SPEC.md`.
 
 Do not implement multiple backlog items in one pass. Phase A-F replace the
-compatibility full-run product role with the stage-based training, inference,
-and optimization scope defined in `docs/SPEC.md`, while keeping historical
+compatibility full-run product role with the stage-based training and inference
+scope defined in `docs/SPEC.md`, while keeping historical
 verification evidence indexed instead of deleted.
 
 ## Priority
 
 | priority | bucket | title | reason |
 | --- | --- | --- | --- |
-| P1 | V2 patch | Remote verification for ClearML stage-based training and optimization pipelines | Promotes or blocks the new Pipeline-tab drafts with evidence. |
+| P1 | V2 patch | Remote verification for the primary ClearML training pipeline | Promotes or blocks the primary Pipeline-tab draft with evidence. |
 | P2 | V2 patch | Remote verification for inference model source resolution | Confirms `task_id` best/ensemble inference from ClearML UI. |
 | P3 | V2.1 | Remote verification for experimental sklearn models | Smallest path to promote selected models to supported. |
 | P4 | V2.1 | Evaluation table improvement | Useful product artifact without changing templates. |
@@ -73,7 +73,7 @@ next, start with P1 remote verification.
 - do-not-do: Do not create one template per model, one template per ensemble, or
   per-trial ClearML child tasks in this phase.
 
-### Completed: Stage-Based Optimization Pipeline
+### Future / Experimental Evidence: Stage-Based Optimization Pipeline
 
 - title: Implement local and dry-run ClearML optimization graph.
 - purpose: Treat optimization as
@@ -89,16 +89,17 @@ next, start with P1 remote verification.
   exclusive and remote execution is still pending.
 - acceptance criteria: Local optimization run and ClearML dry-run produce
   `search_trials`, `retrain_best`, and `evaluate_best` artifacts.
+- product status: Not primary product scope. Keep out of default ClearML UI
+  entrypoints until a separate promotion decision is made.
 - do-not-do: Do not add Optuna, Ray Tune, Bayesian search, or trial child tasks
   before remote verification.
 
-### P1: Remote Verification For ClearML Stage-Based Training Pipelines
+### P1: Remote Verification For Primary ClearML Training Pipeline
 
-- title: Verify `tabular_train_pipeline_template` and
-  `tabular_train_full_ensemble_pipeline_template` on the dev ClearML server.
-- purpose: Decide whether the new Pipeline-tab drafts are ready for supported
+- title: Verify `tabular_train_pipeline_template` on the dev ClearML server.
+- purpose: Decide whether the primary Pipeline-tab draft is ready for supported
   scope or remain experimental.
-- scope: Sync templates, run the two pipeline drafts from the Pipeline tab, and
+- scope: Sync templates, run the primary pipeline draft from the Pipeline tab, and
   record graph, parameters, artifacts, and failure logs.
 - affected files: `verification/training_pipeline/clearml_training_pipeline.md`
   and optionally small docs corrections.
@@ -116,19 +117,21 @@ next, start with P1 remote verification.
 - title: Implement explicit inference model source resolution.
 - purpose: Keep inference separate from training pipeline execution while making
   best-model and ensemble inference usable from ClearML UI.
-- scope: Add `source_type`, `source_task_id`, `model_selector`,
-  `model_artifact_url`, `clearml_model_id`, and `local_model_path` handling for
-  `tabular_infer_template`.
+- scope: Keep primary `tabular_infer_template` handling focused on
+  `source_task_id + model_selector` and `local_model_path`. Keep
+  `model_artifact_url` and `clearml_model_id` as explicit-only
+  future/experimental compatibility paths, not primary UI parameters.
 - affected files: `clearml/adapter.py`, `clearml/app.py`,
   `config/tasks/tabular_infer.yaml`, `pkgs/tabular` inference validation, docs,
   and focused tests.
-- ClearML impact: Resolves task artifacts, artifact URLs, or ClearML model IDs
-  before passing a local `model.artifact_path` into ClearML-free inference code.
+- ClearML impact: Resolves task artifacts before passing a local
+  `model.artifact_path` into ClearML-free inference code; future sources remain
+  outside the primary UI.
 - complexity risk: Medium because selector resolution depends on training
   pipeline artifact contracts.
 - acceptance criteria: `source_type=task_id` with `model_selector=best` and
-  `model_selector=ensemble` works; `artifact_url` and local path flows remain
-  compatible; no inference pipeline is introduced.
+  `model_selector=ensemble` works; local path flow remains compatible; no
+  inference pipeline is introduced.
 - do-not-do: Do not add online serving, a streaming reader, or ClearML imports
   under `pkgs`.
 
@@ -191,8 +194,9 @@ next, start with P1 remote verification.
 - purpose: Keep ClearML artifact tabs readable as evaluation and inference
   outputs grow.
 - scope: Document current names such as `validation_predictions`,
-  `evaluation_predictions`, `predictions`, `leaderboard`,
-  `optimization_trials`, and pipeline-prefixed variants.
+  `evaluation_predictions`, `predictions`, `leaderboard`, and
+  pipeline-prefixed variants. Keep optimization artifact names in a future /
+  experimental note only.
 - affected files: `docs/SPEC.md`, `docs/CODEX_HANDOFF.md`, tests only if a
   naming bug is found.
 - ClearML impact: Documentation first; code change only if a clear naming bug is
@@ -262,8 +266,9 @@ next, start with P1 remote verification.
 
 - title: Add compact operator examples for common ClearML runs.
 - purpose: Reduce clone-run mistakes without expanding the UI parameter surface.
-- scope: Add short examples for single model, comparison, ensemble, search,
-  chunked infer, and pipeline dataset-file usage.
+- scope: Add short examples for the primary training pipeline, candidates,
+  ensemble, inference source selection, chunked infer, and pipeline dataset-file
+  usage.
 - affected files: `README.md`, `docs/SPEC.md`, or `docs/CODEX_HANDOFF.md`.
 - ClearML impact: Documentation only.
 - complexity risk: Low.

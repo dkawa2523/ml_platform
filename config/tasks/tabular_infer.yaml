@@ -1,7 +1,7 @@
 task: tabular_infer
 
 # User-facing inference task. Inference is intentionally separate from the
-# training and optimization pipeline graphs.
+# training pipeline graph.
 
 run:
   name: tabular_infer
@@ -15,17 +15,20 @@ data:
   id_columns: []
 
 model:
+  # ClearML UI recommended path:
+  #   source_type: task_id
+  #   source_task_id: <training pipeline controller or stage task id>
+  #   model_selector: best | ensemble | model name
+  # Local path:
+  #   source_type: local_path
+  #   local_model_path: <training pipeline run dir or model file>
   source_type: local_path
   source_task_id: null
   model_selector: best
-  model_artifact_url: null
-  clearml_model_id: null
   local_model_path: null
-  feature_spec_path: null
-  preprocess_bundle_path: null
-  # Deprecated compatibility path. Prefer source_type plus the matching source field.
-  artifact_path: null
-  info_path: null
+  # Future / experimental sources are supported only when passed explicitly.
+  # They are intentionally not part of the primary ClearML UI template:
+  # model_artifact_url, clearml_model_id.
 
 output:
   prediction_name: predictions.csv

@@ -1,5 +1,9 @@
 # V2.1 ClearML Optimization Verification
 
+> Historical / future evidence: optimization is not current primary product
+> scope. This file records an old dry-run path and is not a current release
+> gate.
+
 Date: 2026-05-26 JST
 
 ## Dry-Run Commands

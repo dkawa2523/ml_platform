@@ -4,9 +4,8 @@ run:
   name: tabular_training_pipeline
   seed: 42
 
-# Local training pipeline default.
+# Official tabular training pipeline config.
 # Default graph: preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models.
-# Search-enabled graph: preprocess_features -> search_trials -> retrain_best -> evaluate_best.
 # Inference remains a separate tabular_infer_template task.
 
 data:
@@ -46,15 +45,6 @@ model:
     - random_forest
     - gradient_boosting
   selection_metric: rmse
-  search:
-    # Phase E: keep disabled by default. Set enabled=true and ensemble.enabled=false
-    # to run the optimization graph:
-    # preprocess_features -> search_trials -> retrain_best -> evaluate_best.
-    enabled: false
-    method: grid
-    max_trials: 20
-    search_space: {}
-    retrain_best: true
   ensemble:
     enabled: true
     method: mean_topk

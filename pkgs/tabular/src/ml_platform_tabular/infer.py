@@ -176,6 +176,14 @@ def _load_feature_spec(cfg: dict[str, Any], model_path: Path) -> dict[str, Any]:
     return _read_json_if_exists(_feature_spec_path(cfg, model_path))
 
 
+def _load_preprocess_bundle(cfg: dict[str, Any], model_path: Path) -> dict[str, Any]:
+    path = _preprocess_bundle_path(cfg, model_path)
+    if path is None or not path.exists():
+        return {}
+    bundle = load_joblib(path)
+    return bundle if isinstance(bundle, dict) else {}
+
+
 def _estimator_feature_columns(estimator: Any) -> list[str] | None:
     columns = getattr(estimator, "feature_columns", None)
     if isinstance(columns, list):
@@ -196,6 +204,7 @@ def _features_for_inference(
     estimator: Any,
     model_info: dict[str, Any],
     feature_spec: dict[str, Any],
+    preprocess_bundle: dict[str, Any],
 ) -> list[str]:
     data_cfg = cfg.get("data", {})
     explicit = data_cfg.get("feature_columns")
@@ -211,6 +220,7 @@ def _features_for_inference(
         model_info.get("feature_columns"),
         _estimator_feature_columns(estimator),
         feature_spec.get("feature_columns"),
+        preprocess_bundle.get("feature_columns"),
     ):
         if feature_columns:
             return select_features(
@@ -304,6 +314,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
     estimator = load_joblib(model_path)
     model_info = _load_model_info(cfg, model_path)
     feature_spec = _load_feature_spec(cfg, model_path)
+    preprocess_bundle = _load_preprocess_bundle(cfg, model_path)
 
     df = load_dataset(cfg)
     features = _features_for_inference(
@@ -313,6 +324,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         estimator=estimator,
         model_info=model_info,
         feature_spec=feature_spec,
+        preprocess_bundle=preprocess_bundle,
     )
 
     prediction_name = cfg.get("output", {}).get("prediction_name", "predictions.csv")

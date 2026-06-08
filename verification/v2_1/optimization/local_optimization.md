@@ -1,5 +1,8 @@
 # V2.1 Local Optimization Verification
 
+> Historical / future evidence: optimization is not current primary product
+> scope. This file does not promote optimization to supported.
+
 Date: 2026-05-26 JST
 
 ## Commands

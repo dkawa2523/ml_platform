@@ -303,7 +303,7 @@ Goal: make the correct training pipeline visible in the ClearML Pipeline tab.
 Implemented:
 
 - internal `tabular_stage_template`
-- user-facing Pipeline-tab drafts:
+- historical Pipeline-tab drafts:
   `tabular_train_pipeline_template`, `tabular_train_full_pipeline_template`,
   and `tabular_train_full_ensemble_pipeline_template`
 - ClearML graph:
@@ -312,6 +312,9 @@ Implemented:
   and evaluation
 - `tabular_train_template`, `tabular_eval_template`, and
   `tabular_pipeline_template` isolated as deprecated compatibility targets
+- Later Phase A scope shrink made `tabular_train_pipeline_template`,
+  `tabular_infer_template`, and `tabular_stage_template` the only default sync
+  targets. See `docs/SPEC.md` for current template policy.
 
 Deferred:
 
@@ -325,21 +328,25 @@ training pipeline stage.
 
 Implemented:
 
-- `Model/source_type` support for `task_id`, `artifact_url`,
-  `clearml_model_id`, and `local_path`
+- primary `Model/source_type` support for `task_id` and `local_path`
 - `Model/model_selector` support for `best`, `ensemble`, and model names
 - Pipeline controller task id and direct stage task id resolution
 - local inference from `latest_training_pipeline` best/ensemble artifacts
+- explicit-only future / experimental code paths for `artifact_url` and
+  `clearml_model_id`; these are not primary template UI parameters
 
 Deferred:
 
+- remote promotion of `source_type=task_id` best/ensemble inference to supported
 - inference pipeline
 - online serving
 - richer metadata recovery from ClearML Model registry
 
-## Phase E: Stage-Based Optimization Pipeline
+## Phase E: Stage-Based Optimization Pipeline (Future / Experimental Evidence)
 
 Goal: treat optimization as a pipeline shape instead of hiding it inside train.
+This phase is not primary product scope after the entrypoint shrink; keep it as
+future / experimental evidence unless `docs/SPEC.md` promotes it.
 
 Implemented:
 

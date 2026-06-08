@@ -1,19 +1,20 @@
 # ClearML Training Pipeline Verification
 
-Date: 2026-06-04
+Date: 2026-06-08
 
 ## Scope
 
-Phase C implements the ClearML stage-based training pipeline graph:
+Phase C normalizes the primary ClearML training pipeline graph:
 
 ```text
 preprocess_features
   -> train_<model>*
-  -> build_ensemble optional
+  -> build_ensemble
   -> evaluate_models
 ```
 
 Inference is intentionally excluded and remains `tabular_infer_template`.
+Optimization is intentionally excluded from the primary graph.
 
 ## Dry-Run Commands
 
@@ -26,12 +27,12 @@ Inference is intentionally excluded and remains `tabular_infer_template`.
 
 Result: pass
 
-- task templates: `tabular_infer_template`, `tabular_stage_template`
-- Pipeline-tab drafts:
+- default sync targets:
+  - `tabular_infer_template`
+  - `tabular_stage_template`
   - `tabular_train_pipeline_template`
-  - `tabular_train_full_pipeline_template`
-  - `tabular_train_full_ensemble_pipeline_template`
-- default local alias graph from `config/tasks/tabular_pipeline.yaml`:
+- primary Pipeline-tab draft: `tabular_train_pipeline_template`
+- graph from `config/tasks/tabular_pipeline.yaml`:
   - `preprocess_features`
   - `train_linear`
   - `train_ridge`
@@ -40,8 +41,10 @@ Result: pass
   - `build_ensemble`
   - `evaluate_models`
 - all graph nodes use `tabular_stage_template`
-- model refs use JSON placeholders such as `${train_linear.artifacts.model.url}`
-- ensemble refs use `${build_ensemble.artifacts.model.url}`
+- `train_<model>` steps receive preprocess artifact refs
+- `build_ensemble` receives JSON `Input/model_refs`
+- `evaluate_models` receives JSON `Input/model_refs` and `Input/ensemble_ref`
+- Pipeline UI params do not expose `Model/search_*`
 
 ## Expected Stage Artifacts
 
@@ -54,9 +57,12 @@ Result: pass
 
 Result: not run
 
-Remote dev server execution still needs to be performed from the ClearML Pipeline tab for at least:
+Remote dev server execution still needs to be performed from the ClearML
+Pipeline tab:
 
 - `tabular_train_pipeline_template`
-- `tabular_train_full_ensemble_pipeline_template`
+- candidates: `linear`, `ridge`, `random_forest`, `gradient_boosting`
+- ensemble enabled
 
-Do not promote ClearML stage-based training pipelines to supported scope until that remote evidence is recorded.
+Do not promote the ClearML stage-based training pipeline to supported scope
+until that remote evidence is recorded.

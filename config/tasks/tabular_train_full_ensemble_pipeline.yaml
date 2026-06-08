@@ -1,8 +1,7 @@
 task: tabular_train_full_ensemble_pipeline
 
-# User-facing ClearML Pipeline-tab draft config for the experimental full
-# implemented-model training graph with ensemble. No ensemble-specific template
-# is created.
+# Deprecated / sync-excluded. Full ensemble pipeline is not a primary product
+# entrypoint in Phase A. Keep this file only as a delete candidate.
 
 run:
   name: tabular_train_full_ensemble_pipeline

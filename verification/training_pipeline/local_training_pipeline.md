@@ -1,9 +1,9 @@
 # Local Training Pipeline Verification
 
-Date: 2026-06-03
+Date: 2026-06-08
 
-Scope: Phase B local training pipeline only. ClearML stage graph is Phase C.
-Inference is intentionally not part of this pipeline.
+Scope: Phase B local training pipeline only. Inference and optimization are
+intentionally not part of the primary training pipeline.
 
 ## Commands
 
@@ -15,7 +15,7 @@ Inference is intentionally not part of this pipeline.
 Run directory:
 
 ```text
-outputs\tabular_training_pipeline_20260603T221203Z
+outputs\tabular_training_pipeline_20260608T023305Z
 ```
 
 ## Stage Summary
@@ -26,6 +26,7 @@ preprocess_features
   -> train_ridge
   -> train_random_forest
   -> train_gradient_boosting
+  -> train_multiple_models
   -> build_ensemble
   -> evaluate_models
 ```
@@ -49,6 +50,8 @@ candidate models: `linear`, `ridge`, `random_forest`, and
 | `train_random_forest/model.joblib` | present |
 | `train_gradient_boosting/model.joblib` | present |
 | per-model `validation_predictions.csv` | present |
+| `train_multiple_models/model_refs.json` | present |
+| `train_multiple_models/metrics_by_model.json` | present |
 | `build_ensemble/model.joblib` | present |
 | `build_ensemble/ensemble_info.json` | present |
 | `build_ensemble/ensemble_predictions.csv` | present |
@@ -64,3 +67,6 @@ candidate models: `linear`, `ridge`, `random_forest`, and
 Pass. The local training pipeline runs the intended training stages and does not
 produce inference outputs. `tabular_infer_template` remains the separate
 inference path.
+
+`model.search.enabled=true` is rejected by the primary local training pipeline
+in Phase B. Optimization remains future / experimental.

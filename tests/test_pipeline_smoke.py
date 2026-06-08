@@ -64,12 +64,15 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert (result.run_dir / "train_ridge").is_dir()
     assert (result.run_dir / "train_random_forest").is_dir()
     assert (result.run_dir / "train_gradient_boosting").is_dir()
+    assert (result.run_dir / "train_multiple_models").is_dir()
     assert (result.run_dir / "build_ensemble").is_dir()
     assert (result.run_dir / "evaluate_models").is_dir()
 
     for artifact in [
         "preprocess_bundle",
         "feature_spec",
+        "model_refs",
+        "metrics_by_model",
         "leaderboard",
         "best_model",
         "best_model_json",
@@ -103,6 +106,21 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert best_model["best_model_artifact"] == str(result.artifacts["best_model"])
     assert result.artifacts["best_model"].exists()
     assert result.extra["best_model"]["model_name"] == best_model["model_name"]
+    model_refs = read_json(result.artifacts["model_refs"])
+    assert model_refs["stage"] == "train_multiple_models"
+    assert {item["model_name"] for item in model_refs["models"]} == {
+        "linear",
+        "ridge",
+        "random_forest",
+        "gradient_boosting",
+    }
+    metrics_by_model = read_json(result.artifacts["metrics_by_model"])
+    assert set(metrics_by_model["metrics_by_model"]) == {
+        "linear",
+        "ridge",
+        "random_forest",
+        "gradient_boosting",
+    }
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
@@ -111,7 +129,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert not (tmp_path / "outputs" / "latest_train").exists()
 
 
-def test_local_optimization_pipeline_grid_search_graph_and_artifacts(tmp_path):
+def test_local_training_pipeline_rejects_search_enabled_primary_flow(tmp_path):
     train_path, _ = _write_training_data(tmp_path, rows=40)
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
@@ -127,39 +145,8 @@ def test_local_optimization_pipeline_grid_search_graph_and_artifacts(tmp_path):
         "search_space": {"alpha": [0.1, 1.0]},
     }
 
-    result = run_pipeline(cfg)
-
-    assert result.extra["pipeline_kind"] == "optimization"
-    assert result.extra["stages"] == ["preprocess_features", "search_trials", "retrain_best", "evaluate_best"]
-    assert "infer_predictions" not in result.tables
-    assert (result.run_dir / "preprocess_features").is_dir()
-    assert (result.run_dir / "search_trials").is_dir()
-    assert (result.run_dir / "retrain_best").is_dir()
-    assert (result.run_dir / "evaluate_best").is_dir()
-
-    for artifact in [
-        "preprocess_bundle",
-        "feature_spec",
-        "optimization_summary",
-        "best_params",
-        "model",
-        "model_info",
-        "best_model",
-        "best_model_json",
-        "evaluation_report",
-        "metrics",
-        "manifest",
-    ]:
-        assert result.artifacts[artifact].exists()
-    assert result.tables["optimization_trials"].exists()
-    trials = pd.read_csv(result.tables["optimization_trials"])
-    assert len(trials) == 2
-    assert set(trials["model_name"]) == {"ridge"}
-    best = read_json(result.artifacts["best_model_json"])
-    assert best["metric_source"] == "search_trials_validation"
-    assert best["best_model_artifact"] == str(result.artifacts["best_model"])
-    assert (tmp_path / "outputs" / "latest_optimization_pipeline" / "manifest.json").exists()
-    assert (tmp_path / "outputs" / "latest_training_pipeline" / "manifest.json").exists()
+    with pytest.raises(ValueError, match="future/experimental"):
+        run_pipeline(cfg)
 
 
 def test_local_optimization_pipeline_rejects_search_and_ensemble(tmp_path):
@@ -167,36 +154,29 @@ def test_local_optimization_pipeline_rejects_search_and_ensemble(tmp_path):
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["search"]["enabled"] = True
+    cfg["model"]["search"] = {"enabled": True}
 
-    with pytest.raises(ValueError, match="cannot be combined"):
+    with pytest.raises(ValueError, match="future/experimental"):
         run_pipeline(cfg)
 
 
-def test_local_optimization_pipeline_candidate_keyed_random_search(tmp_path):
+def test_local_training_pipeline_rejects_candidate_keyed_search_primary_flow(tmp_path):
     train_path, _ = _write_training_data(tmp_path, rows=50)
-    rows = []
-    for index in range(2):
-        cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
-        cfg["runtime"]["output_dir"] = str(tmp_path / f"outputs_{index}")
-        cfg["data"]["local_path"] = str(train_path)
-        cfg["run"]["seed"] = 123
-        cfg["model"]["params"] = {}
-        cfg["model"]["candidates"] = ["linear", "ridge"]
-        cfg["model"]["ensemble"]["enabled"] = False
-        cfg["model"]["search"] = {
-            "enabled": True,
-            "method": "random",
-            "max_trials": 2,
-            "search_space": {"ridge": {"alpha": [0.1, 1.0, 10.0]}},
-        }
-        result = run_pipeline(cfg)
-        trials = pd.read_csv(result.tables["optimization_trials"])
-        rows.append(trials["model_params"].tolist())
-        assert set(trials["model_name"]) <= {"linear", "ridge"}
+    cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
+    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["params"] = {}
+    cfg["model"]["candidates"] = ["linear", "ridge"]
+    cfg["model"]["ensemble"]["enabled"] = False
+    cfg["model"]["search"] = {
+        "enabled": True,
+        "method": "random",
+        "max_trials": 2,
+        "search_space": {"ridge": {"alpha": [0.1, 1.0, 10.0]}},
+    }
 
-    assert len(rows[0]) == 2
-    assert rows[0] == rows[1]
+    with pytest.raises(ValueError, match="future/experimental"):
+        run_pipeline(cfg)
 
 
 def test_local_training_pipeline_without_ensemble(tmp_path):
@@ -234,6 +214,8 @@ def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path)
     best_manifest = read_json(best_result.artifacts["manifest"])
     assert best_manifest["extra"]["source_type"] == "local_path"
     assert best_manifest["extra"]["model_selector"] == "best"
+    assert best_manifest["extra"]["feature_spec_path"]
+    assert best_manifest["extra"]["preprocess_bundle_path"]
     assert best_manifest["extra"]["resolved_model_path"].endswith("evaluate_models\\best_model.joblib") or best_manifest["extra"][
         "resolved_model_path"
     ].endswith("evaluate_models/best_model.joblib")

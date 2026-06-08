@@ -1,54 +1,38 @@
-# Stage-Based Training Pipeline Release Gate
+# Primary Training / Inference Release Gate
 
-Date: 2026-06-04
+Date: 2026-06-08
 Branch: `main`
-Local HEAD: `fc219af`
+Local HEAD: `5f501ae` plus uncommitted release-candidate changes
 Profile: `config/profiles/clearml-dev.yaml`
 
 ## Decision
 
 Result: not ready for release promotion.
 
-Local execution, tests, ClearML template dry-run, and ClearML graph dry-run all
-passed. ClearML remote execution is blocked because the working tree contains
-the current implementation and `config/profiles/clearml-dev.yaml` runs Agents
-from GitHub `main`. Launching remote tasks before commit/push would validate the
-old remote checkout, not this release candidate.
+Local execution, tests, ClearML template dry-run, and ClearML graph dry-run pass
+for the primary scope. ClearML remote execution is still pending because the
+dev profile clones GitHub `main`; running the Agent before commit/push would
+validate the old remote checkout. Do not use old full-template, optimization,
+or `train -> eval -> infer` compatibility evidence as the current product
+release gate.
 
 ## Required Gates
 
 | gate | status | evidence |
 | --- | --- | --- |
-| Training pipeline local | pass | `outputs/tabular_training_pipeline_20260604T001907Z` contains `preprocess_features`, per-model `train_*`, `build_ensemble`, and `evaluate_models`. |
-| ClearML graph dry-run | pass | `tabular_train_pipeline.yaml` dry-run shows `preprocess_features -> train_linear/ridge/random_forest/gradient_boosting -> evaluate_models`. |
-| Full ensemble graph dry-run | pass | `tabular_train_full_ensemble_pipeline.yaml` dry-run shows `preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models`. |
-| Inference local | pass | `outputs/tabular_infer_20260604T001914Z/predictions.csv` exists and uses the best model from the training pipeline. |
-| Optimization local | pass | `outputs/tabular_training_pipeline_20260604T001936Z` contains `search_trials`, `retrain_best`, and `evaluate_best`. |
-| Optimization graph dry-run | pass | Override dry-run shows `preprocess_features -> search_trials -> retrain_best -> evaluate_best`. |
-| Tests | pass | `57 passed`. |
+| Training pipeline local | pass | `outputs\tabular_training_pipeline_20260608T035008Z` and `verification/training_pipeline/local_training_pipeline.md` |
+| ClearML graph dry-run | pass | `verification/training_pipeline/clearml_training_pipeline.md` |
+| Inference local | pass | best: `outputs\tabular_infer_20260608T035008Z`; ensemble: `outputs\tabular_infer_20260608T035042Z`; see `verification/inference/infer_task_reference.md` |
+| Template sync dry-run | pass | Default sync targets are `tabular_train_pipeline_template`, `tabular_infer_template`, and `tabular_stage_template`. |
+| Tests | pass | `56 passed` |
 | ClearML dependency boundary | pass | `rg "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular` returned no matches. |
-| Docs cleanup | pass | Current docs call `train -> eval -> infer` historical/compatibility, not the official training pipeline. |
-| ClearML remote | blocked | Current changes are uncommitted/unpushed while Agent profile clones GitHub `main`. |
-
-## Commands
-
-```powershell
-.\.venv\Scripts\python.exe scripts\make_sample_data.py
-.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
-.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe scripts\sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
-.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_train_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
-.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_train_full_ensemble_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
-.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set model.ensemble.enabled=false --set 'model.candidates=[]' --set model.name=ridge --set 'model.params={}' --set model.search.enabled=true --set model.search.method=grid --set model.search.max_trials=2 --set 'model.search.search_space={"alpha":[0.1,1.0]}'
-.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run --set model.ensemble.enabled=false --set 'model.candidates=[]' --set model.name=ridge --set 'model.params={}' --set model.search.enabled=true --set model.search.method=grid --set model.search.max_trials=2 --set 'model.search.search_space={"alpha":[0.1,1.0]}'
-git diff --check
-```
+| ClearML remote training pipeline | pending | Run `tabular_train_pipeline_template` from the dev Pipeline tab. |
+| ClearML remote inference task-id best | pending | Run `tabular_infer_template` with `source_type=task_id`, `model_selector=best`. |
+| ClearML remote inference task-id ensemble | pending | Run `tabular_infer_template` with `source_type=task_id`, `model_selector=ensemble`. |
 
 ## Artifact Checklist
 
-Training pipeline artifacts:
+Primary training artifacts:
 
 - `preprocess_features/preprocess_bundle.joblib`: pass
 - `preprocess_features/feature_spec.json`: pass
@@ -64,47 +48,76 @@ Training pipeline artifacts:
 
 Inference artifacts:
 
-- `predictions.csv`: pass
-- `manifest.json`: pass
+- best-model `predictions.csv`: pass
+- ensemble `predictions.csv`: pass
 
-Optimization artifacts:
+## Current Product Graphs
 
-- `search_trials/optimization_trials.csv`: pass
-- `search_trials/best_params.json`: pass
-- `retrain_best/model.joblib`: pass
-- `evaluate_best/evaluation_report.json`: pass
+Training:
+
+```text
+preprocess_features
+  -> train_linear
+  -> train_ridge
+  -> train_random_forest
+  -> train_gradient_boosting
+  -> build_ensemble
+  -> evaluate_models
+```
+
+Inference:
+
+```text
+source_task_id + model_selector
+or local_model_path
+-> inference dataset
+-> feature align
+-> predict
+-> predictions.csv
+```
+
+## Commands
+
+```powershell
+.\.venv\Scripts\python.exe scripts\make_sample_data.py
+.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
+.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+git diff --check
+```
 
 ## Scope Classification
 
-Supported:
+Primary:
 
-- Local stage-based training pipeline for official models.
-- Local `tabular_infer_template` execution from local/best model references.
-- Local stage-based grid/random optimization.
-- ClearML task/template mapping and graph dry-run behavior.
+- `tabular_train_pipeline_template`
+- `tabular_infer_template`
+- internal `tabular_stage_template`
+- local training pipeline for official models
+- local inference from best / ensemble / local model references
 
-Experimental:
+Future / experimental:
 
-- ClearML stage-based training pipeline remote execution.
-- ClearML full ensemble pipeline remote execution.
-- ClearML inference `source_type=task_id` for best/ensemble selectors.
-- Additional sklearn models in full templates.
+- optimization pipeline
+- `artifact_url` inference source
+- `clearml_model_id` inference source
+- full template configs
+- external model full pipeline
+- additional sklearn models beyond the official four
 
-Future:
+Historical compatibility:
 
-- Optuna, Ray Tune, Bayesian optimization.
-- Per-trial ClearML child tasks.
-- LightGBM, XGBoost, CatBoost.
-- Stacking, advanced plots, online serving, large dataset inference.
+- `tabular_pipeline_template`
+- `Run/pipeline_mode`
+- fixed `train -> eval -> infer` release gates
 
 ## Required Fixes Before Release
 
-- Commit and push the current implementation to the branch used by
-  `config/profiles/clearml-dev.yaml`.
-- Sync ClearML templates on the dev server.
+- Sync the three primary ClearML templates on the dev server.
 - Run remote dev verification for:
   - `tabular_train_pipeline_template`
-  - `tabular_train_full_ensemble_pipeline_template`
   - `tabular_infer_template` with `source_type=task_id`, `model_selector=best`
   - `tabular_infer_template` with `source_type=task_id`, `model_selector=ensemble`
 - Record task IDs, graph shape, artifacts, metrics, and sanitized failure logs.
@@ -113,9 +126,9 @@ Future:
 
 Commit candidates:
 
-- implementation files under `pkgs/tabular`
+- `pkgs/tabular` implementation files
 - ClearML adapter/template/pipeline files under `clearml`
-- task configs under `config/tasks`
+- primary task configs under `config/tasks`
 - focused tests
 - docs and verification markdown
 

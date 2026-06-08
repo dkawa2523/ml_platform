@@ -332,6 +332,77 @@ def _train_model(
     }
 
 
+def _model_ref_payload(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "stage": item["stage"],
+        "model_name": item["model_name"],
+        "model_params": item["model_params"],
+        "artifact_kind": item["artifact_kind"],
+        "model": str(item["artifacts"]["model"]),
+        "model_info": str(item["artifacts"]["model_info"]),
+        "metrics": str(item["artifacts"]["metrics"]),
+        "validation_predictions": str(item["tables"]["validation_predictions"]),
+    }
+
+
+def _train_multiple_models(
+    cfg: dict[str, Any],
+    preprocess: dict[str, Any],
+    pipeline_dir: Path,
+    metric_names: list[str] | str | None,
+    selection_metric: str,
+) -> dict[str, Any]:
+    stage_dir = pipeline_dir / "train_multiple_models"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    model_cfg = cfg.get("model", {})
+    candidates = model_candidates(model_cfg)
+    if not candidates:
+        raise ValueError("Training pipeline requires at least one model candidate.")
+
+    model_results = [_train_model(cfg, preprocess, candidate, pipeline_dir, metric_names) for candidate in candidates]
+    refs = [_model_ref_payload(item) for item in model_results]
+    metrics_by_model = {
+        item["model_name"]: {
+            "stage": item["stage"],
+            "artifact_kind": item["artifact_kind"],
+            "selection_metric": selection_metric,
+            "selection_value": metric_value(item["metrics"], selection_metric),
+            "metrics": item["metrics"],
+        }
+        for item in model_results
+    }
+    model_refs_path = write_json(
+        {
+            "stage": "train_multiple_models",
+            "candidate_count": len(model_results),
+            "selection_metric": selection_metric,
+            "models": refs,
+        },
+        stage_dir / "model_refs.json",
+    )
+    metrics_by_model_path = write_json(
+        {
+            "stage": "train_multiple_models",
+            "candidate_count": len(model_results),
+            "selection_metric": selection_metric,
+            "metrics_by_model": metrics_by_model,
+        },
+        stage_dir / "metrics_by_model.json",
+    )
+    return {
+        "stage": "train_multiple_models",
+        "stage_dir": stage_dir,
+        "model_results": model_results,
+        "model_refs": refs,
+        "metrics_by_model": metrics_by_model,
+        "artifacts": {
+            "model_refs": model_refs_path,
+            "metrics_by_model": metrics_by_model_path,
+        },
+    }
+
+
 def _build_ensemble(
     cfg: dict[str, Any],
     preprocess: dict[str, Any],
@@ -828,7 +899,11 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
     model_cfg = cfg.get("model", {})
     search_cfg = search_config(model_cfg)
     if search_cfg["enabled"]:
-        return _run_optimization_pipeline(cfg)
+        raise ValueError(
+            "model.search.enabled=true is future/experimental and is not part of the "
+            "primary local training pipeline. Set model.search.enabled=false for "
+            "preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models."
+        )
 
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
     run_name = cfg.get("run", {}).get("name", "tabular_training_pipeline")
@@ -839,14 +914,15 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
     metric_names = _metric_names(cfg.get("metrics", {}).get("names"), selection_metric)
 
     preprocess = _preprocess_features(cfg, pipeline_dir)
-    candidates = model_candidates(model_cfg)
-    model_results = [_train_model(cfg, preprocess, candidate, pipeline_dir, metric_names) for candidate in candidates]
+    trained = _train_multiple_models(cfg, preprocess, pipeline_dir, metric_names, selection_metric)
+    model_results = trained["model_results"]
     ranked_models = _ranked_results(model_results, selection_metric)
     ensemble_result = _build_ensemble(cfg, preprocess, ranked_models, pipeline_dir, metric_names, selection_metric)
     evaluation = _evaluate_models(cfg, model_results, ensemble_result, pipeline_dir, selection_metric)
 
     artifacts: dict[str, Path] = {
         **preprocess["artifacts"],
+        **trained["artifacts"],
         "leaderboard": evaluation["tables"]["leaderboard"],
         **evaluation["artifacts"],
     }
@@ -871,11 +947,14 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
         "stages": [
             "preprocess_features",
             *[item["stage"] for item in model_results],
+            "train_multiple_models",
             *(["build_ensemble"] if ensemble_result is not None else []),
             "evaluate_models",
         ],
         "candidate_models": [item["model_name"] for item in model_results],
         "selection_metric": selection_metric,
+        "model_refs": trained["model_refs"],
+        "metrics_by_model": trained["metrics_by_model"],
         "best_model": evaluation["report"]["best_model"],
         "ensemble": (
             {

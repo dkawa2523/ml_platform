@@ -184,12 +184,12 @@ def test_clearml_ui_params_are_task_specific():
         "Model/source_type",
         "Model/source_task_id",
         "Model/model_selector",
-        "Model/model_artifact_url",
-        "Model/clearml_model_id",
         "Model/local_model_path",
-        "Model/artifact_path",
-        "Model/info_path",
     }.issubset(infer)
+    assert "Model/model_artifact_url" not in infer
+    assert "Model/clearml_model_id" not in infer
+    assert "Model/artifact_path" not in infer
+    assert "Model/info_path" not in infer
     assert {
         "Run/task",
         "Run/name",
@@ -197,14 +197,14 @@ def test_clearml_ui_params_are_task_specific():
         "Input/local_path",
         "Input/target_column",
         "Model/candidates",
-        "Model/search_enabled",
-        "Model/search_method",
-        "Model/search_space",
-        "Model/max_trials",
         "Model/ensemble_enabled",
         "Model/ensemble_method",
         "Model/ensemble_top_k",
     }.issubset(pipeline)
+    assert "Model/search_enabled" not in pipeline
+    assert "Model/search_method" not in pipeline
+    assert "Model/search_space" not in pipeline
+    assert "Model/max_trials" not in pipeline
     assert "Output/prediction_name" not in pipeline
     assert "Run/stage" in stage
     assert "Input/preprocess_bundle" in stage
@@ -213,7 +213,7 @@ def test_clearml_ui_params_are_task_specific():
 
 def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
     pipelines = load_clearml_pipelines_module()
-    params = pipelines.pipeline_ui_params("config/tasks/tabular_train_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    params = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
     assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Model", "Output"}
     assert {
@@ -229,22 +229,22 @@ def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
         "Model/params",
         "Model/candidates",
         "Model/selection_metric",
-        "Model/search_enabled",
-        "Model/search_method",
-        "Model/search_space",
-        "Model/max_trials",
         "Model/ensemble_enabled",
         "Model/ensemble_method",
         "Model/ensemble_top_k",
         "Model/feature_preset",
     }.issubset(params)
+    assert "Model/search_enabled" not in params
+    assert "Model/search_method" not in params
+    assert "Model/search_space" not in params
+    assert "Model/max_trials" not in params
     assert "Run/pipeline_mode" not in params
     assert not [key for key in params if key.startswith("Output/")]
 
 
 def test_clearml_pipeline_new_run_args_are_mapped_to_ui_params():
     pipelines = load_clearml_pipelines_module()
-    defaults = pipelines.pipeline_ui_params("config/tasks/tabular_train_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    defaults = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
     task_params = {
         "Model/candidates": '["linear"]',
         "Args/Model/candidates": '["linear","ridge"]',
@@ -370,7 +370,7 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_best_task():
 def test_clearml_resolves_infer_source_from_pipeline_controller_ensemble_task():
     adapter = load_clearml_adapter_module()
     tasks = [
-        FakeTask("pipe", "tabular_train_full_ensemble_pipeline_template"),
+        FakeTask("pipe", "tabular_train_pipeline_template"),
         FakeTask(
             "build",
             "build_ensemble",
@@ -455,8 +455,6 @@ def test_clearml_launch_targets_use_infer_stage_and_training_pipeline_drafts():
         "tabular_infer_template",
         "tabular_stage_template",
         "tabular_train_pipeline_template",
-        "tabular_train_full_pipeline_template",
-        "tabular_train_full_ensemble_pipeline_template",
     ]
     assert [name for name, _, _ in templates.TASK_TEMPLATES] == [
         "tabular_infer_template",
@@ -464,6 +462,9 @@ def test_clearml_launch_targets_use_infer_stage_and_training_pipeline_drafts():
     ]
     assert [name for name, _, _ in templates.PIPELINE_TEMPLATES] == [
         "tabular_train_pipeline_template",
+    ]
+    assert templates.PIPELINE_TEMPLATES[0][1] == "config/tasks/tabular_pipeline.yaml"
+    assert [name for name, _, _ in templates.DEPRECATED_PIPELINE_TEMPLATES] == [
         "tabular_train_full_pipeline_template",
         "tabular_train_full_ensemble_pipeline_template",
     ]
@@ -474,7 +475,7 @@ def test_clearml_launch_targets_use_infer_stage_and_training_pipeline_drafts():
 
 def test_clearml_training_pipeline_plan_is_stage_graph():
     pipelines = load_clearml_pipelines_module()
-    plan = pipelines.build_pipeline_plan("config/tasks/tabular_train_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    plan = pipelines.build_pipeline_plan("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
     assert plan["kind"] == "training"
     assert [step["name"] for step in plan["steps"]] == [
@@ -483,6 +484,7 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
         "train_ridge",
         "train_random_forest",
         "train_gradient_boosting",
+        "build_ensemble",
         "evaluate_models",
     ]
     assert all(step["base_task_name"] == "tabular_stage_template" for step in plan["steps"])
@@ -492,92 +494,37 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
         "train_ridge",
         "train_random_forest",
         "train_gradient_boosting",
+        "build_ensemble",
     ]
     assert plan["steps"][1]["parameter_override"]["Run/stage"] == "train_model"
+    assert plan["steps"][-2]["parameter_override"]["Run/stage"] == "build_ensemble"
     assert plan["steps"][-1]["parameter_override"]["Run/stage"] == "evaluate_models"
     assert "${train_linear.artifacts.model.url}" in plan["steps"][-1]["parameter_override"]["Input/model_refs"]
+    assert "${build_ensemble.artifacts.model.url}" in plan["steps"][-1]["parameter_override"]["Input/ensemble_ref"]
 
 
-def test_clearml_full_ensemble_pipeline_plan_has_ensemble_stage_and_refs():
-    pipelines = load_clearml_pipelines_module()
-    plan = pipelines.build_pipeline_plan(
-        "config/tasks/tabular_train_full_ensemble_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-    )
+def test_clearml_full_pipeline_templates_are_sync_excluded():
+    templates = load_clearml_templates_module()
 
-    names = [step["name"] for step in plan["steps"]]
-    assert "build_ensemble" in names
-    assert names[-1] == "evaluate_models"
-    assert set(plan["candidate_models"]) == {
-        "linear",
-        "ridge",
-        "random_forest",
-        "gradient_boosting",
-        "lasso",
-        "elasticnet",
-        "extra_trees",
-        "knn",
-        "svr",
-        "mlp",
+    deprecated_names = {name for name, _, _ in templates.DEPRECATED_PIPELINE_TEMPLATES}
+    assert deprecated_names == {
+        "tabular_train_full_pipeline_template",
+        "tabular_train_full_ensemble_pipeline_template",
     }
-    build = next(step for step in plan["steps"] if step["name"] == "build_ensemble")
-    evaluate = plan["steps"][-1]
-    assert build["parents"] == [name for name in names if name.startswith("train_")]
-    assert "build_ensemble" in evaluate["parents"]
-    assert "${train_ridge.artifacts.metrics.url}" in build["parameter_override"]["Input/model_refs"]
-    assert "${build_ensemble.artifacts.model.url}" in evaluate["parameter_override"]["Input/ensemble_ref"]
+    assert deprecated_names.isdisjoint({name for name, _, _ in templates.TEMPLATES})
 
 
-def test_clearml_optimization_pipeline_plan_is_stage_graph():
-    pipelines = load_clearml_pipelines_module()
-    plan = pipelines.build_pipeline_plan(
-        "config/tasks/tabular_train_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        ui_params={
-            "Model/params": "{}",
-            "Model/candidates": "[]",
-            "Model/search_enabled": True,
-            "Model/search_method": "grid",
-            "Model/search_space": '{"alpha":[0.1,1.0]}',
-            "Model/max_trials": 2,
-            "Model/ensemble_enabled": False,
-        },
-    )
-
-    assert plan["kind"] == "optimization"
-    assert plan["pipeline_mode"] == "optimization"
-    assert [step["name"] for step in plan["steps"]] == [
-        "preprocess_features",
-        "search_trials",
-        "retrain_best",
-        "evaluate_best",
-    ]
-    assert all(step["base_task_name"] == "tabular_stage_template" for step in plan["steps"])
-    assert plan["steps"][1]["parents"] == ["preprocess_features"]
-    assert plan["steps"][2]["parents"] == ["search_trials"]
-    assert plan["steps"][3]["parents"] == ["retrain_best"]
-    search = plan["steps"][1]
-    retrain = plan["steps"][2]
-    evaluate = plan["steps"][3]
-    assert search["parameter_override"]["Run/stage"] == "search_trials"
-    assert search["parameter_override"]["Model/search_enabled"] is True
-    assert search["parameter_override"]["Model/search_space"] == '{"alpha": [0.1, 1.0]}'
-    assert retrain["parameter_override"]["Input/best_params"] == "${search_trials.artifacts.best_params.url}"
-    assert evaluate["parameter_override"]["Input/model"] == "${retrain_best.artifacts.model.url}"
-    assert evaluate["parameter_override"]["Input/optimization_summary"] == "${search_trials.artifacts.optimization_summary.url}"
-
-
-def test_clearml_optimization_pipeline_plan_rejects_search_and_ensemble():
+def test_clearml_training_pipeline_rejects_search_primary_graph():
     pipelines = load_clearml_pipelines_module()
 
-    with pytest.raises(ValueError, match="cannot be combined"):
+    with pytest.raises(ValueError, match="future/experimental"):
         pipelines.build_pipeline_plan(
-            "config/tasks/tabular_train_pipeline.yaml",
+            "config/tasks/tabular_pipeline.yaml",
             "config/profiles/clearml-dev.yaml",
             ui_params={
                 "Model/search_enabled": True,
-                "Model/search_space": '{"alpha":[1.0]}',
-                "Model/ensemble_enabled": True,
+                "Model/search_space": '{"alpha":[0.1,1.0]}',
+                "Model/ensemble_enabled": False,
             },
         )
 
@@ -599,7 +546,7 @@ def test_clearml_compatibility_full_run_plan_is_three_step_dag(tmp_path):
 def test_clearml_training_pipeline_plan_applies_dataset_and_model_overrides():
     pipelines = load_clearml_pipelines_module()
     plan = pipelines.build_pipeline_plan(
-        "config/tasks/tabular_train_pipeline.yaml",
+        "config/tasks/tabular_pipeline.yaml",
         "config/profiles/clearml-dev.yaml",
         ui_params={
             "Input/clearml_dataset_id": "dataset-id",

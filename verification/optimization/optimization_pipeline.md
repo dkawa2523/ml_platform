@@ -1,5 +1,9 @@
 # Phase E Optimization Pipeline Verification
 
+> Future / experimental evidence: optimization is not primary product scope and
+> this file is not a current release gate. Keep it as implementation evidence
+> until `docs/SPEC.md` promotes optimization.
+
 Date: 2026-06-04
 
 ## Scope

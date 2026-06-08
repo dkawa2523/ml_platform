@@ -1,5 +1,9 @@
 # V2 Remote Template Sync
 
+> Historical compatibility evidence: this file records the old four-template
+> sync set, including `tabular_pipeline_template`. It is not the current
+> primary template sync policy.
+
 Date: 2026-05-28T22:23:38+09:00
 Git commit: `d864267`
 Profile: `config/profiles/clearml-dev.yaml`

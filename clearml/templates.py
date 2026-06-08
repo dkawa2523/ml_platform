@@ -20,7 +20,11 @@ TASK_TEMPLATES = [
     ("tabular_stage_template", "config/tasks/tabular_stage.yaml", "training"),
 ]
 PIPELINE_TEMPLATES = [
-    ("tabular_train_pipeline_template", "config/tasks/tabular_train_pipeline.yaml", "pipeline"),
+    ("tabular_train_pipeline_template", "config/tasks/tabular_pipeline.yaml", "pipeline"),
+]
+# Metadata below is intentionally sync-excluded. Keep it only for compatibility
+# references and delete-candidate tracking; do not append it to TEMPLATES.
+DEPRECATED_PIPELINE_TEMPLATES = [
     ("tabular_train_full_pipeline_template", "config/tasks/tabular_train_full_pipeline.yaml", "pipeline"),
     (
         "tabular_train_full_ensemble_pipeline_template",
@@ -33,6 +37,8 @@ LEGACY_TASK_TEMPLATES = [
     ("tabular_eval_template", "config/tasks/tabular_eval.yaml", "testing"),
 ]
 LEGACY_PIPELINE_TEMPLATE = ("tabular_pipeline_template", "config/tasks/tabular_pipeline.yaml", "pipeline")
+# Default sync targets: tabular_infer_template, tabular_stage_template, and
+# tabular_train_pipeline_template.
 TEMPLATES = TASK_TEMPLATES + PIPELINE_TEMPLATES
 
 
@@ -42,15 +48,15 @@ def _task_type(Task: Any, name: str):
 
 def _template_note(task_name: str) -> str:
     if task_name == "tabular_stage_template":
-        return "Internal stage task for training and optimization pipeline graphs"
+        return "Internal stage task for training pipeline graph steps"
     if task_name == "tabular_infer_template":
         return "User-facing inference task; not part of training pipeline graph"
     if task_name == "tabular_train_pipeline_template":
-        return "User-facing training Pipeline-tab draft; official sklearn models, no ensemble"
+        return "User-facing training Pipeline-tab draft; official sklearn models plus ensemble"
     if task_name == "tabular_train_full_pipeline_template":
-        return "Experimental training Pipeline-tab draft; all implemented sklearn models, no ensemble"
+        return "Deprecated sync-excluded full pipeline draft; not a primary entrypoint"
     if task_name == "tabular_train_full_ensemble_pipeline_template":
-        return "Experimental full training Pipeline-tab draft; all implemented sklearn models plus ensemble"
+        return "Deprecated sync-excluded full ensemble draft; not a primary entrypoint"
     return "Legacy compatibility template; not the current product pipeline"
 
 

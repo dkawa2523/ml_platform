@@ -1,5 +1,8 @@
 # V2.0 Local Pipeline Verification
 
+> Historical compatibility evidence: this file predates the current official
+> training pipeline definition. Treat it as old pipeline-mode evidence only.
+
 Date: 2026-05-26 JST
 
 Git commit at verification time: working tree with V2.0 pipeline productization changes.
