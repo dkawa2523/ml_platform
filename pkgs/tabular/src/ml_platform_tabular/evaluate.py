@@ -13,7 +13,7 @@ from ml_platform_core.io import load_joblib, write_json, write_table
 from ml_platform_core.result import RunResult
 
 from .data import load_dataset, split_xy
-from .metrics import regression_metrics
+from .metrics import regression_metrics, regression_prediction_frame, write_regression_plot_artifacts
 from .model_artifact import default_model_path, load_model_info_for_model, model_info_path
 
 
@@ -39,7 +39,8 @@ def run_evaluate(cfg: dict[str, Any]) -> RunResult:
 
     metric_names = cfg.get("metrics", {}).get("names")
     metrics = regression_metrics(y, y_pred, metrics=metric_names)
-    predictions_path = write_table(df.assign(_prediction=y_pred), run_dir / "evaluation_predictions.csv")
+    predictions_path = write_table(regression_prediction_frame(X, y, y_pred), run_dir / "evaluation_predictions.csv")
+    plots = write_regression_plot_artifacts(y, y_pred, run_dir, prefix="evaluation")
     metrics_path = write_json(metrics, run_dir / "metrics.json")
     config_path = write_config_snapshot(cfg, run_dir)
 
@@ -59,4 +60,11 @@ def run_evaluate(cfg: dict[str, Any]) -> RunResult:
     update_latest(run_dir, output_dir / "latest_eval")
     update_latest(run_dir, output_dir / "latest")
 
-    return RunResult(run_dir=run_dir, metrics=metrics, artifacts=artifacts, tables=tables, extra={"model_source": str(model_path)})
+    return RunResult(
+        run_dir=run_dir,
+        metrics=metrics,
+        artifacts=artifacts,
+        tables=tables,
+        plots=plots,
+        extra={"model_source": str(model_path)},
+    )

@@ -7,6 +7,12 @@ run:
 # Official tabular training pipeline config.
 # Default graph: preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models.
 # Inference remains a separate tabular_infer_template task.
+# Local runs can use data.local_path. ClearML remote Pipeline New Run should use
+# Input/clearml_dataset_id + Input/dataset_file; clearml-dev profile provides
+# dev dataset defaults for the template.
+# ClearML UI examples:
+#   Model/candidates: ["linear","ridge","random_forest"]
+#   Model/model_params_by_name: {"ridge":{"alpha":1.0},"random_forest":{"n_estimators":20}}
 
 data:
   local_path: data/sample_train.csv
@@ -39,13 +45,31 @@ model:
     gradient_boosting:
       n_estimators: 20
       random_state: 42
+    lasso:
+      alpha: 0.01
+      max_iter: 5000
+    elasticnet:
+      alpha: 0.01
+      l1_ratio: 0.5
+      max_iter: 5000
+      random_state: 42
+    extra_trees:
+      n_estimators: 20
+      random_state: 42
+      n_jobs: 1
   candidates:
     - linear
     - ridge
+    - lasso
+    - elasticnet
     - random_forest
+    - extra_trees
     - gradient_boosting
   selection_metric: rmse
   ensemble:
     enabled: true
     method: mean_topk
     top_k: 3
+
+output:
+  report_plots: true

@@ -1,5 +1,10 @@
 task: tabular_eval
 
+# Compatibility-only local task for direct evaluation.
+# Primary product evaluation is the evaluate_models stage in
+# config/tasks/tabular_pipeline.yaml / tabular_stage_template.
+# This file is not a ClearML user-facing template sync target.
+
 run:
   name: tabular_eval
   seed: 42

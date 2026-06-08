@@ -13,19 +13,21 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - `pkgs/core` and `pkgs/tabular` do not import ClearML.
 - Deploy manifests provide a minimal ClearML Agent runtime.
 - Tests are smoke and boundary oriented.
-- Official supported regression models are `linear`, `ridge`, `random_forest`, and `gradient_boosting`.
-- Experimental sklearn regressors are implemented: `lasso`, `elasticnet`, `extra_trees`, `knn`, `svr`, and `mlp`.
+- Official supported regression models are `linear`, `ridge`, `lasso`,
+  `elasticnet`, `random_forest`, `extra_trees`, and `gradient_boosting`.
+- Experimental optional-dependency regressors are `lightgbm`, `xgboost`, and
+  `catboost`. They are not default candidates.
 - `scikit-learn` is a required runtime dependency.
-- Verification evidence lives under `verification/v1/`, `verification/v1_2/`,
-  `verification/v1_3/`, `verification/v2_1/`, `verification/v2_2/`,
-  `verification/v2_remote/`, `verification/training_pipeline/`,
-  `verification/inference/`, and `verification/optimization/`. Start with
-  `verification/README.md` to understand which evidence is current product
-  evidence and which evidence is historical compatibility evidence.
-- V1 single-model switching uses `Model/name` and `Model/params`.
-- Deprecated compatibility full-run behavior may still exist in code, but
-  `Run/pipeline_mode` is not an official training pipeline mode.
-- Comparison uses `Model/candidates` as a list of model names, model-keyed `Model/params`, and `Model/selection_metric`; it writes `leaderboard.csv` and saves only the best model artifact.
+- Current verification evidence lives under `verification/training_pipeline/`
+  and `verification/inference/`. Historical and future-reference evidence lives
+  under `verification/_historical/`. Start with `verification/README.md`.
+- Compatibility single-model tasks use `Model/name` and `Model/params`.
+- Deprecated compatibility full-run evidence exists under verification history,
+  but `Run/pipeline_mode` is not an official training pipeline mode.
+- Comparison uses `Model/candidates` as a list of model names,
+  `Model/model_params_by_name` as model-keyed JSON parameters,
+  `Model/evaluation_metrics`, and `Model/selection_metric`; it writes
+  `leaderboard.csv` and saves only the best model artifact.
 - Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
 - Primary inference uses `source_task_id + model_selector` or
   `local_model_path`. `artifact_url` and `clearml_model_id` remain
@@ -94,6 +96,22 @@ Real sync:
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
+ClearML project layout is profile-managed. The dev profile routes templates to
+`MLPlatform/Dev/Templates/Tabular`, Pipeline-tab drafts/controllers to
+`MLPlatform/Dev/Pipelines/Tabular`, stage runs to
+`MLPlatform/Dev/Runs/Tabular/Stages`, standalone inference tasks to
+`MLPlatform/Dev/Runs/Tabular/Tasks`, and compatibility experiments to
+`MLPlatform/Dev/Experiments/Tabular`.
+
+Current ClearML display names are:
+
+- `template/tabular_train_pipeline`
+- `template/tabular_infer`
+- `internal/tabular_stage`
+
+Old template/run names can remain visible on the ClearML server until a human
+archives them. Do not delete or archive server tasks from repo automation.
+
 PipelineController Agent capacity:
 
 - Remote training pipeline execution needs enough worker slots on the execution
@@ -102,15 +120,21 @@ PipelineController Agent capacity:
 
 Manual UI checks:
 
-- Clone `tabular_infer_template`, set the inference dataset, then choose a
+- Clone `template/tabular_infer`, set the inference dataset, then choose a
   model source:
   `Model/source_type=task_id`, `Model/source_task_id=<pipeline or stage task id>`,
   and `Model/model_selector=best` or `ensemble`.
 - For local-path style checks, use `Model/source_type=local_path` and
   `Model/local_model_path=<training pipeline run dir or model file>`.
-- Open `tabular_train_pipeline_template` from the Pipeline tab and verify:
-  preprocess_features -> train_linear/ridge/random_forest/gradient_boosting ->
-  build_ensemble -> evaluate_models.
+- Open `template/tabular_train_pipeline` from the Pipeline tab and verify:
+  preprocess_features -> train_linear/ridge/lasso/elasticnet/random_forest/
+  extra_trees/gradient_boosting -> build_ensemble -> evaluate_models.
+- Required remote training inputs are `Input/clearml_dataset_id`,
+  `Input/dataset_file`, and `Input/target_column`; local development can use
+  `Input/local_path` plus `Input/target_column`.
+- Use `Model/candidates=["linear","ridge","random_forest"]` style JSON and
+  `Model/model_params_by_name={"ridge":{"alpha":1.0}}` for model-specific
+  parameters. `Output/report_plots=false` suppresses ClearML plot media only.
 - Do not use `tabular_train_full_*` or `tabular_pipeline_template` as primary
   UI entrypoints.
 - Confirm stage artifacts: preprocess bundle, feature spec, per-model model
@@ -146,6 +170,8 @@ See `deploy/README.md`. At minimum verify:
 - Do not add new stage nodes to deprecated templates; use
   `tabular_stage_template` through `tabular_train_pipeline_template`.
 - Do not add model-specific or dataset-specific ClearML templates.
-- Do not mark `gaussian_process`, LightGBM, XGBoost, CatBoost, or TabPFN as supported without a separate verification phase.
+- Do not mark `lightgbm`, `xgboost`, `catboost`, `gaussian_process`, or
+  `tabpfn` as supported without a separate verification phase.
+- Do not reintroduce `knn`, `svr`, or `mlp` into the current product model set.
 - Do not add stacking or weight optimization to ensemble without a new verification phase.
 - Do not add Optuna, Ray Tune, per-trial ClearML child tasks, or an optimize template.

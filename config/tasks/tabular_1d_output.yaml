@@ -1,5 +1,9 @@
 task: tabular_1d_output
 
+# Future / experimental utility.
+# It is not part of the current primary tabular scalar regression training or
+# inference product flow, and it is not a ClearML user-facing template sync target.
+
 run:
   name: tabular_1d_output
 

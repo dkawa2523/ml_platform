@@ -26,6 +26,16 @@ docker push registry.example.com/ml-platform/clearml-agent:prod
 
 Replace `registry.example.com/ml-platform/clearml-agent` in the overlays with the real image repository.
 
+The base image intentionally installs only supported tabular model dependencies.
+Experimental models require an explicit image build choice, for example:
+
+```powershell
+pip install -e "pkgs/tabular[experimental]"
+```
+
+Do not add LightGBM, XGBoost, or CatBoost to required dependencies unless the
+product scope explicitly promotes them.
+
 ## Create Secret
 
 The Agent needs these values:

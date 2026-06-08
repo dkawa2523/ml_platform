@@ -15,7 +15,7 @@ intentionally not part of the primary training pipeline.
 Run directory:
 
 ```text
-outputs\tabular_training_pipeline_20260608T023305Z
+outputs\tabular_training_pipeline_20260608T080026Z
 ```
 
 ## Stage Summary
@@ -24,16 +24,19 @@ outputs\tabular_training_pipeline_20260608T023305Z
 preprocess_features
   -> train_linear
   -> train_ridge
+  -> train_lasso
+  -> train_elasticnet
   -> train_random_forest
+  -> train_extra_trees
   -> train_gradient_boosting
   -> train_multiple_models
   -> build_ensemble
   -> evaluate_models
 ```
 
-The run reported `pipeline_kind=training`, `selection_metric=rmse`, and four
-candidate models: `linear`, `ridge`, `random_forest`, and
-`gradient_boosting`.
+The latest run reported `pipeline_kind=training`, `selection_metric=rmse`, and
+seven supported candidate models: `linear`, `ridge`, `lasso`, `elasticnet`,
+`random_forest`, `extra_trees`, and `gradient_boosting`.
 
 ## Artifact Checklist
 
@@ -47,14 +50,21 @@ candidate models: `linear`, `ridge`, `random_forest`, and
 | `preprocess_features/processed_valid.csv` | present |
 | `train_linear/model.joblib` | present |
 | `train_ridge/model.joblib` | present |
+| `train_lasso/model.joblib` | present |
+| `train_elasticnet/model.joblib` | present |
 | `train_random_forest/model.joblib` | present |
+| `train_extra_trees/model.joblib` | present |
 | `train_gradient_boosting/model.joblib` | present |
 | per-model `validation_predictions.csv` | present |
+| per-model `validation_prediction_vs_actual.svg` | present |
+| per-model `validation_residual_histogram.svg` | present |
 | `train_multiple_models/model_refs.json` | present |
 | `train_multiple_models/metrics_by_model.json` | present |
 | `build_ensemble/model.joblib` | present |
 | `build_ensemble/ensemble_info.json` | present |
 | `build_ensemble/ensemble_predictions.csv` | present |
+| `build_ensemble/ensemble_prediction_vs_actual.svg` | present |
+| `build_ensemble/ensemble_residual_histogram.svg` | present |
 | `evaluate_models/leaderboard.csv` | present |
 | `evaluate_models/best_model.json` | present |
 | `evaluate_models/best_model.joblib` | present |
@@ -65,8 +75,9 @@ candidate models: `linear`, `ridge`, `random_forest`, and
 ## Result
 
 Pass. The local training pipeline runs the intended training stages and does not
-produce inference outputs. `tabular_infer_template` remains the separate
-inference path.
+produce inference outputs. Validation prediction tables include `actual`,
+`prediction`, `residual`, and `abs_error`. `tabular_infer_template` remains the
+separate inference path.
 
 `model.search.enabled=true` is rejected by the primary local training pipeline
 in Phase B. Optimization remains future / experimental.

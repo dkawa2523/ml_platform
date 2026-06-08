@@ -46,3 +46,6 @@ stage_inputs:
   processed_valid: null
   model_refs: []
   ensemble_ref: null
+
+output:
+  report_plots: true

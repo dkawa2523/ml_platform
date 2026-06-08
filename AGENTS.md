@@ -285,6 +285,31 @@ Primary product scope:
 - `evaluation_report.json`
 - `predictions.csv`
 
+Supported tabular regression models:
+
+- `linear`
+- `ridge`
+- `lasso`
+- `elasticnet`
+- `random_forest`
+- `extra_trees`
+- `gradient_boosting`
+
+Experimental models:
+
+- `lightgbm`
+- `xgboost`
+- `catboost`
+
+Experimental models must stay out of default candidates and must run only when
+their optional dependency is installed in the execution environment. Do not mark
+an experimental model as supported without local and ClearML remote evidence.
+Default training pipeline candidates should contain supported models only:
+`linear`, `ridge`, `lasso`, `elasticnet`, `random_forest`, `extra_trees`, and
+`gradient_boosting`.
+ClearML users select models through `Model/candidates`; do not create
+model-specific templates.
+
 Future / experimental scope:
 
 - optimization pipeline
@@ -299,6 +324,15 @@ Future / experimental scope:
 - online serving
 - tabular 1D/2D productization
 - distribution mode decomposition
+
+Out of scope for now:
+
+- `knn`
+- `svr`
+- `mlp`
+- `gaussian_process`
+- `tabpfn`
+- stacking
 
 Do not promote future or experimental features into the primary ClearML UI flow
 without explicit verification evidence and a product-scope update.

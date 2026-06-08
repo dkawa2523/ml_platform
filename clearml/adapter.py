@@ -15,6 +15,85 @@ class ClearMLUnavailable(RuntimeError):
     pass
 
 
+def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
+    """Return ClearML project layout, preferring explicit profile projects."""
+    clearml_cfg = clearml_cfg or {}
+    root = str(clearml_cfg.get("project_root") or "MLPlatform/Dev").rstrip("/")
+    configured = clearml_cfg.get("projects") or {}
+    if not isinstance(configured, dict):
+        configured = {}
+    defaults = {
+        "templates": f"{root}/Templates/Tabular",
+        "pipelines": f"{root}/Pipelines/Tabular",
+        "stages": f"{root}/Runs/Tabular/Stages",
+        "tasks": f"{root}/Runs/Tabular/Tasks",
+        "experiments": f"{root}/Experiments/Tabular",
+    }
+    return {key: str(configured.get(key) or value) for key, value in defaults.items()}
+
+
+def clearml_template_name(template_name: str) -> str:
+    mapping = {
+        "tabular_train_pipeline_template": "template/tabular_train_pipeline",
+        "tabular_infer_template": "template/tabular_infer",
+        "tabular_stage_template": "internal/tabular_stage",
+    }
+    return mapping.get(template_name, template_name)
+
+
+def clearml_tags(
+    run_type: str,
+    *,
+    user_facing: bool = False,
+    internal: bool = False,
+    stage: str | None = None,
+    model: str | None = None,
+) -> list[str]:
+    tags = ["domain:tabular", f"run_type:{run_type}"]
+    if user_facing:
+        tags.append("user_facing:true")
+    if internal:
+        tags.append("internal:true")
+    if stage:
+        tags.append(f"stage:{stage}")
+    if model:
+        tags.append(f"model:{model}")
+    return tags
+
+
+def prefixed_task_name(prefix: str, name: str, run_name: str | None = None) -> str:
+    if name.startswith(("template/", "internal/", "pipeline/", "stage/", "task/")):
+        return name
+    if run_name:
+        return f"{prefix}/{name}/{run_name}"
+    return f"{prefix}/{name}"
+
+
+def stage_task_label(stage: str, model_name: str | None = None) -> str:
+    if stage == "train_model" and model_name:
+        return f"train_{model_name}"
+    return stage
+
+
+def _apply_clearml_metadata(task: Any, *, tags: list[str] | None = None, comment: str | None = None) -> None:
+    tags = tags or []
+    if tags:
+        add_tags = getattr(task, "add_tags", None)
+        set_tags = getattr(task, "set_tags", None)
+        if callable(add_tags):
+            add_tags(tags)
+        elif callable(set_tags):
+            current = []
+            get_tags = getattr(task, "get_tags", None)
+            if callable(get_tags):
+                current = list(get_tags() or [])
+            set_tags(sorted(set(current) | set(tags)))
+    if comment:
+        set_comment = getattr(task, "set_comment", None)
+        if callable(set_comment):
+            set_comment(comment)
+
+
 @contextmanager
 def _without_repo_clearml_shadow() -> Iterator[None]:
     """Avoid accidental shadowing of the official `clearml` package.
@@ -148,8 +227,6 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
     }
     if "stage" in run:
         params["Run/stage"] = run.get("stage")
-    if "pipeline_mode" in run:
-        params["Run/pipeline_mode"] = run.get("pipeline_mode")
     if "data" in cfg:
         data = cfg.get("data", {})
         params.update(
@@ -203,6 +280,10 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Model/artifact_path"] = model.get("artifact_path")
         if "info_path" in model:
             params["Model/info_path"] = model.get("info_path")
+    if "metrics" in cfg:
+        metric_names = cfg.get("metrics", {}).get("names")
+        if metric_names is not None:
+            params["Model/evaluation_metrics"] = _ui_value(metric_names)
     if "features" in cfg:
         params["Model/feature_preset"] = cfg.get("features", {}).get("preset")
     if "output" in cfg:
@@ -211,6 +292,8 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Output/prediction_name"] = output.get("prediction_name")
         if "chunk_size" in output:
             params["Output/chunk_size"] = output.get("chunk_size")
+        if "report_plots" in output:
+            params["Output/report_plots"] = as_bool(output.get("report_plots"), default=True)
     if "stage_inputs" in cfg:
         for key, value in (cfg.get("stage_inputs") or {}).items():
             params[f"Input/{key}"] = _ui_value(value)
@@ -247,6 +330,8 @@ def apply_ui_params(
     cfg.setdefault("run", {})
     if any(key.startswith("Model/") for key in connected):
         cfg.setdefault("model", {})
+    if "Model/evaluation_metrics" in connected:
+        cfg.setdefault("metrics", {})
     if "Model/feature_preset" in connected:
         cfg.setdefault("features", {})
     if any(key.startswith("Output/") for key in connected):
@@ -260,8 +345,6 @@ def apply_ui_params(
         cfg["run"]["seed"] = int(connected["Run/seed"])
     if connected.get("Run/stage"):
         cfg["run"]["stage"] = connected["Run/stage"]
-    if connected.get("Run/pipeline_mode"):
-        cfg["run"]["pipeline_mode"] = connected["Run/pipeline_mode"]
 
     if "data" in cfg:
         if resolved_local_path is not None:
@@ -283,12 +366,16 @@ def apply_ui_params(
 
     if connected.get("Model/name"):
         cfg["model"]["name"] = connected["Model/name"]
-    if "Model/params" in connected:
+    if "Model/model_params_by_name" in connected:
+        cfg["model"]["params"] = as_dict(connected.get("Model/model_params_by_name"))
+    elif "Model/params" in connected:
         cfg["model"]["params"] = as_dict(connected.get("Model/params"))
     if "Model/candidates" in connected:
         cfg["model"]["candidates"] = as_candidates(connected.get("Model/candidates"))
     if connected.get("Model/selection_metric"):
         cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
+    if "Model/evaluation_metrics" in connected:
+        cfg["metrics"]["names"] = as_list(connected.get("Model/evaluation_metrics"))
     search_updates: dict[str, Any] = {}
     if "Model/search_enabled" in connected:
         search_updates["enabled"] = as_bool(connected.get("Model/search_enabled"))
@@ -333,6 +420,8 @@ def apply_ui_params(
         cfg["output"]["prediction_name"] = connected["Output/prediction_name"]
     if "Output/chunk_size" in connected and connected.get("Output/chunk_size") not in {None, ""}:
         cfg["output"]["chunk_size"] = int(connected["Output/chunk_size"])
+    if "Output/report_plots" in connected:
+        cfg["output"]["report_plots"] = as_bool(connected.get("Output/report_plots"), default=True)
     if "stage_inputs" in cfg:
         cfg.setdefault("stage_inputs", {})
         for key in list(cfg.get("stage_inputs", {})):
@@ -473,13 +562,29 @@ class ClearMLAdapter:
         project_name: str,
         task_name: str,
         output_uri: str | None = None,
+        tags: list[str] | None = None,
+        comment: str | None = None,
     ):
         Task = import_clearml_symbol("Task")
         kwargs: dict[str, Any] = {"project_name": project_name, "task_name": task_name}
         if output_uri:
             kwargs["output_uri"] = output_uri
         task = Task.init(**kwargs)
+        _apply_clearml_metadata(task, tags=tags, comment=comment)
         return cls(task)
+
+    def apply_metadata(
+        self,
+        *,
+        task_name: str | None = None,
+        tags: list[str] | None = None,
+        comment: str | None = None,
+    ) -> None:
+        if task_name:
+            set_name = getattr(self.task, "set_name", None)
+            if callable(set_name):
+                set_name(task_name)
+        _apply_clearml_metadata(self.task, tags=tags, comment=comment)
 
     def connect_params(self, params: dict[str, Any]) -> dict[str, Any]:
         connected: dict[str, Any] = {}
@@ -656,6 +761,32 @@ class ClearMLAdapter:
 
     def report_scalar(self, title: str, series: str, value: float, iteration: int = 0) -> None:
         self.task.get_logger().report_scalar(title=title, series=series, value=value, iteration=iteration)
+
+    def report_table(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
+        path = Path(path)
+        if not path.exists():
+            return
+        report_table = getattr(self.task.get_logger(), "report_table", None)
+        if not callable(report_table):
+            return
+        try:
+            import pandas as pd
+
+            report_table(title=title, series=series, table_plot=pd.read_csv(path), iteration=iteration)
+        except Exception:
+            return
+
+    def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
+        path = Path(path)
+        if not path.exists():
+            return
+        report_media = getattr(self.task.get_logger(), "report_media", None)
+        if not callable(report_media):
+            return
+        try:
+            report_media(title=title, series=series, local_path=str(path), iteration=iteration)
+        except Exception:
+            return
 
     def close(self) -> None:
         close = getattr(self.task, "close", None)

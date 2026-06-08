@@ -2,7 +2,7 @@
 
 Date: 2026-06-08
 Branch: `main`
-Local HEAD: `5f501ae` plus uncommitted release-candidate changes
+Local HEAD: uncommitted product-foundation cleanup changes
 Profile: `config/profiles/clearml-dev.yaml`
 
 ## Decision
@@ -20,11 +20,11 @@ release gate.
 
 | gate | status | evidence |
 | --- | --- | --- |
-| Training pipeline local | pass | `outputs\tabular_training_pipeline_20260608T035008Z` and `verification/training_pipeline/local_training_pipeline.md` |
+| Training pipeline local | pass | `outputs\tabular_training_pipeline_20260608T080026Z` and `verification/training_pipeline/local_training_pipeline.md` |
 | ClearML graph dry-run | pass | `verification/training_pipeline/clearml_training_pipeline.md` |
-| Inference local | pass | best: `outputs\tabular_infer_20260608T035008Z`; ensemble: `outputs\tabular_infer_20260608T035042Z`; see `verification/inference/infer_task_reference.md` |
-| Template sync dry-run | pass | Default sync targets are `tabular_train_pipeline_template`, `tabular_infer_template`, and `tabular_stage_template`. |
-| Tests | pass | `56 passed` |
+| Inference local | pass | best fallback: `outputs\tabular_infer_20260608T080026Z`; see `verification/inference/infer_task_reference.md` for best/ensemble selector evidence. |
+| Template sync dry-run | pass | Default sync targets are `tabular_train_pipeline_template`, `tabular_infer_template`, and `tabular_stage_template`; dry-run includes user/internal tags. |
+| Tests | pass | `54 passed` |
 | ClearML dependency boundary | pass | `rg "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular` returned no matches. |
 | ClearML remote training pipeline | pending | Run `tabular_train_pipeline_template` from the dev Pipeline tab. |
 | ClearML remote inference task-id best | pending | Run `tabular_infer_template` with `source_type=task_id`, `model_selector=best`. |
@@ -38,10 +38,15 @@ Primary training artifacts:
 - `preprocess_features/feature_spec.json`: pass
 - `train_linear/model.joblib`: pass
 - `train_ridge/model.joblib`: pass
+- `train_lasso/model.joblib`: pass
+- `train_elasticnet/model.joblib`: pass
 - `train_random_forest/model.joblib`: pass
+- `train_extra_trees/model.joblib`: pass
 - `train_gradient_boosting/model.joblib`: pass
 - `build_ensemble/model.joblib`: pass
 - `build_ensemble/ensemble_info.json`: pass
+- validation prediction residual columns: pass
+- lightweight prediction-vs-actual and residual histogram artifacts: pass
 - `evaluate_models/leaderboard.csv`: pass
 - `evaluate_models/best_model.json`: pass
 - `evaluate_models/evaluation_report.json`: pass
@@ -59,7 +64,10 @@ Training:
 preprocess_features
   -> train_linear
   -> train_ridge
+  -> train_lasso
+  -> train_elasticnet
   -> train_random_forest
+  -> train_extra_trees
   -> train_gradient_boosting
   -> build_ensemble
   -> evaluate_models
@@ -95,7 +103,7 @@ Primary:
 - `tabular_train_pipeline_template`
 - `tabular_infer_template`
 - internal `tabular_stage_template`
-- local training pipeline for official models
+- local training pipeline for supported models
 - local inference from best / ensemble / local model references
 
 Future / experimental:
@@ -105,7 +113,7 @@ Future / experimental:
 - `clearml_model_id` inference source
 - full template configs
 - external model full pipeline
-- additional sklearn models beyond the official four
+- experimental optional-dependency models: LightGBM, XGBoost, CatBoost
 
 Historical compatibility:
 

@@ -1,23 +1,45 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-AVAILABLE_MODELS = [
+SUPPORTED_MODELS = [
     "linear",
     "ridge",
-    "random_forest",
-    "gradient_boosting",
     "lasso",
     "elasticnet",
+    "random_forest",
     "extra_trees",
+    "gradient_boosting",
+]
+EXPERIMENTAL_MODELS = [
+    "lightgbm",
+    "xgboost",
+    "catboost",
+]
+AVAILABLE_MODELS = [*SUPPORTED_MODELS, *EXPERIMENTAL_MODELS]
+OUT_OF_SCOPE_MODELS = {
     "knn",
     "svr",
     "mlp",
-]
+    "gaussian_process",
+    "tabpfn",
+}
+
+
+def validate_model_name(name: str) -> str:
+    if name in OUT_OF_SCOPE_MODELS:
+        raise ValueError(
+            f"Model {name!r} is out of current product scope. "
+            "Use supported models or experimental optional-dependency models only."
+        )
+    if name not in AVAILABLE_MODELS:
+        raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")
+    return name
 
 
 def candidate_params(model_params: Any, name: str) -> dict[str, Any]:
@@ -39,9 +61,11 @@ def model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     if not raw_candidates:
         if not isinstance(model_params, dict):
             raise ValueError("model.params must be a mapping.")
+        name = str(model_cfg.get("name", "ridge"))
+        validate_model_name(name)
         return [
             {
-                "name": model_cfg.get("name", "ridge"),
+                "name": name,
                 "params": dict(model_params),
             }
         ]
@@ -71,6 +95,7 @@ def model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             raise ValueError(f"model.candidates[{index}] must be a model name or mapping.")
         if name in seen:
             raise ValueError(f"model.candidates contains duplicate model name: {name}")
+        validate_model_name(name)
         seen.add(name)
         candidates.append({"name": str(name), "params": dict(params)})
     return candidates
@@ -143,6 +168,7 @@ class MeanTopKEnsemble:
 
 
 def build_model(name: str, params: dict[str, Any] | None = None):
+    validate_model_name(name)
     params = dict(params or {})
     if name == "linear":
         return LinearRegressor()
@@ -188,32 +214,35 @@ def build_model(name: str, params: dict[str, Any] | None = None):
         params.setdefault("random_state", 42)
         params.setdefault("n_jobs", 1)
         return ExtraTreesRegressor(**params)
-    if name == "knn":
-        try:
-            from sklearn.neighbors import KNeighborsRegressor  # type: ignore
-        except Exception as exc:  # pragma: no cover - dependency install failure
-            raise RuntimeError("knn requires scikit-learn. Install project runtime dependencies.") from exc
-        params.setdefault("n_neighbors", 5)
-        params.setdefault("weights", "distance")
-        return KNeighborsRegressor(**params)
-    if name == "svr":
-        try:
-            from sklearn.svm import SVR  # type: ignore
-        except Exception as exc:  # pragma: no cover - dependency install failure
-            raise RuntimeError("svr requires scikit-learn. Install project runtime dependencies.") from exc
-        params.setdefault("kernel", "rbf")
-        params.setdefault("C", 1.0)
-        params.setdefault("epsilon", 0.1)
-        params.setdefault("gamma", "scale")
-        return SVR(**params)
-    if name == "mlp":
-        try:
-            from sklearn.neural_network import MLPRegressor  # type: ignore
-        except Exception as exc:  # pragma: no cover - dependency install failure
-            raise RuntimeError("mlp requires scikit-learn. Install project runtime dependencies.") from exc
-        params.setdefault("hidden_layer_sizes", [32])
-        params.setdefault("solver", "lbfgs")
-        params.setdefault("max_iter", 500)
+    if name == "lightgbm":
+        model_cls = _experimental_model_class("lightgbm", "LGBMRegressor", name)
+        params.setdefault("n_estimators", 100)
         params.setdefault("random_state", 42)
-        return MLPRegressor(**params)
+        params.setdefault("n_jobs", 1)
+        return model_cls(**params)
+    if name == "xgboost":
+        model_cls = _experimental_model_class("xgboost", "XGBRegressor", name)
+        params.setdefault("n_estimators", 100)
+        params.setdefault("random_state", 42)
+        params.setdefault("n_jobs", 1)
+        params.setdefault("objective", "reg:squarederror")
+        params.setdefault("verbosity", 0)
+        return model_cls(**params)
+    if name == "catboost":
+        model_cls = _experimental_model_class("catboost", "CatBoostRegressor", name)
+        params.setdefault("iterations", 100)
+        params.setdefault("random_seed", 42)
+        params.setdefault("verbose", False)
+        return model_cls(**params)
     raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")
+
+
+def _experimental_model_class(module_name: str, class_name: str, model_name: str):
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:  # pragma: no cover - depends on optional environment
+        raise RuntimeError(
+            f"{model_name} is experimental and requires optional dependency {module_name}. "
+            f"Install ml-platform-tabular[{model_name}] or use an Agent image that includes {module_name}."
+        ) from exc
+    return getattr(module, class_name)

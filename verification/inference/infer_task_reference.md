@@ -24,8 +24,8 @@ Selectors:
 
 - `best`
 - `ensemble`
-- supported model names such as `linear`, `ridge`, `random_forest`, and
-  `gradient_boosting`
+- supported model names such as `linear`, `ridge`, `lasso`, `elasticnet`,
+  `random_forest`, `extra_trees`, and `gradient_boosting`
 
 ## Local Verification
 
@@ -55,7 +55,7 @@ Expected behavior:
 
 Observed local result:
 
-- run dir: `outputs\tabular_infer_20260608T033408Z`
+- run dir: `outputs\tabular_infer_20260608T080026Z`
 - resolved model:
   `outputs\latest_training_pipeline\evaluate_models\best_model.joblib`
 - resolved metadata:
@@ -65,11 +65,9 @@ Observed local result:
 - resolved preprocess bundle:
   `outputs\latest_training_pipeline\preprocess_features\preprocess_bundle.joblib`
 - predictions:
-  `outputs\tabular_infer_20260608T033408Z\predictions.csv`
-- ensemble selector run dir: `outputs\tabular_infer_20260608T033517Z`
-- ensemble resolved model:
-  `outputs\latest_training_pipeline\build_ensemble\model.joblib`
-- ensemble artifact kind: `ensemble`
+  `outputs\tabular_infer_20260608T080026Z\predictions.csv`
+- pytest coverage confirms `model_selector=ensemble` resolves
+  `build_ensemble/model.joblib` with artifact kind `ensemble`.
 
 Result: pass
 
@@ -116,7 +114,7 @@ Command:
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Result: `56 passed`
+Result: `54 passed`
 
 ## Remote Verification
 

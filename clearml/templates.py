@@ -10,7 +10,7 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import default_ui_params, import_clearml_sdk
+from adapter import clearml_projects, clearml_tags, clearml_template_name, default_ui_params, import_clearml_sdk
 from ml_platform_core.config import load_run_config, load_yaml
 from pipelines import build_pipeline_plan, pipeline_ui_params, sync_pipeline_draft
 
@@ -22,21 +22,6 @@ TASK_TEMPLATES = [
 PIPELINE_TEMPLATES = [
     ("tabular_train_pipeline_template", "config/tasks/tabular_pipeline.yaml", "pipeline"),
 ]
-# Metadata below is intentionally sync-excluded. Keep it only for compatibility
-# references and delete-candidate tracking; do not append it to TEMPLATES.
-DEPRECATED_PIPELINE_TEMPLATES = [
-    ("tabular_train_full_pipeline_template", "config/tasks/tabular_train_full_pipeline.yaml", "pipeline"),
-    (
-        "tabular_train_full_ensemble_pipeline_template",
-        "config/tasks/tabular_train_full_ensemble_pipeline.yaml",
-        "pipeline",
-    ),
-]
-LEGACY_TASK_TEMPLATES = [
-    ("tabular_train_template", "config/tasks/tabular_train.yaml", "training"),
-    ("tabular_eval_template", "config/tasks/tabular_eval.yaml", "testing"),
-]
-LEGACY_PIPELINE_TEMPLATE = ("tabular_pipeline_template", "config/tasks/tabular_pipeline.yaml", "pipeline")
 # Default sync targets: tabular_infer_template, tabular_stage_template, and
 # tabular_train_pipeline_template.
 TEMPLATES = TASK_TEMPLATES + PIPELINE_TEMPLATES
@@ -48,20 +33,53 @@ def _task_type(Task: Any, name: str):
 
 def _template_note(task_name: str) -> str:
     if task_name == "tabular_stage_template":
-        return "Internal stage task for training pipeline graph steps"
+        return (
+            "Internal stage task for PipelineController steps. Do not clone directly; "
+            "start template/tabular_train_pipeline from the Pipeline tab."
+        )
     if task_name == "tabular_infer_template":
-        return "User-facing inference task; not part of training pipeline graph"
+        return (
+            "User-facing inference task. Recommended: source_task_id + model_selector "
+            "(best or ensemble). Use local_model_path only when the Agent can access it."
+        )
     if task_name == "tabular_train_pipeline_template":
-        return "User-facing training Pipeline-tab draft; official sklearn models plus ensemble"
-    if task_name == "tabular_train_full_pipeline_template":
-        return "Deprecated sync-excluded full pipeline draft; not a primary entrypoint"
-    if task_name == "tabular_train_full_ensemble_pipeline_template":
-        return "Deprecated sync-excluded full ensemble draft; not a primary entrypoint"
-    return "Legacy compatibility template; not the current product pipeline"
+        return (
+            "User-facing training Pipeline-tab draft: preprocess_features -> train_<model>* "
+            "-> build_ensemble -> evaluate_models. Remote runs should set "
+            "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column."
+        )
+    return "Unsupported template name for the current product surface"
+
+
+def _template_tags(task_name: str) -> list[str]:
+    if task_name == "tabular_stage_template":
+        return clearml_tags("template", internal=True)
+    if task_name == "tabular_train_pipeline_template":
+        return clearml_tags("template", user_facing=True)
+    if task_name == "tabular_infer_template":
+        return clearml_tags("template", user_facing=True)
+    return clearml_tags("template")
+
+
+def _apply_task_metadata(task: Any, task_name: str) -> None:
+    tags = _template_tags(task_name)
+    add_tags = getattr(task, "add_tags", None)
+    set_tags = getattr(task, "set_tags", None)
+    if callable(add_tags):
+        add_tags(tags)
+    elif callable(set_tags):
+        current = []
+        get_tags = getattr(task, "get_tags", None)
+        if callable(get_tags):
+            current = list(get_tags() or [])
+        set_tags(sorted(set(current) | set(tags)))
+    set_comment = getattr(task, "set_comment", None)
+    if callable(set_comment):
+        set_comment(_template_note(task_name))
 
 
 def _entry_point(task_name: str) -> str:
-    if task_name.endswith("_pipeline_template") or task_name == "tabular_pipeline_template":
+    if task_name == "tabular_train_pipeline_template":
         return "clearml/pipelines.py"
     return "clearml/app.py"
 
@@ -168,7 +186,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     """Register minimal ClearML template tasks and Pipeline-tab drafts."""
     profile = load_yaml(profile_path)
     clearml_cfg = profile.get("clearml", {})
-    project_name = clearml_cfg.get("project_root", "MLPlatform/Dev") + "/Templates"
+    project_name = clearml_projects(clearml_cfg)["templates"]
     repository = clearml_cfg.get("repository", ".")
     branch = clearml_cfg.get("branch", "main")
     working_dir = clearml_cfg.get("working_dir", ".")
@@ -179,10 +197,11 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
             ui_params = default_ui_params(cfg)
             params = ", ".join(ui_params)
             entry_point = _entry_point(task_name)
+            display_name = clearml_template_name(task_name)
             print(
                 "DRY-RUN template: "
                 f"project={project_name} "
-                f"name={task_name} "
+                f"name={display_name} "
                 f"type={task_type_name} "
                 f"repository={repository} "
                 f"branch={branch} "
@@ -190,6 +209,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
                 f"entry_point={entry_point} "
                 f"args=\"{_task_args(task_config, profile_path)}\" "
                 f"params=[{params}] "
+                f"tags={_template_tags(task_name)} "
                 f"note=\"{_template_note(task_name)}\""
             )
         for task_name, task_config, task_type_name in PIPELINE_TEMPLATES:
@@ -197,10 +217,11 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
             plan = build_pipeline_plan(task_path=task_config, profile_path=profile_path, ui_params=ui_params)
             params = ", ".join(ui_params)
             steps = " -> ".join(step["name"] for step in plan["steps"])
+            display_name = clearml_template_name(task_name)
             print(
                 "DRY-RUN pipeline template: "
                 f"project={plan['project']} "
-                f"name={task_name} "
+                f"name={display_name} "
                 f"type={task_type_name} "
                 f"repository={repository} "
                 f"branch={branch} "
@@ -209,6 +230,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
                 f"args=\"{_task_args(task_config, profile_path)}\" "
                 f"params=[{params}] "
                 f"steps={steps} "
+                f"tags={_template_tags(task_name)} "
                 f"note=\"{_template_note(task_name)}\""
             )
         return
@@ -220,10 +242,11 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
         cfg = load_run_config(task_config, profile_path)
         entry_point = _entry_point(task_name)
         params = default_ui_params(cfg)
+        display_name = clearml_template_name(task_name)
         task = _sync_template_task(
             Task,
             project_name=project_name,
-            task_name=task_name,
+            task_name=display_name,
             task_type=_task_type(Task, task_type_name),
             repository=repository,
             branch=branch,
@@ -233,7 +256,8 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
             profile_path=profile_path,
             params=params,
         )
-        print(f"Synced template: {project_name}/{task_name} id={task.id} ({_template_note(task_name)})")
+        _apply_task_metadata(task, task_name)
+        print(f"Synced template: {project_name}/{display_name} id={task.id} ({_template_note(task_name)})")
 
     for task_name, task_config, _ in PIPELINE_TEMPLATES:
         task = sync_pipeline_draft(
@@ -247,6 +271,6 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
         )
         print(
             "Synced pipeline template: "
-            f"{clearml_cfg.get('project_root', 'MLPlatform/Dev')}/Pipelines/{task_name} "
+            f"{clearml_projects(clearml_cfg)['pipelines']}/{clearml_template_name(task_name)} "
             f"id={task.id} ({_template_note(task_name)})"
         )

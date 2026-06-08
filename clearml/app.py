@@ -18,8 +18,72 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
 from ml_platform_core.config import apply_overrides, load_run_config
 from ml_platform_tabular import run_task
 
-from adapter import ClearMLAdapter, apply_ui_params, default_ui_params
+from adapter import (
+    ClearMLAdapter,
+    apply_ui_params,
+    as_bool,
+    clearml_projects,
+    clearml_tags,
+    default_ui_params,
+    prefixed_task_name,
+    stage_task_label,
+)
 from reports import report_result
+
+
+def _is_prefixed_name(name: str | None) -> bool:
+    return bool(name and name.startswith(("template/", "internal/", "pipeline/", "stage/", "task/")))
+
+
+def _initial_clearml_target(cfg: dict) -> tuple[str, str, list[str], str]:
+    clearml_cfg = cfg.get("clearml", {})
+    projects = clearml_projects(clearml_cfg)
+    task = cfg.get("task")
+    run = cfg.get("run", {}) or {}
+    run_name = str(run.get("name") or task or "run")
+    if task == "tabular_infer":
+        return (
+            projects["tasks"],
+            prefixed_task_name("task", "tabular_infer", run_name),
+            clearml_tags("task", user_facing=True),
+            "User-facing tabular inference task.",
+        )
+    if task == "tabular_stage":
+        stage = str(run.get("stage") or "stage")
+        model_name = str(cfg.get("model", {}).get("name") or "") or None
+        label = stage_task_label(stage, model_name if stage == "train_model" else None)
+        return (
+            projects["stages"],
+            prefixed_task_name("stage", label, run_name),
+            clearml_tags("stage", internal=True, stage=stage, model=model_name if stage == "train_model" else None),
+            "Internal stage task for the tabular training pipeline graph.",
+        )
+    return (
+        projects["experiments"],
+        run_name,
+        clearml_tags("task"),
+        "Compatibility or experiment task.",
+    )
+
+
+def _runtime_clearml_metadata(cfg: dict) -> tuple[str, list[str], str]:
+    task = cfg.get("task")
+    run = cfg.get("run", {}) or {}
+    run_name = str(run.get("name") or task or "run")
+    if task == "tabular_infer":
+        name = run_name if _is_prefixed_name(run_name) else prefixed_task_name("task", "tabular_infer", run_name)
+        return name, clearml_tags("task", user_facing=True), "User-facing tabular inference task."
+    if task == "tabular_stage":
+        stage = str(run.get("stage") or "stage")
+        model_name = str(cfg.get("model", {}).get("name") or "") or None
+        label = stage_task_label(stage, model_name if stage == "train_model" else None)
+        name = run_name if _is_prefixed_name(run_name) else prefixed_task_name("stage", label, run_name)
+        return (
+            name,
+            clearml_tags("stage", internal=True, stage=stage, model=model_name if stage == "train_model" else None),
+            "Internal stage task for the tabular training pipeline graph.",
+        )
+    return run_name, clearml_tags("task"), "Compatibility or experiment task."
 
 
 def main() -> None:
@@ -31,10 +95,15 @@ def main() -> None:
 
     cfg = apply_overrides(load_run_config(args.task, args.profile), args.overrides)
     clearml_cfg = cfg.get("clearml", {})
-    project_name = clearml_cfg.get("project_root", "MLPlatform/Dev")
-    task_name = cfg.get("run", {}).get("name", cfg.get("task", "ml_task"))
+    project_name, task_name, tags, comment = _initial_clearml_target(cfg)
 
-    adapter = ClearMLAdapter.init(project_name=project_name, task_name=task_name, output_uri=clearml_cfg.get("artifact_output_uri"))
+    adapter = ClearMLAdapter.init(
+        project_name=project_name,
+        task_name=task_name,
+        output_uri=clearml_cfg.get("artifact_output_uri"),
+        tags=tags,
+        comment=comment,
+    )
     try:
         connected = adapter.connect_params(default_ui_params(cfg))
         resolved_local_path = None
@@ -48,6 +117,8 @@ def main() -> None:
                 dataset_file=dataset_file,
             )
         cfg = apply_ui_params(cfg, connected, resolved_local_path=resolved_local_path)
+        runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(cfg)
+        adapter.apply_metadata(task_name=runtime_name, tags=runtime_tags, comment=runtime_comment)
         if cfg.get("task") == "tabular_infer":
             cfg = adapter.resolve_infer_model_source(cfg)
         else:
@@ -56,7 +127,8 @@ def main() -> None:
                 cfg["model"]["artifact_path"] = adapter.resolve_artifact_path(artifact_path)
         cfg = adapter.resolve_stage_inputs(cfg)
         result = run_task(cfg)
-        report_result(adapter, result)
+        report_plots = as_bool(cfg.get("output", {}).get("report_plots"), default=True)
+        report_result(adapter, result, report_plots=report_plots)
     finally:
         adapter.close()
 

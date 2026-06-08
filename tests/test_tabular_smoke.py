@@ -8,6 +8,8 @@ from ml_platform_tabular import TASK_NAMES, run_task
 from ml_platform_tabular.evaluate import run_evaluate
 from ml_platform_tabular.infer import run_infer
 from ml_platform_tabular.metrics import regression_metrics
+from ml_platform_tabular import models as model_module
+from ml_platform_tabular.models import AVAILABLE_MODELS, EXPERIMENTAL_MODELS, SUPPORTED_MODELS, build_model
 from ml_platform_tabular.train import run_train
 
 
@@ -29,7 +31,7 @@ def _assert_prediction_output(path, *, input_columns, model_name, artifact_kind)
     return predictions
 
 
-def test_tabular_train_eval_and_infer_smoke(tmp_path):
+def test_compat_tabular_train_eval_and_infer_smoke(tmp_path):
     rng = np.random.default_rng(1)
     df = pd.DataFrame(
         {
@@ -109,9 +111,6 @@ def test_tabular_train_eval_and_infer_smoke(tmp_path):
         ("lasso", {"alpha": 0.01, "max_iter": 5000}),
         ("elasticnet", {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42}),
         ("extra_trees", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
-        ("knn", {"n_neighbors": 3, "weights": "distance"}),
-        ("svr", {"kernel": "rbf", "C": 1.0, "epsilon": 0.1, "gamma": "scale"}),
-        ("mlp", {"hidden_layer_sizes": [16], "solver": "lbfgs", "max_iter": 500, "random_state": 42}),
     ],
 )
 def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
@@ -141,6 +140,46 @@ def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
     assert model_info["model_name"] == model_name
     assert model_info["model_params"] == params
     assert "rmse" in result.metrics
+
+
+def test_model_policy_excludes_out_of_scope_models():
+    assert SUPPORTED_MODELS == [
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+    ]
+    assert set(SUPPORTED_MODELS) == {
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+    }
+    assert set(EXPERIMENTAL_MODELS) == {"lightgbm", "xgboost", "catboost"}
+    assert set(AVAILABLE_MODELS) == set(SUPPORTED_MODELS) | set(EXPERIMENTAL_MODELS)
+    for name in ["knn", "svr", "mlp"]:
+        with pytest.raises(ValueError, match="out of current product scope"):
+            build_model(name)
+
+
+def test_experimental_models_fail_cleanly_when_dependency_missing(monkeypatch):
+    real_import_module = model_module.importlib.import_module
+
+    def fake_import_module(name):
+        if name in {"lightgbm", "xgboost", "catboost"}:
+            raise ImportError("missing optional dependency")
+        return real_import_module(name)
+
+    monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
+    for name in ["lightgbm", "xgboost", "catboost"]:
+        with pytest.raises(RuntimeError, match="experimental.*optional dependency"):
+            build_model(name)
 
 
 def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
@@ -197,7 +236,7 @@ def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
     )
 
 
-def test_train_grid_search_writes_optimization_artifacts(tmp_path):
+def test_future_train_grid_search_writes_optimization_artifacts(tmp_path):
     rng = np.random.default_rng(31)
     df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
     df["target"] = 1.1 * df["x1"] - 0.6 * df["x2"] + rng.normal(scale=0.05, size=50)
@@ -257,7 +296,7 @@ def test_train_grid_search_writes_optimization_artifacts(tmp_path):
     )
 
 
-def test_train_random_search_is_deterministic_and_limited(tmp_path):
+def test_future_train_random_search_is_deterministic_and_limited(tmp_path):
     rng = np.random.default_rng(32)
     df = pd.DataFrame({"id": range(45), "x1": rng.normal(size=45), "x2": rng.normal(size=45)})
     df["target"] = 0.9 * df["x1"] + 0.4 * df["x2"] + rng.normal(scale=0.05, size=45)
@@ -285,7 +324,7 @@ def test_train_random_search_is_deterministic_and_limited(tmp_path):
     assert rows[0] == rows[1]
 
 
-def test_train_candidate_search_uses_model_keyed_space(tmp_path):
+def test_future_train_candidate_search_uses_model_keyed_space(tmp_path):
     rng = np.random.default_rng(33)
     df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
     df["target"] = df["x1"] - df["x2"] + rng.normal(scale=0.05, size=50)
@@ -312,7 +351,7 @@ def test_train_candidate_search_uses_model_keyed_space(tmp_path):
     assert result.tables["leaderboard"].exists()
 
 
-def test_train_search_rejects_unsupported_method(tmp_path):
+def test_future_train_search_rejects_unsupported_method(tmp_path):
     rng = np.random.default_rng(34)
     df = pd.DataFrame({"id": range(20), "x1": rng.normal(size=20), "x2": rng.normal(size=20)})
     df["target"] = df["x1"] + df["x2"]
@@ -548,7 +587,7 @@ def test_regression_metrics_rejects_invalid_inputs():
         regression_metrics([1.0, 2.0], [1.0, 2.0], metrics=["median-error"])
 
 
-def test_tabular_1d_output_smoke(tmp_path):
+def test_future_tabular_1d_output_smoke(tmp_path):
     df = pd.DataFrame(
         {
             "id": [1, 2, 3],

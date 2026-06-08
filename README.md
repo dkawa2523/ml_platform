@@ -5,11 +5,13 @@ Minimal ML execution platform for tabular regression and small tabular analysis 
 ## Current V2 Scope
 
 Primary scope is tabular scalar regression with a ClearML-visible training
-pipeline and a separate inference task for the official models `linear`,
-`ridge`, `random_forest`, and `gradient_boosting`. It includes multiple model
+pipeline and a separate inference task. Supported models are `linear`, `ridge`,
+`lasso`, `elasticnet`, `random_forest`, `extra_trees`, and
+`gradient_boosting`. It includes multiple model
 training, `leaderboard.csv`, best model selection, `mean_topk` and `weighted`
 ensemble artifacts, standardized batch inference output, metrics, artifacts,
-predictions, and ClearML Dataset id/file handling.
+predictions, residual columns, lightweight validation plots, and ClearML Dataset
+id/file handling.
 
 `config/tasks/tabular_pipeline.yaml` is the official training pipeline config.
 It runs `preprocess_features -> train_<model>* -> build_ensemble ->
@@ -17,18 +19,20 @@ evaluate_models` without inference. ClearML sync exposes only
 `tabular_train_pipeline_template`, `tabular_infer_template`, and the internal
 `tabular_stage_template`.
 
-Experimental / future scope includes optimization, `artifact_url` /
-`clearml_model_id` inference sources, external model full pipelines, `lasso`,
-`elasticnet`, `extra_trees`, `knn`, `svr`, `mlp`, and the local
-`tabular_1d_output` utility.
+Experimental scope includes optional-dependency models `lightgbm`, `xgboost`,
+and `catboost`. They are not default candidates and are runnable only when the
+dependency is installed in the local or ClearML Agent environment, for example
+with `pip install -e "pkgs/tabular[experimental]"`.
 
-Future scope includes LightGBM, XGBoost, CatBoost, Optuna, Ray Tune, stacking,
-per-trial ClearML child tasks, advanced plots, online serving, 1D/2D
-productization, and distribution mode decomposition.
+Future scope includes optimization, `artifact_url` / `clearml_model_id`
+inference sources, Optuna, Ray Tune, per-trial ClearML child tasks, advanced
+diagnostics, online serving, 1D/2D productization, and distribution mode
+decomposition.
 
 Discarded scope includes legacy full parity, excessive contracts and checklists,
 diagnostics helpers, old adapter splits, live cleanup, model-specific templates,
-dataset-specific templates, and legacy repo directory/config recreation.
+dataset-specific templates, `knn`, `svr`, `mlp`, `gaussian_process`, `tabpfn`,
+stacking, and legacy repo directory/config recreation.
 
 Detailed scope is defined in `docs/SPEC.md`. This repo is not full parity with
 the legacy repos; they are reference material only.
@@ -98,10 +102,15 @@ python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile 
 ```
 
 The training pipeline uses `model.candidates` / `Model/candidates`,
-`model.ensemble` / `Model/ensemble_*`, and `Model/selection_metric`. Product
-scope does not include legacy `train_ensemble_full`, stacking,
-LightGBM/XGBoost/CatBoost/TabPFN, advanced plots, diagnostics, runtime
-leaderboard tasks, or weight optimization.
+model-keyed parameters through `Model/model_params_by_name`, `model.ensemble` /
+`Model/ensemble_*`, `Model/evaluation_metrics`, and `Model/selection_metric`.
+Product scope does not include legacy `train_ensemble_full`, stacking, TabPFN,
+KNN/SVR/MLP, advanced diagnostics, runtime leaderboard tasks, or weight
+optimization.
+
+ClearML users choose models through `Model/candidates`; this repo does not add
+model-specific templates. Experimental model names should be used only in
+environments with the matching optional dependency installed.
 
 Optimization is future / experimental. Do not present search settings as the
 primary ClearML UI flow.
@@ -146,16 +155,35 @@ Agent environment; host-only `localhost` URLs and host filesystem paths usually
 are not. `artifact_output_uri` controls newly produced run artifacts and does not
 fix Dataset storage reachability.
 
+Primary training parameters:
+
+| parameter | local | ClearML remote | note |
+| --- | --- | --- | --- |
+| `Input/local_path` | required | avoid | Agent can use it only if the path exists inside the Agent container/PVC. |
+| `Input/clearml_dataset_id` | optional | required | Preferred remote data source. |
+| `Input/dataset_file` | optional | required when Dataset has multiple files | Example: `sample_train.csv`. |
+| `Input/target_column` | required | required | Default sample value is `target`. |
+| `Input/feature_columns` | optional | optional | Empty means auto-select non-target, non-id columns. |
+| `Input/id_columns` | optional | optional | Excluded from features. |
+| `Model/candidates` | optional | optional | JSON array. Defaults to the supported model list; experimental models are not defaults. |
+| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. |
+| `Model/evaluation_metrics` | optional | optional | JSON array or comma-separated metric names. |
+| `Model/selection_metric` | optional | optional | `rmse`, `mae`, or `r2`; used for leaderboard selection. |
+| `Model/ensemble_*` | optional | optional | Default ensemble is enabled for the training pipeline. |
+| `Output/report_plots` | optional | optional | Set false to skip ClearML plot media reporting. |
+
 The default ClearML sync targets are `tabular_train_pipeline_template`,
-`tabular_infer_template`, and `tabular_stage_template`. `tabular_stage_template`
-is an internal PipelineController step target; users should start
-`tabular_train_pipeline_template` from the Pipeline tab or clone
-`tabular_infer_template` for inference. Deprecated `tabular_train_template`,
-`tabular_eval_template`, `tabular_pipeline_template`, and `tabular_train_full_*`
-templates are not primary sync targets. Do not create model-specific,
-ensemble-specific, optimization-specific, or dataset-specific templates. Remote
-PipelineController execution needs enough worker slots for the controller and
-step tasks when they share one queue.
+`tabular_infer_template`, and `tabular_stage_template`. They appear in ClearML as
+`template/tabular_train_pipeline`, `template/tabular_infer`, and
+`internal/tabular_stage`. The stage template is internal; users should start the
+training entry from the Pipeline tab or clone the inference task. Profiles route
+templates, pipelines, stage runs, and task runs to separate ClearML projects such
+as `MLPlatform/Dev/Templates/Tabular` and `MLPlatform/Dev/Pipelines/Tabular`.
+Deprecated `tabular_train_template`, `tabular_eval_template`,
+`tabular_pipeline_template`, and `tabular_train_full_*` templates are not primary
+sync targets. Old ClearML runs may remain visible until manually archived on the
+server. Remote PipelineController execution needs enough worker slots for the
+controller and step tasks when they share one queue.
 
 Pipeline dry-run:
 
@@ -173,7 +201,5 @@ See `deploy/README.md`. The deploy manifests are a minimal ClearML Agent runtime
 - `docs/SPEC.md`
 - `docs/PROHIBITIONS.md`
 - `docs/LEGACY_REPO_POLICY.md`
-- `docs/PRODUCTIZATION_PHASES.md`
-- `docs/NEXT_RELEASE_BACKLOG.md`
 - `docs/CODEX_HANDOFF.md`
 - `verification/README.md`

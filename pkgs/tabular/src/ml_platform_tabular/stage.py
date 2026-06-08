@@ -11,8 +11,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 from ml_platform_core.artifacts import prepare_run_dir, update_latest, write_config_snapshot, write_manifest
 from ml_platform_core.io import load_joblib, read_json, read_table
 from ml_platform_core.result import RunResult
@@ -24,11 +22,8 @@ from .pipeline import (
     _metric_names,
     _preprocess_features,
     _ranked_results,
-    _retrain_best,
-    _run_search_trials,
     _safe_name,
     _train_model,
-    _evaluate_best,
 )
 
 
@@ -45,9 +40,11 @@ def _finish_stage(
     metrics: dict[str, Any] | None,
     artifacts: dict[str, Path],
     tables: dict[str, Path] | None = None,
+    plots: dict[str, Path] | None = None,
     extra: dict[str, Any] | None = None,
 ) -> RunResult:
     tables = tables or {}
+    plots = plots or {}
     extra = extra or {}
     config_path = write_config_snapshot(cfg, run_dir)
     artifacts = {**artifacts, "config": config_path}
@@ -63,7 +60,7 @@ def _finish_stage(
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
     update_latest(run_dir, output_dir / "latest_tabular_stage")
     update_latest(run_dir, output_dir / "latest")
-    return RunResult(run_dir=run_dir, metrics=metrics or {}, artifacts=artifacts, tables=tables, extra=extra)
+    return RunResult(run_dir=run_dir, metrics=metrics or {}, artifacts=artifacts, tables=tables, plots=plots, extra=extra)
 
 
 def _json_value(value: Any, *, default: Any) -> Any:
@@ -242,6 +239,7 @@ def _run_train_model(cfg: dict[str, Any]) -> RunResult:
         metrics=result["metrics"],
         artifacts=result["artifacts"],
         tables=result["tables"],
+        plots=result.get("plots"),
         extra={
             "pipeline_stage": "train_model",
             "stage_name": result["stage"],
@@ -268,6 +266,7 @@ def _run_build_ensemble(cfg: dict[str, Any]) -> RunResult:
         metrics=result["metrics"],
         artifacts=result["artifacts"],
         tables=result["tables"],
+        plots=result.get("plots"),
         extra={
             "pipeline_stage": "build_ensemble",
             "stage_name": "build_ensemble",
@@ -303,82 +302,13 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
         metrics=metrics,
         artifacts=artifacts,
         tables=tables,
+        plots=result.get("plots"),
         extra={
             "pipeline_stage": "evaluate_models",
             "stage_name": "evaluate_models",
             "best_model": result["report"]["best_model"],
             "candidate_count": result["report"]["candidate_count"],
             "ensemble_enabled": result["report"]["ensemble_enabled"],
-        },
-    )
-
-
-def _run_search_trials_stage(cfg: dict[str, Any]) -> RunResult:
-    preprocess = _load_preprocess(cfg)
-    selection_metric, metric_names = _metric_settings(cfg)
-    run_dir = _run_dir(cfg, "search_trials")
-    result = _run_search_trials(cfg, preprocess, run_dir, metric_names, selection_metric)
-    return _finish_stage(
-        cfg,
-        run_dir,
-        metrics=result["metrics"],
-        artifacts=result["artifacts"],
-        tables=result["tables"],
-        extra={
-            "pipeline_stage": "search_trials",
-            "stage_name": "search_trials",
-            "search": result["search"],
-        },
-    )
-
-
-def _run_retrain_best_stage(cfg: dict[str, Any]) -> RunResult:
-    preprocess = _load_preprocess(cfg)
-    inputs = _stage_inputs(cfg)
-    best_params_path = _required_path(inputs, "best_params")
-    run_dir = _run_dir(cfg, "retrain_best")
-    result = _retrain_best(cfg, preprocess, best_params_path, run_dir)
-    return _finish_stage(
-        cfg,
-        run_dir,
-        metrics=result["metrics"],
-        artifacts=result["artifacts"],
-        extra={
-            "pipeline_stage": "retrain_best",
-            "stage_name": "retrain_best",
-            "model_name": result["model_name"],
-            "model_params": result["model_params"],
-        },
-    )
-
-
-def _run_evaluate_best_stage(cfg: dict[str, Any]) -> RunResult:
-    inputs = _stage_inputs(cfg)
-    selection_metric, _ = _metric_settings(cfg)
-    best_params_path = _required_path(inputs, "best_params")
-    optimization_summary_path = _required_path(inputs, "optimization_summary")
-    model_path = _required_path(inputs, "model")
-    model_info_path = _required_path(inputs, "model_info")
-
-    run_dir = _run_dir(cfg, "evaluate_best")
-    result = _evaluate_best(
-        cfg,
-        best_params_path,
-        optimization_summary_path,
-        model_path,
-        model_info_path,
-        run_dir,
-        selection_metric,
-    )
-    return _finish_stage(
-        cfg,
-        run_dir,
-        metrics=result["metrics"],
-        artifacts=result["artifacts"],
-        extra={
-            "pipeline_stage": "evaluate_best",
-            "stage_name": "evaluate_best",
-            "best_model": result["report"]["best_model"],
         },
     )
 
@@ -395,14 +325,12 @@ def run_stage(cfg: dict[str, Any]) -> RunResult:
         return _run_build_ensemble(cfg)
     if stage == "evaluate_models":
         return _run_evaluate_models(cfg)
-    if stage == "search_trials":
-        return _run_search_trials_stage(cfg)
-    if stage == "retrain_best":
-        return _run_retrain_best_stage(cfg)
-    if stage == "evaluate_best":
-        return _run_evaluate_best_stage(cfg)
+    if stage in {"search_trials", "retrain_best", "evaluate_best"}:
+        raise ValueError(
+            f"{stage} is future/experimental and is not part of the primary tabular_stage_template flow."
+        )
     raise ValueError(
         "Unsupported tabular stage: "
         f"{stage}. Available: preprocess_features, train_model, build_ensemble, "
-        "evaluate_models, search_trials, retrain_best, evaluate_best."
+        "evaluate_models. Future: search_trials, retrain_best, evaluate_best."
     )

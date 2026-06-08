@@ -6,6 +6,12 @@ runtime:
 
 clearml:
   project_root: MLPlatform/Prod
+  projects:
+    templates: MLPlatform/Prod/Templates/Tabular
+    pipelines: MLPlatform/Prod/Pipelines/Tabular
+    stages: MLPlatform/Prod/Runs/Tabular/Stages
+    tasks: MLPlatform/Prod/Runs/Tabular/Tasks
+    experiments: MLPlatform/Prod/Experiments/Tabular
   queue: cpu
   dataset_project: datasets
   # Set this when the ClearML server has no default artifact storage.

@@ -6,8 +6,18 @@ runtime:
 
 clearml:
   project_root: MLPlatform/Dev
+  projects:
+    templates: MLPlatform/Dev/Templates/Tabular
+    pipelines: MLPlatform/Dev/Pipelines/Tabular
+    stages: MLPlatform/Dev/Runs/Tabular/Stages
+    tasks: MLPlatform/Dev/Runs/Tabular/Tasks
+    experiments: MLPlatform/Dev/Experiments/Tabular
   queue: default
   dataset_project: datasets-dev
+  # Dev template defaults for remote-safe Pipeline New Run.
+  # ClearML Agent containers cannot see repo-local data/sample_train.csv unless mounted.
+  default_dataset_id: b7afaea9d7aa42f084fb4fc06b0d4d41
+  default_dataset_file: sample_train.csv
   # Set this when the ClearML server has no default artifact storage.
   artifact_output_uri: null
   repository: https://github.com/dkawa2523/ml_platform.git

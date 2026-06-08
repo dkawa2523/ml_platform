@@ -28,3 +28,28 @@ The default sync targets are `tabular_train_pipeline_template`,
 `tabular_infer_template`, and `tabular_stage_template`. Deprecated
 `tabular_train_template`, `tabular_eval_template`, `tabular_pipeline_template`,
 and `tabular_train_full_*` entries are not current user-facing templates.
+ClearML display names are `template/tabular_train_pipeline`,
+`template/tabular_infer`, and `internal/tabular_stage`.
+
+Profiles define the ClearML project layout:
+
+```text
+templates    MLPlatform/<Env>/Templates/Tabular
+pipelines    MLPlatform/<Env>/Pipelines/Tabular
+stages       MLPlatform/<Env>/Runs/Tabular/Stages
+tasks        MLPlatform/<Env>/Runs/Tabular/Tasks
+experiments  MLPlatform/<Env>/Experiments/Tabular
+```
+
+Synced templates and runs use tags such as `domain:tabular`,
+`run_type:template`, `run_type:pipeline`, `run_type:stage`, `run_type:task`,
+`user_facing:true`, `internal:true`, `stage:<stage_name>`, and
+`model:<model_name>`.
+
+Old ClearML tasks and runs may remain visible until manually archived on the
+server. Sync creates or updates only the current canonical entries.
+
+For remote training runs, open `template/tabular_train_pipeline` in the Pipeline
+tab and set `Input/clearml_dataset_id`, `Input/dataset_file`, and
+`Input/target_column`. `Input/local_path` is only valid when the Agent can see
+the same path inside its container or mounted volume.

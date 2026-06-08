@@ -13,29 +13,28 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from adapter import as_bool, as_candidates, as_dict, as_list, import_clearml_automation, import_clearml_sdk, import_clearml_symbol
+from adapter import (
+    as_bool,
+    as_candidates,
+    as_dict,
+    as_list,
+    clearml_projects,
+    clearml_tags,
+    clearml_template_name,
+    import_clearml_automation,
+    import_clearml_sdk,
+    import_clearml_symbol,
+    prefixed_task_name,
+    stage_task_label,
+)
 from ml_platform_core.config import apply_overrides, load_yaml
 from ml_platform_tabular.models import candidate_params, model_candidates
-from ml_platform_tabular.pipeline_modes import apply_pipeline_mode_defaults
 
 
 PIPELINE_ARG_PREFIX = "Args/"
 STAGE_TASK_CONFIG = "config/tasks/tabular_stage.yaml"
 STAGE_TEMPLATE = "tabular_stage_template"
-OFFICIAL_SKLEARN_MODELS = ["linear", "ridge", "random_forest", "gradient_boosting"]
-LEGACY_MODEL_ARTIFACT_REF = "${train.artifacts.model.url}"
-# Legacy compatibility support for old train -> eval -> infer configs. These
-# templates and Run/pipeline_mode are not primary product entrypoints.
-LEGACY_TASK_TO_TEMPLATE = {
-    "tabular_train": "tabular_train_template",
-    "tabular_eval": "tabular_eval_template",
-    "tabular_infer": "tabular_infer_template",
-}
-LEGACY_DEFAULT_STEP_CONFIGS = {
-    "train": "config/tasks/tabular_train.yaml",
-    "eval": "config/tasks/tabular_eval.yaml",
-    "infer": "config/tasks/tabular_infer.yaml",
-}
+PIPELINE_TEMPLATE_TAGS = clearml_tags("template", user_facing=True)
 
 
 def _artifact_ref(step_name: str, artifact_name: str) -> str:
@@ -46,14 +45,9 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def _template_project(profile: dict[str, Any]) -> tuple[str, str, str]:
+def _project_layout(profile: dict[str, Any]) -> dict[str, str]:
     clearml_cfg = profile.get("clearml", {})
-    project_root = clearml_cfg.get("project_root", "MLPlatform/Dev")
-    return project_root, f"{project_root}/Templates", f"{project_root}/Pipelines"
-
-
-def _is_legacy_full_run_config(cfg: dict[str, Any]) -> bool:
-    return "data" not in cfg and all(name in cfg for name in ("train", "eval", "infer"))
+    return clearml_projects(clearml_cfg)
 
 
 def _pipeline_model_cfg(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -61,7 +55,9 @@ def _pipeline_model_cfg(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] 
     ui_params = ui_params or {}
     if "Model/candidates" in ui_params:
         model_cfg["candidates"] = as_candidates(ui_params.get("Model/candidates"))
-    if "Model/params" in ui_params:
+    if "Model/model_params_by_name" in ui_params:
+        model_cfg["params"] = as_dict(ui_params.get("Model/model_params_by_name"))
+    elif "Model/params" in ui_params:
         model_cfg["params"] = as_dict(ui_params.get("Model/params"))
     if "Model/selection_metric" in ui_params and ui_params.get("Model/selection_metric"):
         model_cfg["selection_metric"] = ui_params["Model/selection_metric"]
@@ -82,72 +78,50 @@ def _pipeline_model_cfg(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] 
     return model_cfg
 
 
-def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any]) -> dict[str, Any]:
+def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str | None]:
+    clearml_cfg = profile.get("clearml", {}) or {}
+    dataset_id = clearml_cfg.get("default_dataset_id")
+    dataset_file = clearml_cfg.get("default_dataset_file")
+    return dataset_id, dataset_file
+
+
+def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     run = pipeline_cfg.get("run", {})
     data = pipeline_cfg.get("data", {})
     model = pipeline_cfg.get("model", {})
+    metrics = pipeline_cfg.get("metrics", {}) or {}
+    output = pipeline_cfg.get("output", {}) or {}
     ensemble = model.get("ensemble", {}) or {}
     if not isinstance(ensemble, dict):
         ensemble = {}
+    profile = profile or {}
+    remote_default_dataset_id, remote_default_dataset_file = _remote_dataset_defaults(profile)
+    use_clearml = bool(profile.get("runtime", {}).get("use_clearml"))
+    clearml_dataset_id = data.get("clearml_dataset_id")
+    dataset_file = data.get("dataset_file")
+    local_path = data.get("local_path")
+    if use_clearml and remote_default_dataset_id and not clearml_dataset_id:
+        clearml_dataset_id = remote_default_dataset_id
+        dataset_file = dataset_file or remote_default_dataset_file
+        local_path = ""
     return {
-        "Run/task": pipeline_cfg.get("task"),
         "Run/name": run.get("name"),
         "Run/seed": run.get("seed"),
-        "Input/local_path": data.get("local_path"),
-        "Input/clearml_dataset_id": data.get("clearml_dataset_id"),
-        "Input/dataset_file": data.get("dataset_file"),
+        "Input/local_path": local_path,
+        "Input/clearml_dataset_id": clearml_dataset_id,
+        "Input/dataset_file": dataset_file,
         "Input/target_column": data.get("target_column"),
         "Input/feature_columns": data.get("feature_columns"),
         "Input/id_columns": data.get("id_columns", []),
         "Model/candidates": _json(model.get("candidates", []) or []),
-        "Model/params": _json(model.get("params", {}) or {}),
+        "Model/model_params_by_name": _json(model.get("params", {}) or {}),
+        "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
         "Model/selection_metric": model.get("selection_metric", "rmse"),
         "Model/ensemble_enabled": as_bool(ensemble.get("enabled")),
         "Model/ensemble_method": ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
         "Model/feature_preset": pipeline_cfg.get("features", {}).get("preset"),
-    }
-
-
-def _legacy_pipeline_ui_params(pipeline_cfg: dict[str, Any]) -> dict[str, Any]:
-    train_cfg = load_yaml(pipeline_cfg.get("train", {}).get("task_config", LEGACY_DEFAULT_STEP_CONFIGS["train"]))
-    eval_cfg = load_yaml(pipeline_cfg.get("eval", {}).get("task_config", LEGACY_DEFAULT_STEP_CONFIGS["eval"]))
-    infer_cfg = load_yaml(pipeline_cfg.get("infer", {}).get("task_config", LEGACY_DEFAULT_STEP_CONFIGS["infer"]))
-    run = pipeline_cfg.get("run", {})
-    train_data = train_cfg.get("data", {})
-    infer_output = infer_cfg.get("output", {})
-    train_model = train_cfg.get("model", {})
-    train_ensemble = train_model.get("ensemble", {}) or {}
-    if not isinstance(train_ensemble, dict):
-        train_ensemble = {}
-    train_search = train_model.get("search", {}) or {}
-    if not isinstance(train_search, dict):
-        train_search = {}
-    return {
-        "Run/task": pipeline_cfg.get("task"),
-        "Run/name": run.get("name"),
-        "Run/seed": run.get("seed"),
-        "Run/pipeline_mode": run.get("pipeline_mode", "auto"),
-        "Input/clearml_dataset_id": None,
-        "Input/train_dataset_file": train_cfg.get("data", {}).get("dataset_file"),
-        "Input/eval_dataset_file": eval_cfg.get("data", {}).get("dataset_file"),
-        "Input/infer_dataset_file": infer_cfg.get("data", {}).get("dataset_file"),
-        "Input/target_column": train_data.get("target_column"),
-        "Input/id_columns": train_data.get("id_columns", []),
-        "Model/name": train_model.get("name"),
-        "Model/params": _json(train_model.get("params", {}) or {}),
-        "Model/candidates": _json(train_model.get("candidates", []) or []),
-        "Model/selection_metric": train_model.get("selection_metric", "rmse"),
-        "Model/search_enabled": bool(train_search.get("enabled", False)),
-        "Model/search_method": train_search.get("method", "grid"),
-        "Model/search_space": _json(train_search.get("search_space", {}) or {}),
-        "Model/max_trials": int(train_search.get("max_trials") or 20),
-        "Model/ensemble_enabled": bool(train_ensemble.get("enabled", False)),
-        "Model/ensemble_method": train_ensemble.get("method", "mean_topk"),
-        "Model/ensemble_top_k": int(train_ensemble.get("top_k") or 3),
-        "Model/feature_preset": train_cfg.get("features", {}).get("preset"),
-        "Output/prediction_name": infer_output.get("prediction_name"),
-        "Output/chunk_size": infer_output.get("chunk_size"),
+        "Output/report_plots": as_bool(output.get("report_plots"), default=True),
     }
 
 
@@ -156,51 +130,9 @@ def pipeline_ui_params(
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
 ) -> dict[str, Any]:
     pipeline_cfg = load_yaml(task_path)
-    if _is_legacy_full_run_config(pipeline_cfg):
-        return _legacy_pipeline_ui_params(pipeline_cfg)
-    return _training_pipeline_ui_params(pipeline_cfg)
-
-
-def _legacy_effective_pipeline_params(ui_params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    model_cfg = {
-        "name": ui_params.get("Model/name"),
-        "params": as_dict(ui_params.get("Model/params")),
-        "candidates": as_candidates(ui_params.get("Model/candidates")),
-        "selection_metric": ui_params.get("Model/selection_metric", "rmse"),
-        "search": {
-            "enabled": as_bool(ui_params.get("Model/search_enabled")),
-            "method": str(ui_params.get("Model/search_method") or "grid").strip().lower(),
-            "search_space": as_dict(ui_params.get("Model/search_space")),
-            "max_trials": int(ui_params.get("Model/max_trials") or 20),
-        },
-        "ensemble": {
-            "enabled": as_bool(ui_params.get("Model/ensemble_enabled")),
-            "method": ui_params.get("Model/ensemble_method") or "mean_topk",
-            "top_k": int(ui_params.get("Model/ensemble_top_k") or 3),
-        },
-    }
-    mode, effective_cfg = apply_pipeline_mode_defaults(
-        {
-            "run": {"pipeline_mode": ui_params.get("Run/pipeline_mode", "auto")},
-            "model": model_cfg,
-        }
-    )
-    effective_model = effective_cfg["model"]
-    effective_params = dict(ui_params)
-    effective_params.update(
-        {
-            "Model/params": _json(effective_model.get("params", {}) or {}),
-            "Model/candidates": _json(effective_model.get("candidates", []) or []),
-            "Model/search_enabled": bool(effective_model.get("search", {}).get("enabled", False)),
-            "Model/search_method": effective_model.get("search", {}).get("method", "grid"),
-            "Model/search_space": _json(effective_model.get("search", {}).get("search_space", {}) or {}),
-            "Model/max_trials": int(effective_model.get("search", {}).get("max_trials") or 20),
-            "Model/ensemble_enabled": bool(effective_model.get("ensemble", {}).get("enabled", False)),
-            "Model/ensemble_method": effective_model.get("ensemble", {}).get("method", "mean_topk"),
-            "Model/ensemble_top_k": int(effective_model.get("ensemble", {}).get("top_k") or 3),
-        }
-    )
-    return mode, effective_params
+    if "data" not in pipeline_cfg:
+        raise ValueError("ClearML pipeline sync supports only the official stage-based training pipeline config.")
+    return _training_pipeline_ui_params(pipeline_cfg, load_yaml(profile_path))
 
 
 def pipeline_arg_params(params: dict[str, Any]) -> dict[str, Any]:
@@ -223,95 +155,6 @@ def pipeline_params_from_task(defaults: dict[str, Any], task_params: dict[str, A
 def _add_pipeline_args(pipe: Any, params: dict[str, Any]) -> None:
     for key, value in params.items():
         pipe.add_parameter(name=key, default=value)
-
-
-def _apply_legacy_overrides(step: dict[str, Any], ui_params: dict[str, Any]) -> None:
-    dataset_id = ui_params.get("Input/clearml_dataset_id")
-    dataset_file = ui_params.get(f"Input/{step['name']}_dataset_file")
-    if dataset_file:
-        step["parameter_override"]["Input/dataset_file"] = dataset_file
-    if dataset_id:
-        step["parameter_override"]["Input/clearml_dataset_id"] = dataset_id
-        step["parameter_override"]["Input/local_path"] = ""
-    if step["name"] in {"train", "eval"} and ui_params.get("Input/target_column"):
-        step["parameter_override"]["Input/target_column"] = ui_params["Input/target_column"]
-    if "Input/id_columns" in ui_params:
-        step["parameter_override"]["Input/id_columns"] = as_list(ui_params.get("Input/id_columns")) or []
-
-    if step["name"] == "train":
-        for key in (
-            "Model/name",
-            "Model/params",
-            "Model/candidates",
-            "Model/selection_metric",
-            "Model/search_enabled",
-            "Model/search_method",
-            "Model/search_space",
-            "Model/max_trials",
-            "Model/ensemble_enabled",
-            "Model/ensemble_method",
-            "Model/ensemble_top_k",
-            "Model/feature_preset",
-        ):
-            if key in ui_params and ui_params.get(key) not in {None, ""}:
-                step["parameter_override"][key] = ui_params[key]
-    if step["name"] == "infer":
-        if ui_params.get("Output/prediction_name"):
-            step["parameter_override"]["Output/prediction_name"] = ui_params["Output/prediction_name"]
-        if "Output/chunk_size" in ui_params and ui_params.get("Output/chunk_size") not in {None, ""}:
-            step["parameter_override"]["Output/chunk_size"] = int(ui_params["Output/chunk_size"])
-
-
-def _load_legacy_step_task_name(task_config: str | Path) -> str:
-    task_cfg = load_yaml(task_config)
-    task_name = task_cfg.get("task")
-    if task_name not in LEGACY_TASK_TO_TEMPLATE:
-        raise ValueError(f"Unsupported compatibility pipeline step task: {task_name!r}")
-    return task_name
-
-
-def _build_legacy_plan(
-    pipeline_cfg: dict[str, Any],
-    profile: dict[str, Any],
-    task_path: str | Path,
-    profile_path: str | Path,
-    ui_params: dict[str, Any] | None,
-) -> dict[str, Any]:
-    project_root, templates_project, pipelines_project = _template_project(profile)
-    clearml_cfg = profile.get("clearml", {})
-    default_params = _legacy_pipeline_ui_params(pipeline_cfg)
-    mode, effective_params = _legacy_effective_pipeline_params({**default_params, **(ui_params or {})})
-
-    steps = []
-    for name, parents in (("train", []), ("eval", ["train"]), ("infer", ["eval"])):
-        section = pipeline_cfg.get(name, {})
-        task_config = section.get("task_config") or LEGACY_DEFAULT_STEP_CONFIGS[name]
-        task_name = _load_legacy_step_task_name(task_config)
-        step: dict[str, Any] = {
-            "name": name,
-            "parents": parents,
-            "base_task_project": templates_project,
-            "base_task_name": LEGACY_TASK_TO_TEMPLATE[task_name],
-            "task_config": task_config,
-            "parameter_override": {},
-        }
-        if name in {"eval", "infer"}:
-            step["parameter_override"]["Model/artifact_path"] = LEGACY_MODEL_ARTIFACT_REF
-        if ui_params:
-            _apply_legacy_overrides(step, effective_params)
-        steps.append(step)
-
-    return {
-        "kind": "compatibility_train_eval_infer",
-        "project": f"{project_root}/Pipelines",
-        "name": pipeline_cfg.get("run", {}).get("name", "tabular_pipeline"),
-        "version": "0.1.0",
-        "pipeline_mode": mode,
-        "queue": clearml_cfg.get("queue", "default"),
-        "steps": steps,
-        "task_config": str(task_path),
-        "profile_config": str(profile_path),
-    }
 
 
 def _data_overrides(params: dict[str, Any]) -> dict[str, Any]:
@@ -372,11 +215,14 @@ def _stage_step(
     name: str,
     stage: str,
     templates_project: str,
+    run_name: str,
+    model_name: str | None = None,
     parents: list[str] | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    label = stage_task_label(stage, model_name)
     parameter_override = {
-        "Run/name": name,
+        "Run/name": prefixed_task_name("stage", label, run_name),
         "Run/stage": stage,
         **(overrides or {}),
     }
@@ -385,9 +231,10 @@ def _stage_step(
         "name": name,
         "parents": parents or [],
         "base_task_project": templates_project,
-        "base_task_name": STAGE_TEMPLATE,
+        "base_task_name": clearml_template_name(STAGE_TEMPLATE),
         "task_config": STAGE_TASK_CONFIG,
         "parameter_override": parameter_override,
+        "tags": clearml_tags("stage", internal=True, stage=stage, model=model_name),
     }
 
 
@@ -398,10 +245,14 @@ def _build_training_plan(
     profile_path: str | Path,
     ui_params: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    project_root, templates_project, pipelines_project = _template_project(profile)
+    projects = _project_layout(profile)
+    templates_project = projects["templates"]
+    pipelines_project = projects["pipelines"]
+    stages_project = projects["stages"]
     clearml_cfg = profile.get("clearml", {})
-    default_params = _training_pipeline_ui_params(pipeline_cfg)
+    default_params = _training_pipeline_ui_params(pipeline_cfg, profile)
     effective_params = {**default_params, **(ui_params or {})}
+    run_name = str(effective_params.get("Run/name") or pipeline_cfg.get("run", {}).get("name") or "run")
     model_cfg = _pipeline_model_cfg(pipeline_cfg, effective_params)
     search_cfg = model_cfg.get("search", {}) or {}
     if not isinstance(search_cfg, dict):
@@ -422,14 +273,20 @@ def _build_training_plan(
     ensemble_enabled = as_bool(ensemble_cfg.get("enabled"))
     selection_metric = str(model_cfg.get("selection_metric") or "rmse")
     data_overrides = _data_overrides(effective_params)
+    stage_common_overrides = {
+        "Model/evaluation_metrics": effective_params.get("Model/evaluation_metrics"),
+        "Output/report_plots": as_bool(effective_params.get("Output/report_plots"), default=True),
+    }
 
     steps: list[dict[str, Any]] = [
         _stage_step(
             name="preprocess_features",
             stage="preprocess_features",
             templates_project=templates_project,
+            run_name=run_name,
             overrides={
                 **data_overrides,
+                **stage_common_overrides,
                 "Model/feature_preset": effective_params.get("Model/feature_preset"),
             },
         )
@@ -448,9 +305,12 @@ def _build_training_plan(
                 name=step_name,
                 stage="train_model",
                 templates_project=templates_project,
+                run_name=run_name,
+                model_name=model_name,
                 parents=["preprocess_features"],
                 overrides={
                     **_preprocess_refs(),
+                    **stage_common_overrides,
                     "Model/name": model_name,
                     "Model/params": _json(model_params),
                     "Model/selection_metric": selection_metric,
@@ -469,9 +329,11 @@ def _build_training_plan(
                 name="build_ensemble",
                 stage="build_ensemble",
                 templates_project=templates_project,
+                run_name=run_name,
                 parents=train_steps,
                 overrides={
                     **_preprocess_refs(),
+                    **stage_common_overrides,
                     "Input/model_refs": _json(model_refs),
                     "Model/selection_metric": selection_metric,
                     "Model/ensemble_enabled": True,
@@ -486,8 +348,10 @@ def _build_training_plan(
             name="evaluate_models",
             stage="evaluate_models",
             templates_project=templates_project,
+            run_name=run_name,
             parents=parents_for_evaluate,
             overrides={
+                **stage_common_overrides,
                 "Input/model_refs": _json(model_refs),
                 "Input/ensemble_ref": _json(ensemble_ref) if ensemble_ref else None,
                 "Model/selection_metric": selection_metric,
@@ -498,15 +362,17 @@ def _build_training_plan(
     return {
         "kind": "training",
         "project": pipelines_project,
-        "name": pipeline_cfg.get("run", {}).get("name", "tabular_train_pipeline"),
+        "stage_project": stages_project,
+        "name": prefixed_task_name("pipeline", "tabular_train_pipeline", run_name),
         "version": "0.2.0",
-        "pipeline_mode": "training_ensemble" if ensemble_enabled else "training",
+        "training_flow": "preprocess_train_ensemble_evaluate" if ensemble_enabled else "preprocess_train_evaluate",
         "queue": clearml_cfg.get("queue", "default"),
         "candidate_models": [candidate["name"] for candidate in candidates],
         "ensemble_enabled": ensemble_enabled,
         "steps": steps,
         "task_config": str(task_path),
         "profile_config": str(profile_path),
+        "tags": clearml_tags("pipeline", user_facing=True),
     }
 
 
@@ -518,8 +384,11 @@ def build_pipeline_plan(
 ) -> dict[str, Any]:
     pipeline_cfg = apply_overrides(load_yaml(task_path), overrides)
     profile = load_yaml(profile_path)
-    if _is_legacy_full_run_config(pipeline_cfg):
-        return _build_legacy_plan(pipeline_cfg, profile, task_path, profile_path, ui_params)
+    if "data" not in pipeline_cfg:
+        raise ValueError(
+            "ClearML pipeline planning supports only the official stage-based training pipeline. "
+            "The legacy train/eval/infer full-run flow is sync-excluded."
+        )
     return _build_training_plan(pipeline_cfg, profile, task_path, profile_path, ui_params)
 
 
@@ -528,9 +397,10 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         "DRY-RUN pipeline: "
         f"kind={plan['kind']} "
         f"project={plan['project']} "
+        f"stage_project={plan['stage_project']} "
         f"name={plan['name']} "
         f"version={plan['version']} "
-        f"pipeline_mode={plan['pipeline_mode']} "
+        f"training_flow={plan['training_flow']} "
         f"queue={plan['queue']}"
     )
     for step in plan["steps"]:
@@ -542,7 +412,8 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
             f"parents={parents} "
             f"template={step['base_task_project']}/{step['base_task_name']} "
             f"task_config={step['task_config']} "
-            f"parameter_override=[{overrides}]"
+            f"parameter_override=[{overrides}] "
+            f"tags={step.get('tags', [])}"
         )
 
 
@@ -595,8 +466,8 @@ def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
         pipe.add_step(**kwargs)
 
 
-def _find_pipeline_draft(Task: Any, task_name: str):
-    tasks = Task.get_tasks(task_name=task_name, allow_archived=False)
+def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
+    tasks = Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=False)
     for task in reversed(tasks):
         if getattr(task, "status", None) != "created":
             continue
@@ -606,6 +477,43 @@ def _find_pipeline_draft(Task: Any, task_name: str):
             continue
         return task
     return None
+
+
+def _apply_pipeline_template_metadata(task: Any) -> None:
+    add_tags = getattr(task, "add_tags", None)
+    set_tags = getattr(task, "set_tags", None)
+    if callable(add_tags):
+        add_tags(PIPELINE_TEMPLATE_TAGS)
+    elif callable(set_tags):
+        current = []
+        get_tags = getattr(task, "get_tags", None)
+        if callable(get_tags):
+            current = list(get_tags() or [])
+        set_tags(sorted(set(current) | set(PIPELINE_TEMPLATE_TAGS)))
+    set_comment = getattr(task, "set_comment", None)
+    if callable(set_comment):
+        set_comment(
+            "User-facing training pipeline template. Remote runs should use "
+            "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths."
+        )
+
+
+def _apply_pipeline_run_metadata(task: Any, *, task_name: str | None = None) -> None:
+    if task_name:
+        set_name = getattr(task, "set_name", None)
+        if callable(set_name):
+            set_name(task_name)
+    add_tags = getattr(task, "add_tags", None)
+    set_tags = getattr(task, "set_tags", None)
+    tags = clearml_tags("pipeline", user_facing=True)
+    if callable(add_tags):
+        add_tags(tags)
+    elif callable(set_tags):
+        current = []
+        get_tags = getattr(task, "get_tags", None)
+        if callable(get_tags):
+            current = list(get_tags() or [])
+        set_tags(sorted(set(current) | set(tags)))
 
 
 def sync_pipeline_draft(
@@ -621,8 +529,10 @@ def sync_pipeline_draft(
     """Create a Pipeline-tab draft for the stage-based training graph."""
     clearml_sdk = import_clearml_sdk()
     Task = clearml_sdk.Task
-    existing = _find_pipeline_draft(Task, template_name)
+    display_name = clearml_template_name(template_name)
     params = pipeline_ui_params(task_path, profile_path)
+    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=params)
+    existing = _find_pipeline_draft(Task, plan["project"], display_name)
     draft_params = {**params, **pipeline_arg_params(params)}
     if existing is not None:
         _set_pipeline_script_with_compat(
@@ -636,17 +546,17 @@ def sync_pipeline_draft(
         existing.update_parameters(draft_params)
         if packages:
             existing.set_packages(packages)
+        _apply_pipeline_template_metadata(existing)
         return existing
 
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
-    plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=params)
     pipe = PipelineController(
         project=plan["project"],
-        name=template_name,
+        name=display_name,
         version=plan["version"],
         add_run_number=False,
-        target_project=plan["project"],
+        target_project=plan["stage_project"],
         repo=repository or ".",
         repo_branch=branch,
         packages=packages,
@@ -665,6 +575,7 @@ def sync_pipeline_draft(
     _add_plan_steps(pipe, plan)
     pipe.create_draft()
     pipe.task.update_parameters(draft_params)
+    _apply_pipeline_template_metadata(pipe.task)
     return pipe.task
 
 
@@ -685,6 +596,7 @@ def register_tabular_pipeline(
         project=plan["project"],
         name=plan["name"],
         version=plan["version"],
+        target_project=plan["stage_project"],
     )
     task = Task.current_task()
     task_params = task.get_parameters() if task else {}
@@ -692,6 +604,8 @@ def register_tabular_pipeline(
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=connected, overrides=overrides)
 
     _add_plan_steps(pipe, plan)
+    if task is not None:
+        _apply_pipeline_run_metadata(task, task_name=plan["name"])
     pipe.start_locally(run_pipeline_steps_locally=False)
 
 

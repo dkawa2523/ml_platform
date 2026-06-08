@@ -20,7 +20,7 @@ from .ensemble import ensemble_config as _ensemble_cfg
 from .ensemble import ensemble_weights as _ensemble_weights
 from .ensemble import metric_value as _metric_value
 from .features import build_feature_pipeline
-from .metrics import DEFAULT_REGRESSION_METRICS, regression_metrics
+from .metrics import DEFAULT_REGRESSION_METRICS, regression_metrics, regression_prediction_frame, write_regression_plot_artifacts
 from .model_artifact import write_model_info
 from .models import MeanTopKEnsemble, TabularEstimator, build_model, model_candidates
 from .search import optimization_trial_rows, search_config, search_trials
@@ -196,14 +196,15 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         retrained_on_full_data = True
 
     validation_predictions_path = write_table(
-        X_valid.assign(_target=y_valid.values, _prediction=y_pred),
+        regression_prediction_frame(X_valid, y_valid, y_pred, model_name=model_name),
         run_dir / "validation_predictions.csv",
     )
+    plots = write_regression_plot_artifacts(y_valid, y_pred, run_dir, prefix="validation")
     predictions_path = validation_predictions_path
     ensemble_predictions_path = None
     if ensemble_enabled:
         ensemble_predictions_path = write_table(
-            X_valid.assign(_target=y_valid.values, _prediction=y_pred),
+            regression_prediction_frame(X_valid, y_valid, y_pred, model_name=model_name),
             run_dir / "ensemble_predictions.csv",
         )
     model_path = dump_joblib(estimator, run_dir / "model.joblib")
@@ -359,5 +360,6 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         metrics=metrics,
         artifacts=artifacts,
         tables=tables,
+        plots=plots,
         extra={"feature_columns": feature_names},
     )

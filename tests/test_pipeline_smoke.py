@@ -62,7 +62,10 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert (result.run_dir / "preprocess_features").is_dir()
     assert (result.run_dir / "train_linear").is_dir()
     assert (result.run_dir / "train_ridge").is_dir()
+    assert (result.run_dir / "train_lasso").is_dir()
+    assert (result.run_dir / "train_elasticnet").is_dir()
     assert (result.run_dir / "train_random_forest").is_dir()
+    assert (result.run_dir / "train_extra_trees").is_dir()
     assert (result.run_dir / "train_gradient_boosting").is_dir()
     assert (result.run_dir / "train_multiple_models").is_dir()
     assert (result.run_dir / "build_ensemble").is_dir()
@@ -71,12 +74,14 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     for artifact in [
         "preprocess_bundle",
         "feature_spec",
+        "feature_summary",
         "model_refs",
         "metrics_by_model",
         "leaderboard",
         "best_model",
         "best_model_json",
         "evaluation_report",
+        "evaluation_predictions",
         "metrics",
         "manifest",
         "config",
@@ -90,37 +95,70 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "train_features",
         "valid_features",
         "leaderboard",
+        "evaluation_predictions",
         "validation_predictions_linear",
         "validation_predictions_ridge",
+        "validation_predictions_lasso",
+        "validation_predictions_elasticnet",
         "validation_predictions_random_forest",
+        "validation_predictions_extra_trees",
         "validation_predictions_gradient_boosting",
         "ensemble_predictions",
     ]:
         assert result.tables[table].exists()
 
     leaderboard = pd.read_csv(result.tables["leaderboard"])
-    assert {"linear", "ridge", "random_forest", "gradient_boosting", "mean_topk"} <= set(leaderboard["model_name"])
+    assert {
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+        "mean_topk",
+    } <= set(leaderboard["model_name"])
     assert list(leaderboard["rank"]) == list(range(1, len(leaderboard) + 1))
+    validation_predictions = pd.read_csv(result.tables["validation_predictions_linear"])
+    assert {"actual", "prediction", "residual", "abs_error", "_target", "_prediction", "model_name"} <= set(
+        validation_predictions.columns
+    )
+    assert "prediction_vs_actual_linear" in result.plots
+    assert "residual_histogram_linear" in result.plots
+    assert "metrics_by_model_bar" in result.plots
+    assert "prediction_vs_actual" in result.plots
+    assert "residual_histogram" in result.plots
+    evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
+    assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
+    assert "predictions" not in result.tables
 
     best_model = read_json(result.artifacts["best_model_json"])
     assert best_model["best_model_artifact"] == str(result.artifacts["best_model"])
     assert result.artifacts["best_model"].exists()
     assert result.extra["best_model"]["model_name"] == best_model["model_name"]
     model_refs = read_json(result.artifacts["model_refs"])
-    assert model_refs["stage"] == "train_multiple_models"
+    assert model_refs["stage"] == "evaluate_models"
     assert {item["model_name"] for item in model_refs["models"]} == {
         "linear",
         "ridge",
+        "lasso",
+        "elasticnet",
         "random_forest",
+        "extra_trees",
         "gradient_boosting",
     }
+    assert model_refs["ensemble"]["model_name"] == "mean_topk"
     metrics_by_model = read_json(result.artifacts["metrics_by_model"])
-    assert set(metrics_by_model["metrics_by_model"]) == {
+    assert {
         "linear",
         "ridge",
+        "lasso",
+        "elasticnet",
         "random_forest",
+        "extra_trees",
         "gradient_boosting",
-    }
+        "mean_topk",
+    } <= set(metrics_by_model["metrics_by_model"])
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
@@ -249,13 +287,9 @@ def test_infer_rejects_unknown_local_training_pipeline_selector(tmp_path):
         run_infer(infer_cfg)
 
 
-def test_deprecated_train_eval_infer_fallback_still_runs(tmp_path):
+def test_deprecated_train_eval_infer_fallback_is_not_product_pipeline(tmp_path):
     train_path, infer_path = _write_training_data(tmp_path, rows=50)
     cfg = _old_style_pipeline_cfg(tmp_path, train_path, infer_path)
 
-    result = run_pipeline(cfg)
-
-    assert result.extra["pipeline_kind"] == "compatibility_train_eval_infer"
-    assert result.extra["pipeline_mode"] == "single"
-    assert result.tables["infer_predictions"].exists()
-    assert result.artifacts["model"].exists()
+    with pytest.raises(ValueError, match="official training graph"):
+        run_pipeline(cfg)
