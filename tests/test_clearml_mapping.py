@@ -371,10 +371,32 @@ def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
     assert params["Input/local_path"] == ""
     assert params["Input/clearml_dataset_id"] == "b7afaea9d7aa42f084fb4fc06b0d4d41"
     assert params["Input/dataset_file"] == "sample_train.csv"
+    assert params["Input/feature_columns"] == []
     assert params["Model/evaluation_metrics"] == '["mae", "rmse", "r2"]'
     assert params["Features/preset"] == "basic"
     assert params["Features/drop_columns"] == "[]"
     assert params["Model/ensemble_methods"] == '["mean_topk", "weighted", "median"]'
+    assert json.loads(params["Model/candidates"]) == [
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+    ]
+    assert set(json.loads(params["Model/model_params_by_name"])) == {
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+        "lightgbm",
+        "xgboost",
+        "catboost",
+    }
 
 
 def test_clearml_pipeline_new_run_args_are_mapped_to_ui_params():

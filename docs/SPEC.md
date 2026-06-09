@@ -115,6 +115,11 @@ Model selection is done with `model.candidates` locally and `Model/candidates`
 in ClearML UI. Portable default candidates may stay dependency-free so the
 pipeline runs on a minimal Agent image.
 
+`Model/model_params_by_name` should be prefilled with editable keys for all
+supported models, including optional-dependency GBM models. This lets ClearML
+New Run users see the available model settings without making optional GBM
+models part of the default runnable candidates.
+
 Dependency-free supported models are:
 
 - `linear`
@@ -330,7 +335,7 @@ Primary training UI parameters:
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
 | `Model/candidates` | optional | optional | JSON array. Portable defaults may be dependency-free; optional supported models must be explicit when the Agent has dependencies. |
-| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. |
+| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
 | `Model/ensemble_top_k` | optional | optional | Number of ranked base models for top-k ensemble methods. |

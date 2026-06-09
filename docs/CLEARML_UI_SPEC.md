@@ -81,7 +81,7 @@ ClearML remote runs should use Dataset inputs, not repo-local paths.
 | `Input/dataset_file` | remote | File inside the Dataset, for example `sample_train.csv`. |
 | `Input/target_column` | local + remote | Scalar regression target. |
 | `Input/local_path` | local only | Valid remotely only if the Agent can access the same path. |
-| `Input/feature_columns` | optional | Empty means auto-select non-target, non-id columns. |
+| `Input/feature_columns` | optional | Defaults to `[]`. Empty means auto-select non-target, non-id columns. |
 | `Input/id_columns` | optional | Excluded from features and preserved in outputs when applicable. |
 | `Split/valid_size` | optional | Validation split fraction. |
 | `Features/preset` | optional | Feature transformer preset, for example `basic` or `numeric_only`. |
@@ -94,7 +94,7 @@ ClearML remote runs should use Dataset inputs, not repo-local paths.
 | `Run/name` | optional | Human-readable run suffix. |
 | `Run/seed` | optional | Reproducibility seed. |
 | `Model/candidates` | optional | JSON array of model names. |
-| `Model/model_params_by_name` | optional | JSON object keyed by model name. |
+| `Model/model_params_by_name` | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
 | `Model/ensemble_enabled` | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
 | `Model/ensemble_top_k` | optional | Number of ranked base models for top-k methods. |
@@ -144,6 +144,11 @@ environment has the optional dependency installed, for example
 - `lightgbm`
 - `xgboost`
 - `catboost`
+
+The New Run form should still prefill `Model/model_params_by_name` with
+`lightgbm`, `xgboost`, and `catboost` parameter keys. Those entries are settings
+for supported optional-dependency models; they do not run unless the model name
+is also added to `Model/candidates`.
 
 Out-of-scope models such as `knn`, `svr`, `mlp`, `gaussian_process`, and
 `tabpfn` should not be used as current product candidates.

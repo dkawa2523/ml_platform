@@ -18,6 +18,9 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - Supported optional-dependency regressors are `lightgbm`, `xgboost`, and
   `catboost`. They are not default candidates; install `pkgs/tabular[gbm]`
   or provide a ClearML Agent image with those packages before selecting them.
+  The user-facing New Run form should still prefill their
+  `Model/model_params_by_name` entries so operators can enable them by adding
+  the model names to `Model/candidates`.
 - `scikit-learn` is a required runtime dependency.
 - Current verification evidence lives under `verification/training_pipeline/`
   and `verification/inference/`. Historical and future-reference evidence lives

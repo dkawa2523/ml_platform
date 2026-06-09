@@ -109,7 +109,7 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
         "Input/clearml_dataset_id": clearml_dataset_id,
         "Input/dataset_file": dataset_file,
         "Input/target_column": data.get("target_column"),
-        "Input/feature_columns": data.get("feature_columns"),
+        "Input/feature_columns": data.get("feature_columns") or [],
         "Input/id_columns": data.get("id_columns", []),
         "Features/preset": features.get("preset", "basic"),
         "Features/numeric_impute_strategy": features.get("numeric_impute_strategy", "median"),

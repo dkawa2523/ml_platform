@@ -28,6 +28,11 @@ ClearML Agent environment, for example with
 `pip install -e "pkgs/tabular[gbm]"`. Missing optional dependencies
 must not break dependency-free model runs.
 
+ClearML New Run defaults keep `Model/candidates` dependency-free for safe
+execution, while `Model/model_params_by_name` is prefilled with all supported
+model keys, including optional GBM models, so operators can add them when the
+Agent image has the extra dependencies.
+
 Future scope includes optimization, `artifact_url` / `clearml_model_id`
 inference sources, Optuna, Ray Tune, per-trial ClearML child tasks, advanced
 diagnostics, online serving, 1D/2D productization, and distribution mode
@@ -177,7 +182,7 @@ Primary training parameters:
 | `Input/clearml_dataset_id` | optional | required | Preferred remote data source. |
 | `Input/dataset_file` | optional | required when Dataset has multiple files | Example: `sample_train.csv`. |
 | `Input/target_column` | required | required | Default sample value is `target`. |
-| `Input/feature_columns` | optional | optional | Empty means auto-select non-target, non-id columns. |
+| `Input/feature_columns` | optional | optional | Defaults to `[]`. Empty means auto-select non-target, non-id columns. |
 | `Input/id_columns` | optional | optional | Excluded from features. |
 | `Split/valid_size` | optional | optional | Validation split fraction. |
 | `Features/preset` | optional | optional | Feature transformer preset, for example `basic` or `numeric_only`. |
@@ -188,7 +193,7 @@ Primary training parameters:
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
 | `Model/candidates` | optional | optional | JSON array. Portable defaults may be dependency-free; optional supported models require their dependencies. |
-| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. |
+| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name, prefilled with dependency-free and optional GBM model keys. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
 | `Model/ensemble_top_k` | optional | optional | Number of ranked base models for top-k methods. |
