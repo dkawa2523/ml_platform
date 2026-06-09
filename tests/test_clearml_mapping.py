@@ -464,6 +464,44 @@ def test_clearml_report_plots_false_skips_media_but_uploads_plot_artifact(tmp_pa
     assert adapter.plots == []
 
 
+def test_clearml_adapter_reports_prediction_scatter_as_markers():
+    adapter_module = load_clearml_adapter_module()
+
+    class FakeLogger:
+        def __init__(self):
+            self.scatter_calls = []
+
+        def report_scatter2d(self, **kwargs):
+            self.scatter_calls.append(kwargs)
+
+    class FakeTask:
+        def __init__(self):
+            self.logger = FakeLogger()
+
+        def get_logger(self):
+            return self.logger
+
+    task = FakeTask()
+    adapter_module.ClearMLAdapter(task).report_scatter(
+        "prediction_vs_actual",
+        "validation_predictions",
+        [(1.0, 0.9), (2.0, 2.1)],
+        iteration=0,
+    )
+
+    assert task.logger.scatter_calls == [
+        {
+            "title": "prediction_vs_actual",
+            "series": "validation_predictions",
+            "scatter": [(1.0, 0.9), (2.0, 2.1)],
+            "iteration": 0,
+            "xaxis": "actual",
+            "yaxis": "prediction",
+            "mode": "markers",
+        }
+    ]
+
+
 def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     reports = load_clearml_reports_module()
     metrics = tmp_path / "metrics.json"

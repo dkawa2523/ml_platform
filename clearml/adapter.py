@@ -838,16 +838,29 @@ class ClearMLAdapter:
         if not callable(report_scatter):
             return
         try:
-            report_scatter(title=title, series=series, scatter=points, iteration=iteration)
+            report_scatter(
+                title=title,
+                series=series,
+                scatter=points,
+                iteration=iteration,
+                xaxis="actual",
+                yaxis="prediction",
+                mode="markers",
+            )
         except TypeError:
             try:
-                report_scatter(
-                    title=title,
-                    series=series,
-                    x=[point[0] for point in points],
-                    y=[point[1] for point in points],
-                    iteration=iteration,
-                )
+                report_scatter(title=title, series=series, scatter=points, iteration=iteration)
+            except TypeError:
+                try:
+                    report_scatter(
+                        title=title,
+                        series=series,
+                        x=[point[0] for point in points],
+                        y=[point[1] for point in points],
+                        iteration=iteration,
+                    )
+                except Exception:
+                    return
             except Exception:
                 return
         except Exception:
