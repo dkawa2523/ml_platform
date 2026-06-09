@@ -112,13 +112,12 @@ Each `train_<model>` node uses the same internal stage template with a different
 step name and `Model/name`. Do not create model-specific templates.
 
 Model selection is done with `model.candidates` locally and `Model/candidates`
-in ClearML UI. Portable default candidates may stay dependency-free so the
-pipeline runs on a minimal Agent image.
+in ClearML UI. Local task config may stay dependency-free for portability, while
+the user-facing ClearML New Run form should prefill `Model/candidates` with all
+supported model names so operators can see the full selectable model set.
 
 `Model/model_params_by_name` should be prefilled with editable keys for all
-supported models, including optional-dependency GBM models. This lets ClearML
-New Run users see the available model settings without making optional GBM
-models part of the default runnable candidates.
+supported models, including optional-dependency GBM models.
 
 Dependency-free supported models are:
 
@@ -140,6 +139,8 @@ Optional-dependency models are product-supported, but executable only when their
 dependency is installed in the local or Agent environment. If a dependency is
 missing, the selected optional model should fail with a clear installation error
 without breaking dependency-free model runs.
+
+GBDT-style sklearn boosting is exposed as `gradient_boosting`, not `gbdt`.
 
 Install optional model dependencies explicitly, for example
 `pip install -e "pkgs/tabular[gbm]"`. Do not add them to base runtime
@@ -334,7 +335,7 @@ Primary training UI parameters:
 | `Features/scaling` | optional | optional | `standard` or `none`. |
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
-| `Model/candidates` | optional | optional | JSON array. Portable defaults may be dependency-free; optional supported models must be explicit when the Agent has dependencies. |
+| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults should include all supported models; remove optional GBM names if the Agent lacks those dependencies. |
 | `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |

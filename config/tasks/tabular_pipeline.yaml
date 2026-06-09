@@ -12,14 +12,15 @@ run:
 # Required ClearML remote inputs: Input/clearml_dataset_id, Input/dataset_file,
 # and Input/target_column. clearml-dev profile provides dev Dataset defaults.
 # ClearML UI examples:
-#   Model/candidates: ["linear","ridge","lasso","elasticnet","random_forest","extra_trees","gradient_boosting"]
+#   Model/candidates in ClearML New Run is prefilled with all supported models.
+#   GBDT is represented by the internal model name "gradient_boosting".
 #   Model/model_params_by_name: prefilled with dependency-free and optional GBM model keys.
 #   Model/ensemble_methods: ["mean_topk","weighted","median"]
 #   Features/drop_columns: ["unused_column"]
 #   Features/passthrough_columns: ["already_numeric_feature"]
-# Supported optional-dependency models lightgbm/xgboost/catboost can be added
-# manually to Model/candidates when pkgs/tabular[gbm] is installed in the Agent
-# environment. Defaults stay dependency-free for portability.
+# Supported optional-dependency models lightgbm/xgboost/catboost require
+# pkgs/tabular[gbm] in the Agent environment. Remove them from Model/candidates
+# in New Run if that image does not include the optional dependencies.
 
 data:
   local_path: data/sample_train.csv

@@ -93,7 +93,7 @@ ClearML remote runs should use Dataset inputs, not repo-local paths.
 | `Features/passthrough_columns` | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
 | `Run/name` | optional | Human-readable run suffix. |
 | `Run/seed` | optional | Reproducibility seed. |
-| `Model/candidates` | optional | JSON array of model names. |
+| `Model/candidates` | optional | JSON array of model names. New Run defaults should show all supported models. |
 | `Model/model_params_by_name` | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
 | `Model/ensemble_enabled` | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
@@ -131,24 +131,20 @@ primary training inputs.
 
 ## Model Candidates
 
-Portable default candidates may be dependency-free supported models:
+ClearML New Run default candidates should show all supported models:
 
 ```json
-["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting"]
+["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting", "lightgbm", "xgboost", "catboost"]
 ```
 
-Supported optional-dependency candidates may be entered manually when the Agent
-environment has the optional dependency installed, for example
-`pip install -e "pkgs/tabular[gbm]"`:
-
-- `lightgbm`
-- `xgboost`
-- `catboost`
+`gradient_boosting` is the sklearn GBDT-style model name. `lightgbm`,
+`xgboost`, and `catboost` are supported optional-dependency models. Remove
+those optional names before running if the Agent environment does not include
+the extra, for example `pip install -e "pkgs/tabular[gbm]"`.
 
 The New Run form should still prefill `Model/model_params_by_name` with
 `lightgbm`, `xgboost`, and `catboost` parameter keys. Those entries are settings
-for supported optional-dependency models; they do not run unless the model name
-is also added to `Model/candidates`.
+for supported optional-dependency models.
 
 Out-of-scope models such as `knn`, `svr`, `mlp`, `gaussian_process`, and
 `tabpfn` should not be used as current product candidates.

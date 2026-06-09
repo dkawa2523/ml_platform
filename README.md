@@ -22,16 +22,13 @@ stage template with a different method. ClearML sync exposes only
 `tabular_train_pipeline_template`, `tabular_infer_template`, and the internal
 `tabular_stage_template`.
 
-Portable default candidates may remain dependency-free. Optional-dependency
-supported models are runnable when the dependency is installed in the local or
-ClearML Agent environment, for example with
-`pip install -e "pkgs/tabular[gbm]"`. Missing optional dependencies
-must not break dependency-free model runs.
-
-ClearML New Run defaults keep `Model/candidates` dependency-free for safe
-execution, while `Model/model_params_by_name` is prefilled with all supported
-model keys, including optional GBM models, so operators can add them when the
-Agent image has the extra dependencies.
+Local config defaults remain dependency-free so local smoke runs work without
+heavy extras. ClearML New Run defaults show all supported model names in
+`Model/candidates`, including optional-dependency models. `gradient_boosting` is
+the sklearn GBDT-style model name. Remove `lightgbm`, `xgboost`, and `catboost`
+before running if the Agent image does not have `pkgs/tabular[gbm]` or
+equivalent optional dependencies installed. `Model/model_params_by_name` is also
+prefilled with all supported model keys.
 
 Future scope includes optimization, `artifact_url` / `clearml_model_id`
 inference sources, Optuna, Ray Tune, per-trial ClearML child tasks, advanced
@@ -192,7 +189,7 @@ Primary training parameters:
 | `Features/scaling` | optional | optional | `standard` or `none`. |
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
-| `Model/candidates` | optional | optional | JSON array. Portable defaults may be dependency-free; optional supported models require their dependencies. |
+| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults show all supported models; optional GBM names require their dependencies. |
 | `Model/model_params_by_name` | optional | optional | JSON object keyed by model name, prefilled with dependency-free and optional GBM model keys. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |

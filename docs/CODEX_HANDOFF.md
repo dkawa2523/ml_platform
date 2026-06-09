@@ -16,11 +16,11 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - Dependency-free supported regression models are `linear`, `ridge`, `lasso`,
   `elasticnet`, `random_forest`, `extra_trees`, and `gradient_boosting`.
 - Supported optional-dependency regressors are `lightgbm`, `xgboost`, and
-  `catboost`. They are not default candidates; install `pkgs/tabular[gbm]`
-  or provide a ClearML Agent image with those packages before selecting them.
-  The user-facing New Run form should still prefill their
-  `Model/model_params_by_name` entries so operators can enable them by adding
-  the model names to `Model/candidates`.
+  `catboost`. Install `pkgs/tabular[gbm]` or provide a ClearML Agent image with
+  those packages before selecting them for execution.
+  The user-facing New Run form should still prefill them in `Model/candidates`
+  and `Model/model_params_by_name` so operators can see the full supported
+  model set; remove them before running on Agents without those packages.
 - `scikit-learn` is a required runtime dependency.
 - Current verification evidence lives under `verification/training_pipeline/`
   and `verification/inference/`. Historical and future-reference evidence lives

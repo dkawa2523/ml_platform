@@ -29,7 +29,7 @@ from adapter import (
     stage_task_label,
 )
 from ml_platform_core.config import apply_overrides, load_yaml
-from ml_platform_tabular.models import candidate_params, model_candidates
+from ml_platform_tabular.models import SUPPORTED_MODELS, candidate_params, model_candidates
 
 
 PIPELINE_ARG_PREFIX = "Args/"
@@ -118,7 +118,7 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
         "Features/scaling": features.get("scaling", "standard"),
         "Features/drop_columns": _json(features.get("drop_columns", []) or []),
         "Features/passthrough_columns": _json(features.get("passthrough_columns", []) or []),
-        "Model/candidates": _json(model.get("candidates", []) or []),
+        "Model/candidates": _json(SUPPORTED_MODELS),
         "Model/model_params_by_name": _json(model.get("params", {}) or {}),
         "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
         "Model/selection_metric": model.get("selection_metric", "rmse"),
