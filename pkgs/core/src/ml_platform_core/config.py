@@ -127,10 +127,3 @@ def load_run_config(task_path: str | Path, profile_path: str | Path, *, override
         "overrides": parse_overrides(overrides) if isinstance(overrides, list) else (overrides or {}),
     }
     return cfg
-
-
-def require_keys(mapping: dict[str, Any], keys: list[str], *, prefix: str = "") -> None:
-    missing = [key for key in keys if key not in mapping or mapping[key] is None]
-    if missing:
-        label = f"{prefix}." if prefix else ""
-        raise ValueError(f"Missing required config keys: {', '.join(label + key for key in missing)}")

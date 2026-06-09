@@ -6,10 +6,17 @@ from ml_platform_core.config import load_run_config
 from ml_platform_core.io import load_joblib, read_json
 from ml_platform_tabular import TASK_NAMES, run_task
 from ml_platform_tabular.evaluate import run_evaluate
+from ml_platform_tabular.features import build_feature_pipeline
 from ml_platform_tabular.infer import run_infer
 from ml_platform_tabular.metrics import regression_metrics
 from ml_platform_tabular import models as model_module
-from ml_platform_tabular.models import AVAILABLE_MODELS, EXPERIMENTAL_MODELS, SUPPORTED_MODELS, build_model
+from ml_platform_tabular.models import (
+    AVAILABLE_MODELS,
+    DEPENDENCY_FREE_MODELS,
+    OPTIONAL_DEPENDENCY_MODELS,
+    SUPPORTED_MODELS,
+    build_model,
+)
 from ml_platform_tabular.train import run_train
 
 
@@ -143,7 +150,7 @@ def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
 
 
 def test_model_policy_excludes_out_of_scope_models():
-    assert SUPPORTED_MODELS == [
+    assert DEPENDENCY_FREE_MODELS == [
         "linear",
         "ridge",
         "lasso",
@@ -152,23 +159,68 @@ def test_model_policy_excludes_out_of_scope_models():
         "extra_trees",
         "gradient_boosting",
     ]
-    assert set(SUPPORTED_MODELS) == {
-        "linear",
-        "ridge",
-        "lasso",
-        "elasticnet",
-        "random_forest",
-        "extra_trees",
-        "gradient_boosting",
-    }
-    assert set(EXPERIMENTAL_MODELS) == {"lightgbm", "xgboost", "catboost"}
-    assert set(AVAILABLE_MODELS) == set(SUPPORTED_MODELS) | set(EXPERIMENTAL_MODELS)
-    for name in ["knn", "svr", "mlp"]:
+    assert OPTIONAL_DEPENDENCY_MODELS == ["lightgbm", "xgboost", "catboost"]
+    assert SUPPORTED_MODELS == [*DEPENDENCY_FREE_MODELS, *OPTIONAL_DEPENDENCY_MODELS]
+    assert AVAILABLE_MODELS == SUPPORTED_MODELS
+    for name in ["knn", "svr", "mlp", "gaussian_process", "tabpfn"]:
         with pytest.raises(ValueError, match="out of current product scope"):
             build_model(name)
 
 
-def test_experimental_models_fail_cleanly_when_dependency_missing(monkeypatch):
+def test_feature_transformer_basic_options():
+    df = pd.DataFrame(
+        {
+            "num": [1.0, np.nan, 3.0],
+            "cat": ["a", None, "a"],
+        }
+    )
+
+    transformer = build_feature_pipeline(
+        "basic",
+        df,
+        {
+            "numeric_impute_strategy": "mean",
+            "categorical_impute_strategy": "mode",
+            "scaling": "none",
+        },
+    )
+    transformed = transformer.transform(df)
+
+    assert transformer.numeric_fill_values["num"] == pytest.approx(2.0)
+    assert transformer.categorical_fill_values["cat"] == "a"
+    assert transformed[:, 0].tolist() == pytest.approx([1.0, 2.0, 3.0])
+
+
+def test_feature_transformer_drop_and_passthrough_rules():
+    df = pd.DataFrame(
+        {
+            "num": [1.0, 2.0, 3.0],
+            "raw": [10.0, 20.0, 30.0],
+            "cat": ["a", "b", "a"],
+            "unused": [99.0, 99.0, 99.0],
+        }
+    )
+
+    transformer = build_feature_pipeline(
+        "basic",
+        df,
+        {
+            "categorical_encoder": "drop",
+            "drop_columns": ["unused"],
+            "passthrough_columns": ["raw"],
+        },
+    )
+
+    assert transformer.categorical_cols == []
+    assert transformer.passthrough_cols == ["raw"]
+    assert "unused" not in transformer.feature_config["passthrough_columns"]
+    assert transformer.transform(df).shape[1] == 2
+
+    with pytest.raises(ValueError, match="must be numeric"):
+        build_feature_pipeline("basic", df, {"passthrough_columns": ["cat"]})
+
+
+def test_optional_dependency_models_fail_cleanly_when_dependency_missing(monkeypatch):
     real_import_module = model_module.importlib.import_module
 
     def fake_import_module(name):
@@ -178,7 +230,7 @@ def test_experimental_models_fail_cleanly_when_dependency_missing(monkeypatch):
 
     monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
     for name in ["lightgbm", "xgboost", "catboost"]:
-        with pytest.raises(RuntimeError, match="experimental.*optional dependency"):
+        with pytest.raises(RuntimeError, match=r"optional dependency.*pkgs/tabular\[gbm\]"):
             build_model(name)
 
 
@@ -234,137 +286,6 @@ def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
         model_name=model_info["model_name"],
         artifact_kind="model",
     )
-
-
-def test_future_train_grid_search_writes_optimization_artifacts(tmp_path):
-    rng = np.random.default_rng(31)
-    df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
-    df["target"] = 1.1 * df["x1"] - 0.6 * df["x2"] + rng.normal(scale=0.05, size=50)
-    train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
-    df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(6).to_csv(infer_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["name"] = "ridge"
-    cfg["model"]["params"] = {}
-    cfg["model"]["search"] = {
-        "enabled": True,
-        "method": "grid",
-        "max_trials": 3,
-        "search_space": {"alpha": [0.1, 1.0, 10.0]},
-        "retrain_best": True,
-    }
-
-    result = run_train(cfg)
-
-    trials = pd.read_csv(result.tables["optimization_trials"])
-    model_info = read_json(result.artifacts["model_info"])
-    metrics_json = read_json(result.artifacts["metrics"])
-    summary = read_json(result.artifacts["optimization_summary"])
-    best_params = read_json(result.artifacts["best_params"])
-
-    assert len(trials) == 3
-    assert {"trial", "model_name", "model_params", "selection_metric", "selection_value", "mae", "rmse", "r2", "status"} <= set(
-        trials.columns
-    )
-    assert result.artifacts["model"].exists()
-    assert result.artifacts["optimization_summary"].exists()
-    assert result.artifacts["best_params"].exists()
-    assert model_info["search"]["enabled"] is True
-    assert model_info["search"]["method"] == "grid"
-    assert model_info["search"]["completed_trials"] == 3
-    assert model_info["search"]["retrained_on_full_data"] is True
-    assert metrics_json["search"]["best_trial"] == summary["best_trial"]
-    assert summary["best_model_name"] == "ridge"
-    assert summary["best_params"] == str(result.artifacts["best_params"])
-    assert best_params["model_name"] == "ridge"
-    assert best_params["best_trial"] == summary["best_trial"]
-    assert best_params["retrained_on_full_data"] is True
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_result = run_infer(infer_cfg)
-    _assert_prediction_output(
-        infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
-        model_name="ridge",
-        artifact_kind="model",
-    )
-
-
-def test_future_train_random_search_is_deterministic_and_limited(tmp_path):
-    rng = np.random.default_rng(32)
-    df = pd.DataFrame({"id": range(45), "x1": rng.normal(size=45), "x2": rng.normal(size=45)})
-    df["target"] = 0.9 * df["x1"] + 0.4 * df["x2"] + rng.normal(scale=0.05, size=45)
-    train_path = tmp_path / "train.csv"
-    df.to_csv(train_path, index=False)
-
-    rows = []
-    for index in range(2):
-        cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-        cfg["runtime"]["output_dir"] = str(tmp_path / f"outputs_{index}")
-        cfg["data"]["local_path"] = str(train_path)
-        cfg["run"]["seed"] = 123
-        cfg["model"]["name"] = "ridge"
-        cfg["model"]["params"] = {}
-        cfg["model"]["search"] = {
-            "enabled": True,
-            "method": "random",
-            "max_trials": 2,
-            "search_space": {"alpha": [0.1, 1.0, 10.0, 100.0]},
-        }
-        result = run_train(cfg)
-        rows.append(pd.read_csv(result.tables["optimization_trials"])["model_params"].tolist())
-
-    assert len(rows[0]) == 2
-    assert rows[0] == rows[1]
-
-
-def test_future_train_candidate_search_uses_model_keyed_space(tmp_path):
-    rng = np.random.default_rng(33)
-    df = pd.DataFrame({"id": range(50), "x1": rng.normal(size=50), "x2": rng.normal(size=50)})
-    df["target"] = df["x1"] - df["x2"] + rng.normal(scale=0.05, size=50)
-    train_path = tmp_path / "train.csv"
-    df.to_csv(train_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["candidates"] = ["linear", "ridge"]
-    cfg["model"]["params"] = {}
-    cfg["model"]["search"] = {
-        "enabled": True,
-        "method": "grid",
-        "max_trials": 4,
-        "search_space": {"ridge": {"alpha": [0.1, 1.0]}},
-    }
-
-    result = run_train(cfg)
-
-    trials = pd.read_csv(result.tables["optimization_trials"])
-    assert len(trials) == 3
-    assert set(trials["model_name"]) == {"linear", "ridge"}
-    assert result.tables["leaderboard"].exists()
-
-
-def test_future_train_search_rejects_unsupported_method(tmp_path):
-    rng = np.random.default_rng(34)
-    df = pd.DataFrame({"id": range(20), "x1": rng.normal(size=20), "x2": rng.normal(size=20)})
-    df["target"] = df["x1"] + df["x2"]
-    train_path = tmp_path / "train.csv"
-    df.to_csv(train_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["search"] = {"enabled": True, "method": "bayes", "search_space": {"alpha": [1.0]}}
-
-    with pytest.raises(ValueError, match="model.search.method"):
-        run_train(cfg)
 
 
 def test_train_mean_topk_ensemble_artifact_eval_and_infer(tmp_path):
@@ -534,34 +455,6 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     infer_cfg["data"]["local_path"] = str(conflict_path)
     with pytest.raises(ValueError, match="reserved prediction output columns"):
         run_infer(infer_cfg)
-
-
-def test_infer_accepts_resolved_model_artifact_url_path(tmp_path):
-    rng = np.random.default_rng(7)
-    df = pd.DataFrame({"id": range(30), "x1": rng.normal(size=30), "x2": rng.normal(size=30)})
-    df["target"] = 0.5 * df["x1"] + df["x2"]
-    train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
-    df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(5).to_csv(infer_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["name"] = "linear"
-    train_result = run_train(cfg)
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_cfg["model"]["source_type"] = "artifact_url"
-    infer_cfg["model"]["model_artifact_url"] = str(train_result.artifacts["model"])
-    infer_result = run_infer(infer_cfg)
-
-    assert infer_result.tables["predictions"].exists()
-    manifest = read_json(infer_result.artifacts["manifest"])
-    assert manifest["extra"]["source_type"] == "artifact_url"
-    assert manifest["extra"]["resolved_model_path"] == str(train_result.artifacts["model"])
 
 
 def test_regression_metrics_can_select_mse():

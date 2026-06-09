@@ -24,6 +24,7 @@ Selectors:
 
 - `best`
 - `ensemble`
+- `ensemble:<method>` such as `ensemble:median`
 - supported model names such as `linear`, `ridge`, `lasso`, `elasticnet`,
   `random_forest`, `extra_trees`, and `gradient_boosting`
 
@@ -49,7 +50,8 @@ Expected behavior:
 - local default resolves `outputs/latest_training_pipeline` when no
   `local_model_path` is provided
 - `model_selector=best` resolves `evaluate_models/best_model.joblib`
-- `model_selector=ensemble` resolves `build_ensemble/model.joblib`
+- `model_selector=ensemble` resolves the best ensemble artifact
+- `model_selector=ensemble:<method>` resolves the named ensemble method artifact
 - feature alignment uses explicit feature columns, model metadata,
   `feature_spec.json`, or `preprocess_bundle` metadata when available
 
@@ -66,8 +68,9 @@ Observed local result:
   `outputs\latest_training_pipeline\preprocess_features\preprocess_bundle.joblib`
 - predictions:
   `outputs\tabular_infer_20260608T080026Z\predictions.csv`
-- pytest coverage confirms `model_selector=ensemble` resolves
-  `build_ensemble/model.joblib` with artifact kind `ensemble`.
+- pytest coverage confirms `model_selector=ensemble` and
+  `model_selector=ensemble:<method>` resolve ensemble artifacts with artifact
+  kind `ensemble`.
 
 Result: pass
 

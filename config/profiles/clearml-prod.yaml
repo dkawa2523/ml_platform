@@ -9,6 +9,12 @@ clearml:
   projects:
     templates: MLPlatform/Prod/Templates/Tabular
     pipelines: MLPlatform/Prod/Pipelines/Tabular
+    preprocess: MLPlatform/Prod/Runs/Tabular/Preprocess
+    train: MLPlatform/Prod/Runs/Tabular/Train
+    ensemble: MLPlatform/Prod/Runs/Tabular/Ensemble
+    evaluate: MLPlatform/Prod/Runs/Tabular/Evaluate
+    infer: MLPlatform/Prod/Runs/Tabular/Infer
+    # Backward-compatible fallback used by older ClearML SDK paths.
     stages: MLPlatform/Prod/Runs/Tabular/Stages
     tasks: MLPlatform/Prod/Runs/Tabular/Tasks
     experiments: MLPlatform/Prod/Experiments/Tabular

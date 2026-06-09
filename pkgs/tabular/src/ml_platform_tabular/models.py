@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-SUPPORTED_MODELS = [
+DEPENDENCY_FREE_MODELS = [
     "linear",
     "ridge",
     "lasso",
@@ -16,12 +16,13 @@ SUPPORTED_MODELS = [
     "extra_trees",
     "gradient_boosting",
 ]
-EXPERIMENTAL_MODELS = [
+OPTIONAL_DEPENDENCY_MODELS = [
     "lightgbm",
     "xgboost",
     "catboost",
 ]
-AVAILABLE_MODELS = [*SUPPORTED_MODELS, *EXPERIMENTAL_MODELS]
+SUPPORTED_MODELS = [*DEPENDENCY_FREE_MODELS, *OPTIONAL_DEPENDENCY_MODELS]
+AVAILABLE_MODELS = list(SUPPORTED_MODELS)
 OUT_OF_SCOPE_MODELS = {
     "knn",
     "svr",
@@ -35,7 +36,7 @@ def validate_model_name(name: str) -> str:
     if name in OUT_OF_SCOPE_MODELS:
         raise ValueError(
             f"Model {name!r} is out of current product scope. "
-            "Use supported models or experimental optional-dependency models only."
+            "Use supported models only; LightGBM/XGBoost/CatBoost require optional dependencies."
         )
     if name not in AVAILABLE_MODELS:
         raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")
@@ -167,6 +168,17 @@ class MeanTopKEnsemble:
         return predictions @ (weights / weights.sum())
 
 
+@dataclass
+class MedianEnsemble:
+    estimators: list[TabularEstimator]
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        if not self.estimators:
+            raise ValueError("Ensemble has no base estimators.")
+        predictions = np.column_stack([estimator.predict(X) for estimator in self.estimators])
+        return np.median(predictions, axis=1)
+
+
 def build_model(name: str, params: dict[str, Any] | None = None):
     validate_model_name(name)
     params = dict(params or {})
@@ -215,13 +227,13 @@ def build_model(name: str, params: dict[str, Any] | None = None):
         params.setdefault("n_jobs", 1)
         return ExtraTreesRegressor(**params)
     if name == "lightgbm":
-        model_cls = _experimental_model_class("lightgbm", "LGBMRegressor", name)
+        model_cls = _optional_dependency_model_class("lightgbm", "LGBMRegressor", name)
         params.setdefault("n_estimators", 100)
         params.setdefault("random_state", 42)
         params.setdefault("n_jobs", 1)
         return model_cls(**params)
     if name == "xgboost":
-        model_cls = _experimental_model_class("xgboost", "XGBRegressor", name)
+        model_cls = _optional_dependency_model_class("xgboost", "XGBRegressor", name)
         params.setdefault("n_estimators", 100)
         params.setdefault("random_state", 42)
         params.setdefault("n_jobs", 1)
@@ -229,7 +241,7 @@ def build_model(name: str, params: dict[str, Any] | None = None):
         params.setdefault("verbosity", 0)
         return model_cls(**params)
     if name == "catboost":
-        model_cls = _experimental_model_class("catboost", "CatBoostRegressor", name)
+        model_cls = _optional_dependency_model_class("catboost", "CatBoostRegressor", name)
         params.setdefault("iterations", 100)
         params.setdefault("random_seed", 42)
         params.setdefault("verbose", False)
@@ -237,12 +249,13 @@ def build_model(name: str, params: dict[str, Any] | None = None):
     raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")
 
 
-def _experimental_model_class(module_name: str, class_name: str, model_name: str):
+def _optional_dependency_model_class(module_name: str, class_name: str, model_name: str):
     try:
         module = importlib.import_module(module_name)
     except Exception as exc:  # pragma: no cover - depends on optional environment
         raise RuntimeError(
-            f"{model_name} is experimental and requires optional dependency {module_name}. "
-            f"Install ml-platform-tabular[{model_name}] or use an Agent image that includes {module_name}."
+            f"{model_name} is a supported optional-dependency model and requires optional dependency {module_name}. "
+            'Install with `pip install -e "pkgs/tabular[gbm]"` or use a ClearML Agent image that includes '
+            f"{module_name}."
         ) from exc
     return getattr(module, class_name)

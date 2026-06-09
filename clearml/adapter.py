@@ -22,14 +22,35 @@ def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
     configured = clearml_cfg.get("projects") or {}
     if not isinstance(configured, dict):
         configured = {}
+    stages_fallback = str(configured.get("stages") or f"{root}/Runs/Tabular/Stages")
+    tasks_fallback = str(configured.get("tasks") or f"{root}/Runs/Tabular/Tasks")
+    legacy_stage_project = stages_fallback if configured.get("stages") else None
+    legacy_task_project = tasks_fallback if configured.get("tasks") else None
     defaults = {
         "templates": f"{root}/Templates/Tabular",
         "pipelines": f"{root}/Pipelines/Tabular",
-        "stages": f"{root}/Runs/Tabular/Stages",
-        "tasks": f"{root}/Runs/Tabular/Tasks",
+        "preprocess": legacy_stage_project or f"{root}/Runs/Tabular/Preprocess",
+        "train": legacy_stage_project or f"{root}/Runs/Tabular/Train",
+        "ensemble": legacy_stage_project or f"{root}/Runs/Tabular/Ensemble",
+        "evaluate": legacy_stage_project or f"{root}/Runs/Tabular/Evaluate",
+        "infer": legacy_task_project or f"{root}/Runs/Tabular/Infer",
+        "stages": stages_fallback,
+        "tasks": tasks_fallback,
         "experiments": f"{root}/Experiments/Tabular",
     }
     return {key: str(configured.get(key) or value) for key, value in defaults.items()}
+
+
+def clearml_stage_project(projects: dict[str, str], stage: str) -> str:
+    if stage == "preprocess_features":
+        return projects["preprocess"]
+    if stage == "train_model":
+        return projects["train"]
+    if stage == "build_ensemble":
+        return projects["ensemble"]
+    if stage == "evaluate_models":
+        return projects["evaluate"]
+    return projects["stages"]
 
 
 def clearml_template_name(template_name: str) -> str:
@@ -48,6 +69,7 @@ def clearml_tags(
     internal: bool = False,
     stage: str | None = None,
     model: str | None = None,
+    ensemble: str | None = None,
 ) -> list[str]:
     tags = ["domain:tabular", f"run_type:{run_type}"]
     if user_facing:
@@ -58,6 +80,8 @@ def clearml_tags(
         tags.append(f"stage:{stage}")
     if model:
         tags.append(f"model:{model}")
+    if ensemble:
+        tags.append(f"ensemble:{ensemble}")
     return tags
 
 
@@ -69,9 +93,11 @@ def prefixed_task_name(prefix: str, name: str, run_name: str | None = None) -> s
     return f"{prefix}/{name}"
 
 
-def stage_task_label(stage: str, model_name: str | None = None) -> str:
+def stage_task_label(stage: str, model_name: str | None = None, ensemble_method: str | None = None) -> str:
     if stage == "train_model" and model_name:
         return f"train_{model_name}"
+    if stage == "build_ensemble" and ensemble_method:
+        return f"build_ensemble_{ensemble_method}"
     return stage
 
 
@@ -227,6 +253,10 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
     }
     if "stage" in run:
         params["Run/stage"] = run.get("stage")
+    if "split" in cfg:
+        split = cfg.get("split", {}) or {}
+        if "valid_size" in split:
+            params["Split/valid_size"] = split.get("valid_size")
     if "data" in cfg:
         data = cfg.get("data", {})
         params.update(
@@ -249,19 +279,13 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Model/candidates"] = json.dumps(model.get("candidates", []) or [])
         if "selection_metric" in model:
             params["Model/selection_metric"] = model.get("selection_metric")
-        if "search" in model:
-            search = model.get("search", {}) or {}
-            if not isinstance(search, dict):
-                search = {}
-            params["Model/search_enabled"] = as_bool(search.get("enabled"))
-            params["Model/search_method"] = search.get("method", "grid")
-            params["Model/search_space"] = json.dumps(search.get("search_space", {}) or {})
-            params["Model/max_trials"] = int(search.get("max_trials") or 20)
         if "ensemble" in model:
             ensemble = model.get("ensemble", {}) or {}
             if not isinstance(ensemble, dict):
                 ensemble = {}
             params["Model/ensemble_enabled"] = as_bool(ensemble.get("enabled"))
+            if "methods" in ensemble:
+                params["Model/ensemble_methods"] = _ui_value(ensemble.get("methods") or [])
             params["Model/ensemble_method"] = ensemble.get("method", "mean_topk")
             params["Model/ensemble_top_k"] = int(ensemble.get("top_k") or 3)
         for key in (
@@ -285,7 +309,18 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
         if metric_names is not None:
             params["Model/evaluation_metrics"] = _ui_value(metric_names)
     if "features" in cfg:
-        params["Model/feature_preset"] = cfg.get("features", {}).get("preset")
+        features = cfg.get("features", {}) or {}
+        for key in (
+            "preset",
+            "numeric_impute_strategy",
+            "categorical_impute_strategy",
+            "categorical_encoder",
+            "scaling",
+            "drop_columns",
+            "passthrough_columns",
+        ):
+            if key in features:
+                params[f"Features/{key}"] = _ui_value(features.get(key))
     if "output" in cfg:
         output = cfg.get("output", {})
         if "prediction_name" in output:
@@ -332,7 +367,7 @@ def apply_ui_params(
         cfg.setdefault("model", {})
     if "Model/evaluation_metrics" in connected:
         cfg.setdefault("metrics", {})
-    if "Model/feature_preset" in connected:
+    if any(key.startswith("Features/") for key in connected) or "Model/feature_preset" in connected:
         cfg.setdefault("features", {})
     if any(key.startswith("Output/") for key in connected):
         cfg.setdefault("output", {})
@@ -345,6 +380,9 @@ def apply_ui_params(
         cfg["run"]["seed"] = int(connected["Run/seed"])
     if connected.get("Run/stage"):
         cfg["run"]["stage"] = connected["Run/stage"]
+    if "Split/valid_size" in connected and connected.get("Split/valid_size") not in {None, ""}:
+        cfg.setdefault("split", {})
+        cfg["split"]["valid_size"] = float(connected["Split/valid_size"])
 
     if "data" in cfg:
         if resolved_local_path is not None:
@@ -376,21 +414,11 @@ def apply_ui_params(
         cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
     if "Model/evaluation_metrics" in connected:
         cfg["metrics"]["names"] = as_list(connected.get("Model/evaluation_metrics"))
-    search_updates: dict[str, Any] = {}
-    if "Model/search_enabled" in connected:
-        search_updates["enabled"] = as_bool(connected.get("Model/search_enabled"))
-    if connected.get("Model/search_method"):
-        search_updates["method"] = str(connected["Model/search_method"]).strip().lower()
-    if "Model/search_space" in connected:
-        search_updates["search_space"] = as_dict(connected.get("Model/search_space"))
-    if "Model/max_trials" in connected and connected.get("Model/max_trials") not in {None, ""}:
-        search_updates["max_trials"] = int(connected["Model/max_trials"])
-    if search_updates:
-        cfg["model"].setdefault("search", {})
-        cfg["model"]["search"].update(search_updates)
     ensemble_updates: dict[str, Any] = {}
     if "Model/ensemble_enabled" in connected:
         ensemble_updates["enabled"] = as_bool(connected.get("Model/ensemble_enabled"))
+    if "Model/ensemble_methods" in connected:
+        ensemble_updates["methods"] = as_list(connected.get("Model/ensemble_methods")) or []
     if connected.get("Model/ensemble_method"):
         ensemble_updates["method"] = connected["Model/ensemble_method"]
     if "Model/ensemble_top_k" in connected and connected.get("Model/ensemble_top_k") not in {None, ""}:
@@ -415,6 +443,19 @@ def apply_ui_params(
         cfg["model"]["artifact_path"] = connected["Model/artifact_path"]
     if connected.get("Model/feature_preset"):
         cfg["features"]["preset"] = connected["Model/feature_preset"]
+    for ui_key, config_key in (
+        ("Features/preset", "preset"),
+        ("Features/numeric_impute_strategy", "numeric_impute_strategy"),
+        ("Features/categorical_impute_strategy", "categorical_impute_strategy"),
+        ("Features/categorical_encoder", "categorical_encoder"),
+        ("Features/scaling", "scaling"),
+    ):
+        if ui_key in connected and connected.get(ui_key) not in {None, ""}:
+            cfg["features"][config_key] = connected[ui_key]
+    if "Features/drop_columns" in connected:
+        cfg["features"]["drop_columns"] = as_list(connected.get("Features/drop_columns")) or []
+    if "Features/passthrough_columns" in connected:
+        cfg["features"]["passthrough_columns"] = as_list(connected.get("Features/passthrough_columns")) or []
 
     if connected.get("Output/prediction_name"):
         cfg["output"]["prediction_name"] = connected["Output/prediction_name"]
@@ -576,10 +617,18 @@ class ClearMLAdapter:
     def apply_metadata(
         self,
         *,
+        project_name: str | None = None,
         task_name: str | None = None,
         tags: list[str] | None = None,
         comment: str | None = None,
     ) -> None:
+        if project_name:
+            move_to_project = getattr(self.task, "move_to_project", None)
+            set_project = getattr(self.task, "set_project", None)
+            if callable(move_to_project):
+                move_to_project(new_project_name=project_name)
+            elif callable(set_project):
+                set_project(project_name=project_name)
         if task_name:
             set_name = getattr(self.task, "set_name", None)
             if callable(set_name):
@@ -674,6 +723,8 @@ class ClearMLAdapter:
     def _select_infer_task_artifact(self, tasks: list[Any], selector: str) -> tuple[Any, str, str | None]:
         source = tasks[0]
         artifacts = _task_artifacts(source)
+        is_ensemble = selector == "ensemble" or selector.startswith("ensemble:")
+        ensemble_method = selector.split(":", 1)[1].strip() if selector.startswith("ensemble:") else None
         if selector == "best":
             if "best_model" in artifacts:
                 return source, "best_model", "best_model_json" if "best_model_json" in artifacts else "model_info"
@@ -683,12 +734,16 @@ class ClearMLAdapter:
                 return evaluate, "best_model", info_key
             if "model" in artifacts:
                 return source, "model", "model_info" if "model_info" in artifacts else None
-        elif selector == "ensemble":
-            if "model" in artifacts and _looks_like_stage(source, "build_ensemble"):
-                return source, "model", "model_info" if "model_info" in artifacts else "ensemble_info"
-            ensemble = next((task for task in tasks if _looks_like_stage(task, "build_ensemble") and "model" in _task_artifacts(task)), None)
+        elif is_ensemble:
+            model_key = f"model_{ensemble_method}" if ensemble_method else "model"
+            info_key = f"model_info_{ensemble_method}" if ensemble_method else "model_info"
+            fallback_info_key = f"ensemble_info_{ensemble_method}" if ensemble_method else "ensemble_info"
+            if model_key in artifacts and _looks_like_stage(source, "build_ensemble"):
+                return source, model_key, info_key if info_key in artifacts else fallback_info_key
+            ensemble = next((task for task in tasks if _looks_like_stage(task, "build_ensemble") and model_key in _task_artifacts(task)), None)
             if ensemble is not None:
-                return ensemble, "model", "model_info" if "model_info" in _task_artifacts(ensemble) else "ensemble_info"
+                ensemble_artifacts = _task_artifacts(ensemble)
+                return ensemble, model_key, info_key if info_key in ensemble_artifacts else fallback_info_key
         else:
             if "model" in artifacts and (_looks_like_train_model(source, selector) or _task_model_name(source) == selector):
                 return source, "model", "model_info" if "model_info" in artifacts else None
@@ -776,6 +831,44 @@ class ClearMLAdapter:
         except Exception:
             return
 
+    def report_scatter(self, title: str, series: str, points: list[tuple[float, float]], iteration: int = 0) -> None:
+        if not points:
+            return
+        report_scatter = getattr(self.task.get_logger(), "report_scatter2d", None)
+        if not callable(report_scatter):
+            return
+        try:
+            report_scatter(title=title, series=series, scatter=points, iteration=iteration)
+        except TypeError:
+            try:
+                report_scatter(
+                    title=title,
+                    series=series,
+                    x=[point[0] for point in points],
+                    y=[point[1] for point in points],
+                    iteration=iteration,
+                )
+            except Exception:
+                return
+        except Exception:
+            return
+
+    def report_histogram(self, title: str, series: str, values: list[float], iteration: int = 0) -> None:
+        if not values:
+            return
+        report_histogram = getattr(self.task.get_logger(), "report_histogram", None)
+        if not callable(report_histogram):
+            return
+        try:
+            report_histogram(title=title, series=series, values=values, iteration=iteration)
+        except TypeError:
+            try:
+                report_histogram(title=title, series=series, histogram=values, iteration=iteration)
+            except Exception:
+                return
+        except Exception:
+            return
+
     def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         path = Path(path)
         if not path.exists():
@@ -787,6 +880,20 @@ class ClearMLAdapter:
             report_media(title=title, series=series, local_path=str(path), iteration=iteration)
         except Exception:
             return
+
+    def report_image(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
+        path = Path(path)
+        if not path.exists():
+            return
+        logger = self.task.get_logger()
+        report_image = getattr(logger, "report_image", None)
+        if callable(report_image):
+            try:
+                report_image(title=title, series=series, local_path=str(path), iteration=iteration)
+                return
+            except Exception:
+                pass
+        self.report_media(title, series, path, iteration=iteration)
 
     def close(self) -> None:
         close = getattr(self.task, "close", None)

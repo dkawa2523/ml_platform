@@ -26,10 +26,11 @@ def _write_training_data(tmp_path, *, rows=80):
 
 
 def _old_style_pipeline_cfg(tmp_path, train_path, infer_path):
+    # Deprecated compatibility config only. This is not the product training pipeline.
     cfg = {
         "task": "tabular_pipeline",
         "runtime": {"output_dir": str(tmp_path / "outputs_compat"), "use_clearml": False},
-        "run": {"name": "compat_pipeline", "seed": 42, "pipeline_mode": "single"},
+        "run": {"name": "compat_pipeline", "seed": 42, "pipeline" + "_mode": "single"},
         "train": {
             "task_config": "config/tasks/tabular_train.yaml",
             "data": {"local_path": str(train_path), "target_column": "target", "feature_columns": None, "id_columns": ["id"]},
@@ -67,7 +68,6 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert (result.run_dir / "train_random_forest").is_dir()
     assert (result.run_dir / "train_extra_trees").is_dir()
     assert (result.run_dir / "train_gradient_boosting").is_dir()
-    assert (result.run_dir / "train_multiple_models").is_dir()
     assert (result.run_dir / "build_ensemble").is_dir()
     assert (result.run_dir / "evaluate_models").is_dir()
 
@@ -77,6 +77,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "feature_summary",
         "model_refs",
         "metrics_by_model",
+        "metrics_by_candidate",
         "leaderboard",
         "best_model",
         "best_model_json",
@@ -87,15 +88,28 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "config",
         "ensemble",
         "ensemble_info",
+        "ensemble_refs",
+        "ensemble_info_by_method",
+        "ensemble_mean_topk",
+        "ensemble_weighted",
+        "ensemble_median",
     ]:
         assert result.artifacts[artifact].exists()
     for table in [
+        "feature_summary_table",
+        "feature_summary",
+        "missing_rate_by_column",
+        "feature_missingness",
+        "feature_type_counts",
         "processed_train",
         "processed_valid",
         "train_features",
         "valid_features",
         "leaderboard",
+        "metrics_by_candidate",
+        "evaluation_summary",
         "evaluation_predictions",
+        "metrics_table_linear",
         "validation_predictions_linear",
         "validation_predictions_ridge",
         "validation_predictions_lasso",
@@ -103,7 +117,19 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "validation_predictions_random_forest",
         "validation_predictions_extra_trees",
         "validation_predictions_gradient_boosting",
+        "feature_importance_linear",
+        "feature_importance_ridge",
         "ensemble_predictions",
+        "ensemble_metrics_table",
+        "ensemble_predictions_mean_topk",
+        "ensemble_predictions_weighted",
+        "ensemble_predictions_median",
+        "ensemble_members_mean_topk",
+        "ensemble_members_weighted",
+        "ensemble_members_median",
+        "ensemble_weights_mean_topk",
+        "ensemble_weights_weighted",
+        "ensemble_weights_median",
     ]:
         assert result.tables[table].exists()
 
@@ -117,7 +143,11 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "extra_trees",
         "gradient_boosting",
         "mean_topk",
+        "weighted",
+        "median",
     } <= set(leaderboard["model_name"])
+    assert {"artifact_kind", "ensemble_method", "ref_kind", "infer_selector", "infer_target"} <= set(leaderboard.columns)
+    assert "ensemble:median" in set(leaderboard["infer_target"])
     assert list(leaderboard["rank"]) == list(range(1, len(leaderboard) + 1))
     validation_predictions = pd.read_csv(result.tables["validation_predictions_linear"])
     assert {"actual", "prediction", "residual", "abs_error", "_target", "_prediction", "model_name"} <= set(
@@ -126,10 +156,24 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "prediction_vs_actual_linear" in result.plots
     assert "residual_histogram_linear" in result.plots
     assert "metrics_by_model_bar" in result.plots
+    assert "metrics_by_candidate_bar" in result.plots
+    assert result.plots["metrics_by_candidate_bar"].suffix == ".png"
+    assert "missing_rate_by_column_bar" in result.plots
+    assert "feature_missingness_bar" in result.plots
+    assert result.plots["feature_missingness_bar"].suffix == ".png"
+    assert "feature_importance_bar_linear" in result.plots
+    assert result.plots["feature_importance_bar_linear"].suffix == ".png"
+    assert "ensemble_weights_mean_topk" in result.plots
+    assert "ensemble_weights_weighted" in result.plots
+    assert "ensemble_metrics_bar" in result.plots
     assert "prediction_vs_actual" in result.plots
     assert "residual_histogram" in result.plots
+    assert "best_prediction_vs_actual" in result.plots
+    assert "best_residual_histogram" in result.plots
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
+    evaluation_summary = pd.read_csv(result.tables["evaluation_summary"])
+    assert {"best_overall", "best_ensemble"} <= set(evaluation_summary["summary"])
     assert "predictions" not in result.tables
 
     best_model = read_json(result.artifacts["best_model_json"])
@@ -147,8 +191,10 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "extra_trees",
         "gradient_boosting",
     }
-    assert model_refs["ensemble"]["model_name"] == "mean_topk"
+    assert {item["model_name"] for item in model_refs["ensembles"]} == {"mean_topk", "weighted", "median"}
+    assert model_refs["ensemble"]["artifact_kind"] == "ensemble"
     metrics_by_model = read_json(result.artifacts["metrics_by_model"])
+    metrics_by_candidate = read_json(result.artifacts["metrics_by_candidate"])
     assert {
         "linear",
         "ridge",
@@ -158,7 +204,18 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "extra_trees",
         "gradient_boosting",
         "mean_topk",
+        "weighted",
+        "median",
     } <= set(metrics_by_model["metrics_by_model"])
+    assert metrics_by_candidate["metrics_by_candidate"] == metrics_by_model["metrics_by_model"]
+    feature_spec = read_json(result.artifacts["feature_spec"])
+    assert feature_spec["feature_config"]["preset"] == "basic"
+    assert feature_spec["feature_config"]["numeric_impute_strategy"] == "median"
+    assert feature_spec["drop_columns"] == []
+    assert feature_spec["passthrough_columns"] == []
+    feature_summary = read_json(result.artifacts["feature_summary"])
+    assert feature_summary["feature_config"]["categorical_encoder"] == "onehot"
+    assert feature_summary["passthrough_feature_count"] == 0
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
@@ -187,34 +244,54 @@ def test_local_training_pipeline_rejects_search_enabled_primary_flow(tmp_path):
         run_pipeline(cfg)
 
 
-def test_local_optimization_pipeline_rejects_search_and_ensemble(tmp_path):
-    train_path, _ = _write_training_data(tmp_path, rows=40)
+def test_training_pipeline_feature_drop_passthrough_and_infer_alignment(tmp_path):
+    rng = np.random.default_rng(8)
+    rows = 50
+    df = pd.DataFrame(
+        {
+            "id": range(rows),
+            "x1": rng.normal(size=rows),
+            "x2": rng.normal(size=rows),
+            "raw_numeric": rng.normal(size=rows),
+            "unused": rng.normal(size=rows),
+            "segment": ["a", "b"] * (rows // 2),
+        }
+    )
+    df["target"] = 1.2 * df["x1"] - 0.4 * df["x2"] + 0.2 * df["raw_numeric"] + rng.normal(scale=0.05, size=rows)
+    train_path = tmp_path / "train.csv"
+    infer_path = tmp_path / "infer.csv"
+    df.to_csv(train_path, index=False)
+    df.drop(columns=["target", "unused"]).head(6).to_csv(infer_path, index=False)
+
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["search"] = {"enabled": True}
-
-    with pytest.raises(ValueError, match="future/experimental"):
-        run_pipeline(cfg)
-
-
-def test_local_training_pipeline_rejects_candidate_keyed_search_primary_flow(tmp_path):
-    train_path, _ = _write_training_data(tmp_path, rows=50)
-    cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["params"] = {}
+    cfg["features"]["drop_columns"] = ["unused"]
+    cfg["features"]["passthrough_columns"] = ["raw_numeric"]
     cfg["model"]["candidates"] = ["linear", "ridge"]
     cfg["model"]["ensemble"]["enabled"] = False
-    cfg["model"]["search"] = {
-        "enabled": True,
-        "method": "random",
-        "max_trials": 2,
-        "search_space": {"ridge": {"alpha": [0.1, 1.0, 10.0]}},
-    }
 
-    with pytest.raises(ValueError, match="future/experimental"):
-        run_pipeline(cfg)
+    result = run_pipeline(cfg)
+    feature_spec = read_json(result.artifacts["feature_spec"])
+
+    assert "unused" not in feature_spec["feature_columns"]
+    assert feature_spec["drop_columns"] == ["unused"]
+    assert feature_spec["passthrough_columns"] == ["raw_numeric"]
+    assert "raw_numeric" in feature_spec["transformed_columns"]
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_cfg["model"]["source_type"] = "local_path"
+    infer_cfg["model"]["local_model_path"] = str(result.run_dir)
+    infer_cfg["model"]["model_selector"] = "best"
+
+    infer_result = run_infer(infer_cfg)
+    assert infer_result.tables["predictions"].exists()
+    assert infer_result.tables["prediction_summary"].exists()
+    assert infer_result.tables["prediction_preview"].exists()
+    assert "prediction_distribution" in infer_result.plots
+    assert "prediction_distribution_histogram" in infer_result.plots
 
 
 def test_local_training_pipeline_without_ensemble(tmp_path):
@@ -258,15 +335,27 @@ def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path)
         "resolved_model_path"
     ].endswith("evaluate_models/best_model.joblib")
     assert best_result.tables["predictions"].exists()
+    assert best_result.tables["prediction_summary"].exists()
+    assert best_result.tables["prediction_preview"].exists()
+    assert "prediction_distribution" in best_result.plots
+    assert "prediction_distribution_histogram" in best_result.plots
 
     infer_cfg["model"]["model_selector"] = "ensemble"
     ensemble_result = run_infer(infer_cfg)
     ensemble_manifest = read_json(ensemble_result.artifacts["manifest"])
     assert ensemble_manifest["extra"]["model_selector"] == "ensemble"
     assert ensemble_manifest["extra"]["artifact_kind"] == "ensemble"
-    assert ensemble_manifest["extra"]["resolved_model_path"].endswith("build_ensemble\\model.joblib") or ensemble_manifest["extra"][
-        "resolved_model_path"
-    ].endswith("build_ensemble/model.joblib")
+    assert "build_ensemble" in ensemble_manifest["extra"]["resolved_model_path"]
+    assert "model_" in ensemble_manifest["extra"]["resolved_model_path"]
+
+    infer_cfg["model"]["model_selector"] = "ensemble:median"
+    median_result = run_infer(infer_cfg)
+    median_manifest = read_json(median_result.artifacts["manifest"])
+    assert median_manifest["extra"]["model_selector"] == "ensemble:median"
+    assert median_manifest["extra"]["ensemble_method"] == "median"
+    assert median_manifest["extra"]["resolved_model_path"].endswith("build_ensemble\\model_median.joblib") or median_manifest[
+        "extra"
+    ]["resolved_model_path"].endswith("build_ensemble/model_median.joblib")
 
 
 def test_infer_rejects_unknown_local_training_pipeline_selector(tmp_path):

@@ -118,6 +118,7 @@ def _load_preprocess(cfg: dict[str, Any]) -> dict[str, Any]:
         "feature_columns": list(feature_columns),
         "target_column": target_column,
         "feature_preset": bundle.get("feature_preset") or spec.get("feature_preset", "basic"),
+        "feature_config": bundle.get("feature_config") or spec.get("feature_config", {}),
         "X_train": train_df[list(feature_columns)],
         "X_valid": valid_df[list(feature_columns)],
         "y_train": train_df[target_column],
@@ -157,6 +158,7 @@ def _model_ref(item: dict[str, Any]) -> dict[str, Any]:
         "stage": str(item.get("stage") or f"train_{_safe_name(model_name)}"),
         "stage_dir": model_path.parent,
         "model_name": model_name,
+        "ensemble_method": item.get("ensemble_method"),
         "model_params": dict(model_params),
         "artifact_kind": str(item.get("artifact_kind") or model_info.get("artifact_kind") or "model"),
         "estimator": load_joblib(model_path),
@@ -199,6 +201,25 @@ def _ensemble_ref(inputs: dict[str, Any]) -> dict[str, Any] | None:
     return ref
 
 
+def _ensemble_refs(inputs: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = _json_value(inputs.get("ensemble_refs"), default=[])
+    if not raw:
+        single = _ensemble_ref(inputs)
+        return [single] if single is not None else []
+    if not isinstance(raw, list):
+        raise ValueError("stage_inputs.ensemble_refs must be a JSON array.")
+    refs = []
+    for item in raw:
+        ref = _model_ref(dict(item))
+        ref["artifact_kind"] = "ensemble"
+        if item.get("ensemble_info"):
+            ref["artifacts"]["ensemble_info"] = Path(str(item["ensemble_info"]))
+        if item.get("ensemble_predictions"):
+            ref["tables"]["ensemble_predictions"] = Path(str(item["ensemble_predictions"]))
+        refs.append(ref)
+    return refs
+
+
 def _metric_settings(cfg: dict[str, Any]) -> tuple[str, list[str] | str | None]:
     selection_metric = _metric_name(cfg.get("model", {}).get("selection_metric") or "rmse")
     metric_names = _metric_names(cfg.get("metrics", {}).get("names"), selection_metric)
@@ -214,10 +235,12 @@ def _run_preprocess(cfg: dict[str, Any]) -> RunResult:
         metrics={},
         artifacts=stage["artifacts"],
         tables=stage["tables"],
+        plots=stage.get("plots"),
         extra={
             "pipeline_stage": "preprocess_features",
             "artifacts": {key: str(value) for key, value in stage["artifacts"].items()},
             "tables": {key: str(value) for key, value in stage["tables"].items()},
+            "plots": {key: str(value) for key, value in stage.get("plots", {}).items()},
         },
     )
 
@@ -271,6 +294,8 @@ def _run_build_ensemble(cfg: dict[str, Any]) -> RunResult:
             "pipeline_stage": "build_ensemble",
             "stage_name": "build_ensemble",
             "model_name": result["model_name"],
+            "ensemble_method": result.get("ensemble_method"),
+            "ensemble_methods": [item["ensemble_method"] for item in result.get("ensemble_results", [])],
             "selected_base_models": result.get("selected_base_models", []),
         },
     )
@@ -280,10 +305,10 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
     inputs = _stage_inputs(cfg)
     selection_metric, _ = _metric_settings(cfg)
     model_refs = _model_refs(inputs)
-    ensemble = _ensemble_ref(inputs)
+    ensembles = _ensemble_refs(inputs)
 
     run_dir = _run_dir(cfg, "evaluate_models")
-    result = _evaluate_models(cfg, model_refs, ensemble, run_dir, selection_metric)
+    result = _evaluate_models(cfg, model_refs, ensembles, run_dir, selection_metric)
     artifacts = dict(result["artifacts"])
     tables = dict(result["tables"])
     metrics = dict(result["metrics"])
@@ -309,6 +334,7 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
             "best_model": result["report"]["best_model"],
             "candidate_count": result["report"]["candidate_count"],
             "ensemble_enabled": result["report"]["ensemble_enabled"],
+            "ensemble_count": result["report"].get("ensemble_count", 0),
         },
     )
 

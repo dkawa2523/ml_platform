@@ -34,18 +34,18 @@ def _task_type(Task: Any, name: str):
 def _template_note(task_name: str) -> str:
     if task_name == "tabular_stage_template":
         return (
-            "Internal stage task for PipelineController steps. Do not clone directly; "
-            "start template/tabular_train_pipeline from the Pipeline tab."
+            "INTERNAL ONLY: PipelineController stage task. Do not clone directly; "
+            "normal users should start template/tabular_train_pipeline from the Pipeline tab."
         )
     if task_name == "tabular_infer_template":
         return (
-            "User-facing inference task. Recommended: source_task_id + model_selector "
+            "USER-FACING inference task. Recommended: source_task_id + model_selector "
             "(best or ensemble). Use local_model_path only when the Agent can access it."
         )
     if task_name == "tabular_train_pipeline_template":
         return (
-            "User-facing training Pipeline-tab draft: preprocess_features -> train_<model>* "
-            "-> build_ensemble -> evaluate_models. Remote runs should set "
+            "USER-FACING training Pipeline-tab draft: preprocess_features -> train_<model>* "
+            "-> build_ensemble_<method>* -> evaluate_models. Remote runs should set "
             "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column."
         )
     return "Unsupported template name for the current product surface"

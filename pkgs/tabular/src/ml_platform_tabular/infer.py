@@ -5,17 +5,20 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from ml_platform_core.artifacts import (
     prepare_run_dir,
     update_latest,
     write_config_snapshot,
     write_manifest,
 )
-from ml_platform_core.io import load_joblib, read_json, write_table
+from ml_platform_core.io import load_joblib, read_json, read_table, write_table
 from ml_platform_core.result import RunResult
 
 from .data import load_dataset, select_features
 from .model_artifact import default_model_path
+from .plots import write_prediction_summary_tables
 
 
 PREDICTION_SCHEMA_VERSION = "v2.2"
@@ -56,6 +59,45 @@ def _info_says_ensemble(path: Path) -> bool:
     return str(info.get("artifact_kind") or "").lower() == "ensemble"
 
 
+def _ensemble_selector_parts(selector: str) -> tuple[bool, str | None]:
+    if selector == "ensemble":
+        return True, None
+    if selector.startswith("ensemble:"):
+        method = selector.split(":", 1)[1].strip()
+        if not method:
+            raise ValueError("model_selector=ensemble:<method> requires a method name.")
+        return True, method
+    return False, None
+
+
+def _best_ensemble_from_refs(build_dir: Path) -> Path | None:
+    refs = _read_json_if_exists(build_dir / "ensemble_refs.json")
+    best = refs.get("best_ensemble") if isinstance(refs, dict) else None
+    if isinstance(best, dict) and best.get("model"):
+        path = Path(str(best["model"]))
+        if path.exists():
+            return path
+        candidate = build_dir / path.name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _ensemble_model_candidates(directory: Path, selector: str) -> list[Path]:
+    _, method = _ensemble_selector_parts(selector)
+    build_dirs = [directory / "build_ensemble", directory]
+    candidates: list[Path] = []
+    for build_dir in build_dirs:
+        if method:
+            candidates.append(build_dir / f"model_{method}.joblib")
+        else:
+            best = _best_ensemble_from_refs(build_dir)
+            if best is not None:
+                candidates.append(best)
+            candidates.append(build_dir / "model.joblib")
+    return candidates
+
+
 def _selector_candidates(directory: Path, selector: str) -> list[Path]:
     selector = selector.strip()
     if selector == "best":
@@ -64,11 +106,9 @@ def _selector_candidates(directory: Path, selector: str) -> list[Path]:
             directory / "best_model.joblib",
             directory / "model.joblib",
         ]
-    if selector == "ensemble":
-        return [
-            directory / "build_ensemble" / "model.joblib",
-            directory / "model.joblib",
-        ]
+    is_ensemble, _ = _ensemble_selector_parts(selector)
+    if is_ensemble:
+        return _ensemble_model_candidates(directory, selector)
     return [
         directory / f"train_{_safe_name(selector)}" / "model.joblib",
         directory / f"train_{selector}" / "model.joblib",
@@ -80,10 +120,11 @@ def _resolve_directory_model_path(directory: Path, selector: str, *, strict: boo
     for candidate in _selector_candidates(directory, selector):
         if not candidate.exists():
             continue
-        if selector == "ensemble" and candidate.name == "model.joblib" and candidate.parent == directory:
+        is_ensemble, _ = _ensemble_selector_parts(selector)
+        if is_ensemble and candidate.name == "model.joblib" and candidate.parent == directory:
             if not _info_says_ensemble(candidate):
                 continue
-        if selector not in {"best", "ensemble"} and candidate.parent == directory:
+        if selector != "best" and not is_ensemble and candidate.parent == directory:
             info = _read_json_if_exists(candidate.parent / "model_info.json")
             name = str(info.get("model_name") or info.get("best_model_name") or "")
             if name and name != selector:
@@ -131,6 +172,14 @@ def _model_info_path(cfg: dict[str, Any], model_path: Path) -> Path | None:
     value = cfg.get("model", {}).get("info_path")
     if value:
         return Path(value)
+    if model_path.name.startswith("model_") and model_path.suffix == ".joblib":
+        method = model_path.stem.replace("model_", "", 1)
+        for candidate in (
+            model_path.parent / f"model_info_{method}.json",
+            model_path.parent / f"ensemble_info_{method}.json",
+        ):
+            if candidate.exists():
+                return candidate
     for candidate in (
         model_path.parent / "model_info.json",
         model_path.parent / "best_model.json",
@@ -265,7 +314,6 @@ def _model_artifact_id(model_info: dict[str, Any], model_path: Path) -> str:
             "model_name": model_info.get("model_name") or model_info.get("best_model_name"),
             "model_params": model_info.get("model_params") or model_info.get("best_model_params"),
             "produced_model_name": model_info.get("produced_model_name"),
-            "search": model_info.get("search"),
             "ensemble_method": model_info.get("ensemble_method"),
             "selected_base_models": model_info.get("selected_base_models"),
         }
@@ -351,6 +399,12 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
             model_artifact_id=model_artifact_id,
         )
         predictions_path = write_table(prediction_frame, run_dir / prediction_name)
+    prediction_tables, prediction_plots = write_prediction_summary_tables(
+        predictions_path,
+        run_dir,
+        target_column=cfg.get("data", {}).get("target_column"),
+    )
+    prediction_summary_path = prediction_tables["prediction_summary"]
     config_path = write_config_snapshot(cfg, run_dir)
 
     artifacts = {
@@ -369,12 +423,13 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         **artifacts,
         "model_source": model_path,
     }
-    tables = {"predictions": predictions_path}
+    tables = {"predictions": predictions_path, **prediction_tables}
     data_cfg = cfg.get("data", {})
     model_cfg = cfg.get("model", {})
     manifest_extra = {
         "prediction_rows": int(len(df)),
         "prediction_file": prediction_name,
+        "prediction_summary": str(prediction_summary_path),
         "prediction_schema_version": PREDICTION_SCHEMA_VERSION,
         "source_type": _model_source_type(cfg),
         "source_task_id": model_cfg.get("source_task_id"),
@@ -388,6 +443,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         "feature_spec_path": str(feature_spec_path) if feature_spec_path else None,
         "preprocess_bundle_path": str(preprocess_bundle_path) if preprocess_bundle_path else None,
         "model_name": str(model_info.get("model_name") or model_info.get("best_model_name") or "unknown"),
+        "ensemble_method": model_info.get("ensemble_method"),
         "artifact_kind": str(model_info.get("artifact_kind") or "model"),
         "model_artifact_id": model_artifact_id,
         "feature_columns": features,
@@ -412,5 +468,6 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         metrics={},
         artifacts=artifacts,
         tables=tables,
+        plots={"prediction_distribution": prediction_plots["prediction_distribution_histogram"], **prediction_plots},
         extra=manifest_extra,
     )

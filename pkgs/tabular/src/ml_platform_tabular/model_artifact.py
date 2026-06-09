@@ -54,11 +54,3 @@ def load_model_info_for_model(model_path: str | Path) -> dict[str, Any]:
     if info_path.exists():
         return read_json(info_path)
     return {}
-
-
-def feature_columns_from_model_info(model_path: str | Path) -> list[str] | None:
-    info = load_model_info_for_model(model_path)
-    columns = info.get("feature_columns")
-    if isinstance(columns, list):
-        return [str(c) for c in columns]
-    return None

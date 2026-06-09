@@ -16,14 +16,15 @@ from ml_platform_core.io import dump_joblib, write_json, write_table
 from ml_platform_core.result import RunResult
 
 from .data import load_dataset, split_xy, train_valid_split
+from .ensemble import as_bool as _as_bool
 from .ensemble import ensemble_config as _ensemble_cfg
 from .ensemble import ensemble_weights as _ensemble_weights
 from .ensemble import metric_value as _metric_value
-from .features import build_feature_pipeline
-from .metrics import DEFAULT_REGRESSION_METRICS, regression_metrics, regression_prediction_frame, write_regression_plot_artifacts
+from .features import build_feature_pipeline, normalize_feature_config
+from .metrics import DEFAULT_REGRESSION_METRICS, regression_metrics, regression_prediction_frame
 from .model_artifact import write_model_info
 from .models import MeanTopKEnsemble, TabularEstimator, build_model, model_candidates
-from .search import optimization_trial_rows, search_config, search_trials
+from .plots import write_regression_plot_artifacts
 
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
 SELECTION_METRICS = {"rmse", "mae", "r2"}
@@ -97,9 +98,9 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     X, y, feature_names = split_xy(df, cfg)
     X_train, X_valid, y_train, y_valid = train_valid_split(X, y, cfg)
 
-    feature_cfg = cfg.get("features", {})
-    feature_preset = feature_cfg.get("preset", "basic")
-    transformer = build_feature_pipeline(feature_preset, X_train, feature_cfg.get("params") or {})
+    feature_config = normalize_feature_config(cfg.get("features", {}))
+    feature_preset = feature_config["preset"]
+    transformer = build_feature_pipeline(feature_preset, X_train, feature_config)
 
     model_cfg = cfg.get("model", {})
     metric_names = cfg.get("metrics", {}).get("names")
@@ -108,34 +109,30 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     comparison = bool(model_cfg.get("candidates"))
     ensemble_cfg = _ensemble_cfg(model_cfg)
     ensemble_enabled = bool(ensemble_cfg["enabled"])
-    search_cfg = search_config(model_cfg)
-    search_enabled = bool(search_cfg["enabled"])
+    search_cfg = model_cfg.get("search") or {}
+    if isinstance(search_cfg, dict) and _as_bool(search_cfg.get("enabled")):
+        raise ValueError(
+            "model.search.enabled=true is future/experimental and is not part of the "
+            "current tabular_train compatibility task."
+        )
     if ensemble_enabled and not comparison:
         raise ValueError("model.ensemble.enabled=true requires model.candidates.")
-    if search_enabled and ensemble_enabled:
-        raise ValueError("model.search.enabled=true cannot be combined with model.ensemble.enabled=true in V2.1.")
     if selection_metric not in SELECTION_METRICS:
         raise ValueError("model.selection_metric must be one of: mae, rmse, r2.")
-    train_metric_names = _metric_names_for_training(metric_names, selection_metric, comparison=comparison or search_enabled)
+    train_metric_names = _metric_names_for_training(metric_names, selection_metric, comparison=comparison)
 
     candidate_results = []
-    trials = search_trials(
-        candidates,
-        search_cfg,
-        comparison=comparison,
-        seed=int(cfg.get("run", {}).get("seed", 42)),
-    )
-    for trial in trials:
-        model = build_model(trial["model_name"], trial["model_params"])
+    for trial, candidate in enumerate(candidates, start=1):
+        model = build_model(candidate["name"], candidate["params"])
         estimator = TabularEstimator(transformer=transformer, model=model, feature_columns=feature_names)
         estimator.fit(X_train, y_train)
         y_pred = estimator.predict(X_valid)
         metrics = regression_metrics(y_valid, y_pred, metrics=train_metric_names)
         candidate_results.append(
             {
-                "trial": trial["trial"],
-                "model_name": trial["model_name"],
-                "model_params": trial["model_params"],
+                "trial": trial,
+                "model_name": candidate["name"],
+                "model_params": candidate["params"],
                 "estimator": estimator,
                 "predictions": y_pred,
                 "metrics": metrics,
@@ -187,17 +184,13 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         y_pred = best["predictions"]
         metrics = best["metrics"]
 
-    retrained_on_full_data = False
-    if search_enabled and bool(search_cfg["retrain_best"]):
-        final_transformer = build_feature_pipeline(feature_preset, X, feature_cfg.get("params") or {})
-        final_model = build_model(model_name, model_params)
-        estimator = TabularEstimator(transformer=final_transformer, model=final_model, feature_columns=feature_names)
-        estimator.fit(X, y)
-        retrained_on_full_data = True
-
     validation_predictions_path = write_table(
         regression_prediction_frame(X_valid, y_valid, y_pred, model_name=model_name),
         run_dir / "validation_predictions.csv",
+    )
+    metrics_table_path = write_table(
+        pd.DataFrame([{"metric": key, "value": value} for key, value in metrics.items()]),
+        run_dir / "metrics_table.csv",
     )
     plots = write_regression_plot_artifacts(y_valid, y_pred, run_dir, prefix="validation")
     predictions_path = validation_predictions_path
@@ -208,6 +201,17 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
             run_dir / "ensemble_predictions.csv",
         )
     model_path = dump_joblib(estimator, run_dir / "model.joblib")
+    model_info_extra: dict[str, Any] = {"feature_config": feature_config}
+    if ensemble_enabled:
+        model_info_extra.update(
+            {
+                "ensemble_method": ensemble_cfg["method"],
+                "top_k": model_params["top_k"],
+                "selection_metric": selection_metric,
+                "selected_base_models": selected_base_models,
+                "weights": [item["weight"] for item in selected_base_models],
+            }
+        )
     model_info_path = write_model_info(
         run_dir / "model_info.json",
         feature_columns=feature_names,
@@ -216,17 +220,7 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
         model_name=model_name,
         model_params=model_params,
         artifact_kind="ensemble" if ensemble_enabled else "model",
-        extra=(
-            {
-                "ensemble_method": ensemble_cfg["method"],
-                "top_k": model_params["top_k"],
-                "selection_metric": selection_metric,
-                "selected_base_models": selected_base_models,
-                "weights": [item["weight"] for item in selected_base_models],
-            }
-            if ensemble_enabled
-            else None
-        ),
+        extra=model_info_extra,
     )
     ensemble_info_path = None
     if ensemble_enabled:
@@ -242,22 +236,6 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
             },
             run_dir / "ensemble_info.json",
         )
-    if search_enabled:
-        model_info = {
-            "search": {
-                "enabled": True,
-                "method": search_cfg["method"],
-                "max_trials": search_cfg["max_trials"],
-                "completed_trials": len(candidate_results),
-                "selection_metric": selection_metric,
-                "best_trial": int(best["trial"]),
-                "retrain_best": search_cfg["retrain_best"],
-                "retrained_on_full_data": retrained_on_full_data,
-            }
-        }
-        current_info = json.loads(model_info_path.read_text(encoding="utf-8"))
-        current_info.update(model_info)
-        model_info_path.write_text(json.dumps(current_info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     metrics_payload: dict[str, Any] = dict(metrics)
     config_path = write_config_snapshot(cfg, run_dir)
 
@@ -269,43 +247,9 @@ def run_train(cfg: dict[str, Any]) -> RunResult:
     }
     if ensemble_info_path is not None:
         artifacts["ensemble_info"] = ensemble_info_path
-    tables = {"validation_predictions": validation_predictions_path}
+    tables = {"validation_predictions": validation_predictions_path, "metrics_table": metrics_table_path}
     if ensemble_predictions_path is not None:
         tables["ensemble_predictions"] = ensemble_predictions_path
-    if search_enabled:
-        optimization_trials_path = write_table(
-            pd.DataFrame(optimization_trial_rows(candidate_results, selection_metric)),
-            run_dir / "optimization_trials.csv",
-        )
-        optimization_summary = {
-            "enabled": True,
-            "method": search_cfg["method"],
-            "max_trials": search_cfg["max_trials"],
-            "completed_trials": len(candidate_results),
-            "selection_metric": selection_metric,
-            "best_trial": int(best["trial"]),
-            "best_model_name": model_name,
-            "best_model_params": model_params,
-            "optimization_trials": str(optimization_trials_path),
-            "retrain_best": search_cfg["retrain_best"],
-            "retrained_on_full_data": retrained_on_full_data,
-        }
-        best_params_payload = {
-            "model_name": model_name,
-            "model_params": model_params,
-            "selection_metric": selection_metric,
-            "selection_value": _metric_value(metrics, selection_metric),
-            "best_trial": int(best["trial"]),
-            "retrain_best": search_cfg["retrain_best"],
-            "retrained_on_full_data": retrained_on_full_data,
-        }
-        best_params_path = write_json(best_params_payload, run_dir / "best_params.json")
-        optimization_summary["best_params"] = str(best_params_path)
-        optimization_summary_path = write_json(optimization_summary, run_dir / "optimization_summary.json")
-        tables["optimization_trials"] = optimization_trials_path
-        artifacts["best_params"] = best_params_path
-        artifacts["optimization_summary"] = optimization_summary_path
-        metrics_payload["search"] = optimization_summary
     if comparison:
         leaderboard_results = ranked_results
         leaderboard_artifact_names = dict(artifact_names)

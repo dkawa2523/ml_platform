@@ -9,11 +9,12 @@ for the current stage-based training or inference specifications.
 | area | evidence | status |
 | --- | --- | --- |
 | Release gate | `verification/training_pipeline/release_gate.md` | Current gate. Local/dry-run pass; remote ClearML execution pending. |
-| Model policy | `verification/product_ux/model_policy.md` | Current local/dry-run pass for supported, experimental, and out-of-scope model policy. |
+| Model policy | `verification/product_ux/model_policy.md` | Current local/dry-run pass for dependency-free supported, supported optional-dependency, and out-of-scope model policy. |
 | ClearML project layout | `verification/product_ux/clearml_project_layout.md` | Current dry-run pass for project routing, task naming, and tags. |
 | Pipeline input UX | `verification/product_ux/pipeline_inputs.md` | Current dry-run pass for required/optional Pipeline UI parameters. |
 | Results and plots UX | `verification/product_ux/results_and_plots.md` | Current local/dry-run pass for result artifacts, tables, scalars, and lightweight plots. |
-| Local training pipeline | `verification/training_pipeline/local_training_pipeline.md` | Current local pass for `preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models`. |
+| ClearML plots/tables reporting | `verification/product_ux/clearml_plots.md` | Repo-side pass for ClearML scalar/table/native plot/image reporting. Remote UI evidence pending. |
+| Local training pipeline | `verification/training_pipeline/local_training_pipeline.md` | Current local pass for `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`. |
 | ClearML training pipeline | `verification/training_pipeline/clearml_training_pipeline.md` | Dry-run pass. Remote ClearML run is still required before support promotion. |
 | Inference task | `verification/inference/infer_task_reference.md` | Current evidence for `tabular_infer_template` source resolution. Remote best/ensemble task-id runs may still be blocked or pending. |
 
@@ -26,8 +27,9 @@ themselves make a feature supported:
   remote dev-server runs.
 - `verification/_historical/optimization/optimization_pipeline.md`, which
   records future / experimental optimization evidence only.
-- Experimental optional-dependency models `lightgbm`, `xgboost`, and
-  `catboost`.
+- Supported optional-dependency models `lightgbm`, `xgboost`, and `catboost`
+  still need Agent-image / optional-extra runtime evidence before adding them to
+  portable defaults.
 - Historical KNN / SVR / MLP evidence is out of current product scope.
 - Historical ensemble and optimization task evidence that predates the current
   stage-based graph.
@@ -55,7 +57,7 @@ Old `train -> eval -> infer` records prove compatibility behavior only. They do
 not prove the current official training pipeline, which is:
 
 ```text
-preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models
+preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
 ## Deprecated Readiness Gates

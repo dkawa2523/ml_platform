@@ -19,6 +19,7 @@ from adapter import (
     as_dict,
     as_list,
     clearml_projects,
+    clearml_stage_project,
     clearml_tags,
     clearml_template_name,
     import_clearml_automation,
@@ -63,18 +64,12 @@ def _pipeline_model_cfg(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] 
         model_cfg["selection_metric"] = ui_params["Model/selection_metric"]
     if "Model/ensemble_enabled" in ui_params:
         model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(ui_params.get("Model/ensemble_enabled"))
+    if "Model/ensemble_methods" in ui_params:
+        model_cfg.setdefault("ensemble", {})["methods"] = as_list(ui_params.get("Model/ensemble_methods")) or []
     if "Model/ensemble_method" in ui_params and ui_params.get("Model/ensemble_method"):
         model_cfg.setdefault("ensemble", {})["method"] = ui_params["Model/ensemble_method"]
     if "Model/ensemble_top_k" in ui_params and ui_params.get("Model/ensemble_top_k") not in {None, ""}:
         model_cfg.setdefault("ensemble", {})["top_k"] = int(ui_params["Model/ensemble_top_k"])
-    if "Model/search_enabled" in ui_params:
-        model_cfg.setdefault("search", {})["enabled"] = as_bool(ui_params.get("Model/search_enabled"))
-    if "Model/search_method" in ui_params and ui_params.get("Model/search_method"):
-        model_cfg.setdefault("search", {})["method"] = str(ui_params["Model/search_method"]).strip().lower()
-    if "Model/search_space" in ui_params:
-        model_cfg.setdefault("search", {})["search_space"] = as_dict(ui_params.get("Model/search_space"))
-    if "Model/max_trials" in ui_params and ui_params.get("Model/max_trials") not in {None, ""}:
-        model_cfg.setdefault("search", {})["max_trials"] = int(ui_params["Model/max_trials"])
     return model_cfg
 
 
@@ -88,6 +83,8 @@ def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str |
 def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     run = pipeline_cfg.get("run", {})
     data = pipeline_cfg.get("data", {})
+    split = pipeline_cfg.get("split", {}) or {}
+    features = pipeline_cfg.get("features", {}) or {}
     model = pipeline_cfg.get("model", {})
     metrics = pipeline_cfg.get("metrics", {}) or {}
     output = pipeline_cfg.get("output", {}) or {}
@@ -107,20 +104,28 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
     return {
         "Run/name": run.get("name"),
         "Run/seed": run.get("seed"),
+        "Split/valid_size": split.get("valid_size", 0.2),
         "Input/local_path": local_path,
         "Input/clearml_dataset_id": clearml_dataset_id,
         "Input/dataset_file": dataset_file,
         "Input/target_column": data.get("target_column"),
         "Input/feature_columns": data.get("feature_columns"),
         "Input/id_columns": data.get("id_columns", []),
+        "Features/preset": features.get("preset", "basic"),
+        "Features/numeric_impute_strategy": features.get("numeric_impute_strategy", "median"),
+        "Features/categorical_impute_strategy": features.get("categorical_impute_strategy", "missing_token"),
+        "Features/categorical_encoder": features.get("categorical_encoder", "onehot"),
+        "Features/scaling": features.get("scaling", "standard"),
+        "Features/drop_columns": _json(features.get("drop_columns", []) or []),
+        "Features/passthrough_columns": _json(features.get("passthrough_columns", []) or []),
         "Model/candidates": _json(model.get("candidates", []) or []),
         "Model/model_params_by_name": _json(model.get("params", {}) or {}),
         "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
         "Model/selection_metric": model.get("selection_metric", "rmse"),
         "Model/ensemble_enabled": as_bool(ensemble.get("enabled")),
+        "Model/ensemble_methods": _json(ensemble.get("methods", [ensemble.get("method", "mean_topk")]) or []),
         "Model/ensemble_method": ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
-        "Model/feature_preset": pipeline_cfg.get("features", {}).get("preset"),
         "Output/report_plots": as_bool(output.get("report_plots"), default=True),
     }
 
@@ -175,6 +180,30 @@ def _data_overrides(params: dict[str, Any]) -> dict[str, Any]:
     return overrides
 
 
+def _split_overrides(params: dict[str, Any]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    if "Split/valid_size" in params and params.get("Split/valid_size") not in {None, ""}:
+        overrides["Split/valid_size"] = float(params["Split/valid_size"])
+    return overrides
+
+
+def _feature_overrides(params: dict[str, Any]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    for key in (
+        "Features/preset",
+        "Features/numeric_impute_strategy",
+        "Features/categorical_impute_strategy",
+        "Features/categorical_encoder",
+        "Features/scaling",
+    ):
+        if key in params and params.get(key) not in {None, ""}:
+            overrides[key] = params[key]
+    for key in ("Features/drop_columns", "Features/passthrough_columns"):
+        if key in params:
+            overrides[key] = as_list(params.get(key)) or []
+    return overrides
+
+
 def _preprocess_refs() -> dict[str, str]:
     return {
         "Input/preprocess_bundle": _artifact_ref("preprocess_features", "preprocess_bundle"),
@@ -197,16 +226,26 @@ def _model_ref(step_name: str, model_name: str, model_params: dict[str, Any]) ->
     }
 
 
-def _ensemble_ref() -> dict[str, Any]:
+def _ensemble_methods(ensemble_cfg: dict[str, Any]) -> list[str]:
+    raw = ensemble_cfg.get("methods")
+    if raw is None or raw == "":
+        raw = [ensemble_cfg.get("method") or "mean_topk"]
+    methods = as_list(raw) or []
+    return methods or ["mean_topk"]
+
+
+def _ensemble_ref(step_name: str, method: str | None = None) -> dict[str, Any]:
+    suffix = f"_{method}" if method else ""
     return {
-        "stage": "build_ensemble",
-        "model_name": "mean_topk",
+        "stage": step_name,
+        "model_name": method or "mean_topk",
+        "ensemble_method": method,
         "artifact_kind": "ensemble",
-        "model": _artifact_ref("build_ensemble", "model"),
-        "model_info": _artifact_ref("build_ensemble", "model_info"),
-        "ensemble_info": _artifact_ref("build_ensemble", "ensemble_info"),
-        "metrics": _artifact_ref("build_ensemble", "metrics"),
-        "ensemble_predictions": _artifact_ref("build_ensemble", "ensemble_predictions"),
+        "model": _artifact_ref(step_name, f"model{suffix}"),
+        "model_info": _artifact_ref(step_name, f"model_info{suffix}"),
+        "ensemble_info": _artifact_ref(step_name, f"ensemble_info{suffix}"),
+        "metrics": _artifact_ref(step_name, f"metrics{suffix}"),
+        "ensemble_predictions": _artifact_ref(step_name, f"ensemble_predictions{suffix}"),
     }
 
 
@@ -215,12 +254,14 @@ def _stage_step(
     name: str,
     stage: str,
     templates_project: str,
+    projects: dict[str, str],
     run_name: str,
     model_name: str | None = None,
+    ensemble_method: str | None = None,
     parents: list[str] | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    label = stage_task_label(stage, model_name)
+    label = stage_task_label(stage, model_name, ensemble_method)
     parameter_override = {
         "Run/name": prefixed_task_name("stage", label, run_name),
         "Run/stage": stage,
@@ -233,8 +274,16 @@ def _stage_step(
         "base_task_project": templates_project,
         "base_task_name": clearml_template_name(STAGE_TEMPLATE),
         "task_config": STAGE_TASK_CONFIG,
+        "target_project": clearml_stage_project(projects, stage),
+        "pipeline_stage_group": label,
         "parameter_override": parameter_override,
-        "tags": clearml_tags("stage", internal=True, stage=stage, model=model_name),
+        "tags": clearml_tags(
+            "stage",
+            internal=True,
+            stage=stage,
+            model=model_name,
+            ensemble=ensemble_method,
+        ),
     }
 
 
@@ -260,8 +309,8 @@ def _build_training_plan(
     if as_bool(search_cfg.get("enabled")):
         raise ValueError(
             "model.search.enabled=true is future/experimental and is not part of the "
-            "primary ClearML training pipeline graph. Use search_enabled=false for "
-            "preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models."
+            "primary ClearML training pipeline graph. Remove model.search or set enabled=false for "
+            "preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models."
         )
     candidates = model_candidates(model_cfg)
     if not candidates:
@@ -271,8 +320,11 @@ def _build_training_plan(
     if not isinstance(ensemble_cfg, dict):
         ensemble_cfg = {}
     ensemble_enabled = as_bool(ensemble_cfg.get("enabled"))
+    ensemble_methods = _ensemble_methods(ensemble_cfg)
     selection_metric = str(model_cfg.get("selection_metric") or "rmse")
     data_overrides = _data_overrides(effective_params)
+    split_overrides = _split_overrides(effective_params)
+    feature_overrides = _feature_overrides(effective_params)
     stage_common_overrides = {
         "Model/evaluation_metrics": effective_params.get("Model/evaluation_metrics"),
         "Output/report_plots": as_bool(effective_params.get("Output/report_plots"), default=True),
@@ -283,11 +335,13 @@ def _build_training_plan(
             name="preprocess_features",
             stage="preprocess_features",
             templates_project=templates_project,
+            projects=projects,
             run_name=run_name,
             overrides={
                 **data_overrides,
+                **split_overrides,
+                **feature_overrides,
                 **stage_common_overrides,
-                "Model/feature_preset": effective_params.get("Model/feature_preset"),
             },
         )
     ]
@@ -305,6 +359,7 @@ def _build_training_plan(
                 name=step_name,
                 stage="train_model",
                 templates_project=templates_project,
+                projects=projects,
                 run_name=run_name,
                 model_name=model_name,
                 parents=["preprocess_features"],
@@ -314,46 +369,54 @@ def _build_training_plan(
                     "Model/name": model_name,
                     "Model/params": _json(model_params),
                     "Model/selection_metric": selection_metric,
-                    "Model/feature_preset": effective_params.get("Model/feature_preset"),
                 },
             )
         )
 
     parents_for_evaluate = list(train_steps)
-    ensemble_ref = None
+    ensemble_refs = []
+    ensemble_steps: list[str] = []
     if ensemble_enabled:
-        ensemble_ref = _ensemble_ref()
-        parents_for_evaluate.append("build_ensemble")
-        steps.append(
-            _stage_step(
-                name="build_ensemble",
-                stage="build_ensemble",
-                templates_project=templates_project,
-                run_name=run_name,
-                parents=train_steps,
-                overrides={
-                    **_preprocess_refs(),
-                    **stage_common_overrides,
-                    "Input/model_refs": _json(model_refs),
-                    "Model/selection_metric": selection_metric,
-                    "Model/ensemble_enabled": True,
-                    "Model/ensemble_method": ensemble_cfg.get("method", "mean_topk"),
-                    "Model/ensemble_top_k": int(ensemble_cfg.get("top_k") or 3),
-                },
+        for method in ensemble_methods:
+            step_name = f"build_ensemble_{method}"
+            ensemble_steps.append(step_name)
+            ensemble_refs.append(_ensemble_ref(step_name, method))
+            steps.append(
+                _stage_step(
+                    name=step_name,
+                    stage="build_ensemble",
+                    templates_project=templates_project,
+                    projects=projects,
+                    run_name=run_name,
+                    ensemble_method=method,
+                    parents=train_steps,
+                    overrides={
+                        **_preprocess_refs(),
+                        **stage_common_overrides,
+                        "Input/model_refs": _json(model_refs),
+                        "Model/selection_metric": selection_metric,
+                        "Model/ensemble_enabled": True,
+                        "Model/ensemble_methods": _json([method]),
+                        "Model/ensemble_method": method,
+                        "Model/ensemble_top_k": int(ensemble_cfg.get("top_k") or 3),
+                    },
+                )
             )
-        )
+        parents_for_evaluate.extend(ensemble_steps)
 
     steps.append(
         _stage_step(
             name="evaluate_models",
             stage="evaluate_models",
             templates_project=templates_project,
+            projects=projects,
             run_name=run_name,
             parents=parents_for_evaluate,
             overrides={
                 **stage_common_overrides,
                 "Input/model_refs": _json(model_refs),
-                "Input/ensemble_ref": _json(ensemble_ref) if ensemble_ref else None,
+                "Input/ensemble_refs": _json(ensemble_refs) if ensemble_refs else None,
+                "Input/ensemble_ref": _json(ensemble_refs[0]) if ensemble_refs else None,
                 "Model/selection_metric": selection_metric,
             },
         )
@@ -363,6 +426,12 @@ def _build_training_plan(
         "kind": "training",
         "project": pipelines_project,
         "stage_project": stages_project,
+        "stage_projects": {
+            "preprocess": projects["preprocess"],
+            "train": projects["train"],
+            "ensemble": projects["ensemble"],
+            "evaluate": projects["evaluate"],
+        },
         "name": prefixed_task_name("pipeline", "tabular_train_pipeline", run_name),
         "version": "0.2.0",
         "training_flow": "preprocess_train_ensemble_evaluate" if ensemble_enabled else "preprocess_train_evaluate",
@@ -398,6 +467,7 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         f"kind={plan['kind']} "
         f"project={plan['project']} "
         f"stage_project={plan['stage_project']} "
+        f"stage_projects={plan.get('stage_projects', {})} "
         f"name={plan['name']} "
         f"version={plan['version']} "
         f"training_flow={plan['training_flow']} "
@@ -410,6 +480,7 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
             "DRY-RUN step: "
             f"name={step['name']} "
             f"parents={parents} "
+            f"target_project={step.get('target_project')} "
             f"template={step['base_task_project']}/{step['base_task_name']} "
             f"task_config={step['task_config']} "
             f"parameter_override=[{overrides}] "
@@ -463,6 +534,8 @@ def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
             kwargs["parents"] = step["parents"]
         if step["parameter_override"]:
             kwargs["parameter_override"] = step["parameter_override"]
+        if step.get("pipeline_stage_group"):
+            kwargs["stage"] = step["pipeline_stage_group"]
         pipe.add_step(**kwargs)
 
 
@@ -493,7 +566,7 @@ def _apply_pipeline_template_metadata(task: Any) -> None:
     set_comment = getattr(task, "set_comment", None)
     if callable(set_comment):
         set_comment(
-            "User-facing training pipeline template. Remote runs should use "
+            "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths."
         )
 

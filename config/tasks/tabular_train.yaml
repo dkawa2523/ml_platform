@@ -2,7 +2,7 @@ task: tabular_train
 
 # Compatibility-only local task.
 # Primary product training uses config/tasks/tabular_pipeline.yaml:
-# preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models.
+# preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models.
 # This file is not a ClearML user-facing template sync target.
 
 run:
@@ -34,12 +34,6 @@ model:
     alpha: 1.0
   candidates: []
   selection_metric: rmse
-  search:
-    enabled: false
-    method: grid
-    max_trials: 20
-    search_space: {}
-    retrain_best: true
   ensemble:
     enabled: false
     method: mean_topk

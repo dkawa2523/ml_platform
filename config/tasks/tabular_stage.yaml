@@ -1,9 +1,11 @@
 task: tabular_stage
 
-# Internal PipelineController stage task. Do not clone this as a user-facing
-# model-, ensemble-, or optimize-specific template. Run/stage selects the
-# stage behavior. Primary stages are preprocess_features, train_model,
-# build_ensemble, and evaluate_models. Optimization stages are future.
+# Internal PipelineController stage task. Its parameter surface is intentionally
+# broader than the user-facing pipeline template because steps receive artifact
+# handoff values. Do not clone this as a user-facing model-, ensemble-, or
+# optimize-specific template. Run/stage selects the stage behavior. Primary
+# stages are preprocess_features, train_model, build_ensemble, and
+# evaluate_models. Optimization stages are future.
 
 run:
   name: tabular_stage
@@ -27,6 +29,12 @@ metrics:
 
 features:
   preset: basic
+  numeric_impute_strategy: median
+  categorical_impute_strategy: missing_token
+  categorical_encoder: onehot
+  scaling: standard
+  drop_columns: []
+  passthrough_columns: []
   params: {}
 
 model:
@@ -36,6 +44,8 @@ model:
   selection_metric: rmse
   ensemble:
     enabled: false
+    methods:
+      - mean_topk
     method: mean_topk
     top_k: 3
 
@@ -45,6 +55,7 @@ stage_inputs:
   processed_train: null
   processed_valid: null
   model_refs: []
+  ensemble_refs: []
   ensemble_ref: null
 
 output:

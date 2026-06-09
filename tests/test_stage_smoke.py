@@ -59,8 +59,15 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert preprocess.artifacts["preprocess_bundle"].exists()
     assert preprocess.artifacts["feature_spec"].exists()
     assert preprocess.artifacts["feature_summary"].exists()
+    assert preprocess.tables["feature_summary_table"].exists()
+    assert preprocess.tables["feature_summary"].exists()
+    assert preprocess.tables["missing_rate_by_column"].exists()
+    assert preprocess.tables["feature_missingness"].exists()
+    assert preprocess.tables["feature_type_counts"].exists()
     assert preprocess.tables["processed_train"].exists()
     assert preprocess.tables["processed_valid"].exists()
+    assert "missing_rate_by_column_bar" in preprocess.plots
+    assert "feature_missingness_bar" in preprocess.plots
 
     train_results = []
     for model_name in ["linear", "ridge"]:
@@ -75,9 +82,15 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
         assert result.artifacts["model"].exists()
         assert result.artifacts["model_info"].exists()
         assert result.artifacts["metrics"].exists()
+        assert result.tables["metrics_table"].exists()
         assert result.tables["validation_predictions"].exists()
+        assert result.tables["feature_importance"].exists()
         assert "prediction_vs_actual" in result.plots
         assert "residual_histogram" in result.plots
+        assert "validation_prediction_vs_actual" in result.plots
+        assert "validation_residual_histogram" in result.plots
+        assert "feature_importance" in result.plots
+        assert "feature_importance_bar" in result.plots
 
     model_refs = [_model_ref(stage, result) for stage, result in train_results]
     ensemble_cfg = _stage_cfg(tmp_path, "build_ensemble", train_path)
@@ -90,7 +103,11 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
 
     assert ensemble.artifacts["model"].exists()
     assert ensemble.artifacts["ensemble_info"].exists()
+    assert ensemble.tables["ensemble_metrics_table"].exists()
     assert ensemble.tables["ensemble_predictions"].exists()
+    assert ensemble.tables["ensemble_members_mean_topk"].exists()
+    assert ensemble.tables["ensemble_weights_mean_topk"].exists()
+    assert "ensemble_metrics_bar" in ensemble.plots
 
     eval_cfg = _stage_cfg(tmp_path, "evaluate_models", train_path)
     eval_cfg["run"]["stage"] = "evaluate_models"
@@ -108,16 +125,22 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     evaluation = run_task(eval_cfg)
 
     assert evaluation.tables["leaderboard"].exists()
+    assert evaluation.tables["metrics_by_candidate"].exists()
+    assert evaluation.tables["evaluation_summary"].exists()
     assert evaluation.tables["evaluation_predictions"].exists()
     assert evaluation.artifacts["model_refs"].exists()
     assert evaluation.artifacts["metrics_by_model"].exists()
+    assert evaluation.artifacts["metrics_by_candidate"].exists()
     assert evaluation.artifacts["best_model"].exists()
     assert evaluation.artifacts["best_model_json"].exists()
     assert evaluation.artifacts["evaluation_report"].exists()
     assert evaluation.artifacts["manifest"].exists()
     assert "metrics_by_model_bar" in evaluation.plots
+    assert "metrics_by_candidate_bar" in evaluation.plots
     assert "prediction_vs_actual" in evaluation.plots
     assert "residual_histogram" in evaluation.plots
+    assert "best_prediction_vs_actual" in evaluation.plots
+    assert "best_residual_histogram" in evaluation.plots
 
 
 def test_tabular_stage_runner_rejects_future_optimization_stages(tmp_path):

@@ -13,10 +13,11 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
 - `pkgs/core` and `pkgs/tabular` do not import ClearML.
 - Deploy manifests provide a minimal ClearML Agent runtime.
 - Tests are smoke and boundary oriented.
-- Official supported regression models are `linear`, `ridge`, `lasso`,
+- Dependency-free supported regression models are `linear`, `ridge`, `lasso`,
   `elasticnet`, `random_forest`, `extra_trees`, and `gradient_boosting`.
-- Experimental optional-dependency regressors are `lightgbm`, `xgboost`, and
-  `catboost`. They are not default candidates.
+- Supported optional-dependency regressors are `lightgbm`, `xgboost`, and
+  `catboost`. They are not default candidates; install `pkgs/tabular[gbm]`
+  or provide a ClearML Agent image with those packages before selecting them.
 - `scikit-learn` is a required runtime dependency.
 - Current verification evidence lives under `verification/training_pipeline/`
   and `verification/inference/`. Historical and future-reference evidence lives
@@ -28,7 +29,7 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
   `Model/model_params_by_name` as model-keyed JSON parameters,
   `Model/evaluation_metrics`, and `Model/selection_metric`; it writes
   `leaderboard.csv` and saves only the best model artifact.
-- Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_method`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk` and `weighted`; both save one standard `model` artifact.
+- Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_methods`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk`, `weighted`, and `median`; `Model/ensemble_method` is a compatibility alias when `ensemble_methods` is absent.
 - Primary inference uses `source_task_id + model_selector` or
   `local_model_path`. `artifact_url` and `clearml_model_id` remain
   future/experimental sources.
@@ -42,12 +43,14 @@ supported without local and ClearML remote verification evidence.
 The official training pipeline definition is:
 
 ```text
-preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_models
+preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
 `config/tasks/tabular_pipeline.yaml` and `pkgs/tabular.pipeline.run_pipeline()`
 implement this graph locally. `tabular_train_pipeline_template` implements the
-same graph through the internal `tabular_stage_template`. The old
+same graph through the internal `tabular_stage_template`. Each ClearML
+`build_ensemble_<method>` node still runs the internal `build_ensemble` stage
+with one method. The old
 `tabular_pipeline_template` is deprecated and sync-excluded.
 
 Inference is a separate `tabular_infer_template` task. Do not fold inference
@@ -98,10 +101,14 @@ python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.y
 
 ClearML project layout is profile-managed. The dev profile routes templates to
 `MLPlatform/Dev/Templates/Tabular`, Pipeline-tab drafts/controllers to
-`MLPlatform/Dev/Pipelines/Tabular`, stage runs to
-`MLPlatform/Dev/Runs/Tabular/Stages`, standalone inference tasks to
-`MLPlatform/Dev/Runs/Tabular/Tasks`, and compatibility experiments to
-`MLPlatform/Dev/Experiments/Tabular`.
+`MLPlatform/Dev/Pipelines/Tabular`, preprocess stages to
+`MLPlatform/Dev/Runs/Tabular/Preprocess`, train stages to
+`MLPlatform/Dev/Runs/Tabular/Train`, ensemble stages to
+`MLPlatform/Dev/Runs/Tabular/Ensemble`, evaluate stages to
+`MLPlatform/Dev/Runs/Tabular/Evaluate`, standalone inference tasks to
+`MLPlatform/Dev/Runs/Tabular/Infer`, and compatibility experiments to
+`MLPlatform/Dev/Experiments/Tabular`. Legacy `stages` / `tasks` profile keys are
+fallbacks only.
 
 Current ClearML display names are:
 
@@ -128,7 +135,8 @@ Manual UI checks:
   `Model/local_model_path=<training pipeline run dir or model file>`.
 - Open `template/tabular_train_pipeline` from the Pipeline tab and verify:
   preprocess_features -> train_linear/ridge/lasso/elasticnet/random_forest/
-  extra_trees/gradient_boosting -> build_ensemble -> evaluate_models.
+  extra_trees/gradient_boosting -> build_ensemble_mean_topk/
+  build_ensemble_weighted/build_ensemble_median -> evaluate_models.
 - Required remote training inputs are `Input/clearml_dataset_id`,
   `Input/dataset_file`, and `Input/target_column`; local development can use
   `Input/local_path` plus `Input/target_column`.
@@ -170,8 +178,8 @@ See `deploy/README.md`. At minimum verify:
 - Do not add new stage nodes to deprecated templates; use
   `tabular_stage_template` through `tabular_train_pipeline_template`.
 - Do not add model-specific or dataset-specific ClearML templates.
-- Do not mark `lightgbm`, `xgboost`, `catboost`, `gaussian_process`, or
-  `tabpfn` as supported without a separate verification phase.
+- Do not add `gaussian_process` or `tabpfn` to the supported model set without
+  a separate verification phase.
 - Do not reintroduce `knn`, `svr`, or `mlp` into the current product model set.
 - Do not add stacking or weight optimization to ensemble without a new verification phase.
 - Do not add Optuna, Ray Tune, per-trial ClearML child tasks, or an optimize template.

@@ -7,8 +7,8 @@ issue-template style process docs.
 
 1. ClearML remote verification for `tabular_train_pipeline_template`.
    - Purpose: prove the stage graph on the dev server.
-   - Scope: run with ClearML Dataset id/file, supported model candidates, ensemble on.
-   - Acceptance: graph shows `preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models`; required artifacts are visible.
+   - Scope: run with ClearML Dataset id/file, dependency-free default candidates, and ensemble methods enabled.
+   - Acceptance: graph shows `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`; required artifacts are visible.
    - Do not do: add full templates, optimization templates, or model-specific templates.
 
 2. ClearML remote inference verification for `tabular_infer_template`.
@@ -19,7 +19,7 @@ issue-template style process docs.
 
 3. ClearML UI input polish.
    - Purpose: make required remote parameters obvious.
-   - Scope: template tags, descriptions, and short docs for `clearml_dataset_id`, `dataset_file`, `target_column`, candidates, and ensemble.
+   - Scope: template tags, descriptions, and short docs for `clearml_dataset_id`, `dataset_file`, `target_column`, feature settings, candidates, and ensemble methods.
    - Acceptance: users can distinguish local path from remote Dataset usage without reading code.
    - Do not do: add broad troubleshooting, contracts, or diagnostics helpers.
 
@@ -27,8 +27,9 @@ issue-template style process docs.
 
 - Revisit optimization pipeline only after the primary training and inference
   route is stable.
-- Keep experimental LightGBM, XGBoost, CatBoost out of default candidates until
-  optional dependency and remote evidence are recorded.
+- Keep LightGBM, XGBoost, and CatBoost as supported optional-dependency models.
+  Do not add their heavy packages to base requirements; use `pkgs/tabular[gbm]`
+  or an Agent image with those packages when selecting them.
 - Keep Optuna, Ray Tune, per-trial child tasks, stacking, advanced diagnostics,
   and online serving out of the primary flow.
 

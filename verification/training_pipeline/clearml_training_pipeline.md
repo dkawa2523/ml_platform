@@ -9,7 +9,7 @@ Phase C normalizes the primary ClearML training pipeline graph:
 ```text
 preprocess_features
   -> train_<model>*
-  -> build_ensemble
+  -> build_ensemble_<method>*
   -> evaluate_models
 ```
 
@@ -46,20 +46,22 @@ Result: pass
   - `train_random_forest`
   - `train_extra_trees`
   - `train_gradient_boosting`
-  - `build_ensemble`
+  - `build_ensemble_mean_topk`
+  - `build_ensemble_weighted`
+  - `build_ensemble_median`
   - `evaluate_models`
 - all graph nodes use `tabular_stage_template`
 - `train_<model>` steps receive preprocess artifact refs
-- `build_ensemble` receives JSON `Input/model_refs`
-- `evaluate_models` receives JSON `Input/model_refs` and `Input/ensemble_ref`
+- each `build_ensemble_<method>` receives JSON `Input/model_refs` and one ensemble method
+- `evaluate_models` receives JSON `Input/model_refs` and `Input/ensemble_refs`
 - Pipeline UI params do not expose `Model/search_*` or `Run/pipeline_mode`
 
 ## Expected Stage Artifacts
 
 - `preprocess_features`: `preprocess_bundle`, `feature_spec`, `processed_train`, `processed_valid`, `train_features`, `valid_features`
 - `train_<model>`: `model`, `model_info`, `validation_predictions`, `metrics`, lightweight validation plots
-- `build_ensemble`: `model`, `model_info`, `ensemble_info`, `ensemble_predictions`, `metrics`, lightweight ensemble plots
-- `evaluate_models`: `leaderboard`, `best_model`, `best_model_json`, `evaluation_report`, `metrics`, `manifest`
+- `build_ensemble_<method>`: `model_<method>`, `model_info_<method>`, `ensemble_info_<method>`, `ensemble_predictions_<method>`, `metrics_<method>`, lightweight ensemble plots
+- `evaluate_models`: `leaderboard`, `best_model`, `best_model_json`, `ensemble_refs`, `ensemble_info_by_method`, `evaluation_report`, `metrics`, `manifest`
 
 ## Remote Verification
 
@@ -71,7 +73,7 @@ Pipeline tab:
 - `tabular_train_pipeline_template`
 - candidates: `linear`, `ridge`, `lasso`, `elasticnet`, `random_forest`,
   `extra_trees`, `gradient_boosting`
-- ensemble enabled
+- ensemble methods: `mean_topk`, `weighted`, `median`
 
 Do not promote the ClearML stage-based training pipeline to supported scope
 until that remote evidence is recorded.

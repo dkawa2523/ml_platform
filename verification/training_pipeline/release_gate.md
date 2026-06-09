@@ -1,8 +1,8 @@
 # Primary Training / Inference Release Gate
 
-Date: 2026-06-08
+Date: 2026-06-09
 Branch: `main`
-Local HEAD: uncommitted product-foundation cleanup changes
+Local HEAD: uncommitted product UX / model policy / multiple ensemble changes
 Profile: `config/profiles/clearml-dev.yaml`
 
 ## Decision
@@ -20,11 +20,11 @@ release gate.
 
 | gate | status | evidence |
 | --- | --- | --- |
-| Training pipeline local | pass | `outputs\tabular_training_pipeline_20260608T080026Z` and `verification/training_pipeline/local_training_pipeline.md` |
+| Training pipeline local | pass | `outputs\tabular_training_pipeline_20260608T230357Z` and `verification/training_pipeline/local_training_pipeline.md` |
 | ClearML graph dry-run | pass | `verification/training_pipeline/clearml_training_pipeline.md` |
-| Inference local | pass | best fallback: `outputs\tabular_infer_20260608T080026Z`; see `verification/inference/infer_task_reference.md` for best/ensemble selector evidence. |
+| Inference local | pass | best: `outputs\tabular_infer_20260608T230403Z`; ensemble best: `outputs\tabular_infer_20260608T230446Z`; ensemble method: `outputs\tabular_infer_20260608T230446Z_1`. |
 | Template sync dry-run | pass | Default sync targets are `tabular_train_pipeline_template`, `tabular_infer_template`, and `tabular_stage_template`; dry-run includes user/internal tags. |
-| Tests | pass | `54 passed` |
+| Tests | pass | `57 passed` |
 | ClearML dependency boundary | pass | `rg "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular` returned no matches. |
 | ClearML remote training pipeline | pending | Run `tabular_train_pipeline_template` from the dev Pipeline tab. |
 | ClearML remote inference task-id best | pending | Run `tabular_infer_template` with `source_type=task_id`, `model_selector=best`. |
@@ -43,18 +43,24 @@ Primary training artifacts:
 - `train_random_forest/model.joblib`: pass
 - `train_extra_trees/model.joblib`: pass
 - `train_gradient_boosting/model.joblib`: pass
-- `build_ensemble/model.joblib`: pass
-- `build_ensemble/ensemble_info.json`: pass
+- per-method `build_ensemble_<method>/model_<method>.joblib`: pass locally / dry-run planned remotely
+- per-method `build_ensemble_<method>/ensemble_info_<method>.json`: pass locally / dry-run planned remotely
+- `evaluate_models/ensemble_refs.json`: pass
+- `evaluate_models/ensemble_info_by_method.json`: pass
 - validation prediction residual columns: pass
 - lightweight prediction-vs-actual and residual histogram artifacts: pass
 - `evaluate_models/leaderboard.csv`: pass
+- `evaluate_models/metrics_by_model.json`: pass
+- `evaluate_models/metrics_by_candidate.json`: pass
 - `evaluate_models/best_model.json`: pass
 - `evaluate_models/evaluation_report.json`: pass
+- `evaluate_models/evaluation_predictions.csv`: pass
 
 Inference artifacts:
 
 - best-model `predictions.csv`: pass
 - ensemble `predictions.csv`: pass
+- named ensemble `predictions.csv`: pass
 
 ## Current Product Graphs
 
@@ -69,7 +75,9 @@ preprocess_features
   -> train_random_forest
   -> train_extra_trees
   -> train_gradient_boosting
-  -> build_ensemble
+  -> build_ensemble_mean_topk
+  -> build_ensemble_weighted
+  -> build_ensemble_median
   -> evaluate_models
 ```
 
@@ -90,10 +98,13 @@ or local_model_path
 .\.venv\Scripts\python.exe scripts\make_sample_data.py
 .\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
 .\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml --set model.model_selector=ensemble
+.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml --set model.model_selector=ensemble:median
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts\sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
 .\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 git diff --check
+rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular
 ```
 
 ## Scope Classification
@@ -113,7 +124,11 @@ Future / experimental:
 - `clearml_model_id` inference source
 - full template configs
 - external model full pipeline
-- experimental optional-dependency models: LightGBM, XGBoost, CatBoost
+
+Pending optional-runtime verification:
+
+- supported optional-dependency GBM models in ClearML Agent images:
+  LightGBM, XGBoost, CatBoost
 
 Historical compatibility:
 

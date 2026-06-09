@@ -12,6 +12,8 @@ Responsibilities:
 - stage-based training PipelineController definition
 
 Do not put tabular training, evaluation, inference, or preprocessing logic here. That belongs in `pkgs/tabular`.
+Use `docs/SPEC.md` for product scope and `docs/CLEARML_UI_SPEC.md` for
+ClearML screen-level expectations.
 
 Files:
 
@@ -27,7 +29,8 @@ pipelines.py  stage-based training pipeline controller
 The default sync targets are `tabular_train_pipeline_template`,
 `tabular_infer_template`, and `tabular_stage_template`. Deprecated
 `tabular_train_template`, `tabular_eval_template`, `tabular_pipeline_template`,
-and `tabular_train_full_*` entries are not current user-facing templates.
+and `tabular_train_full_*` entries are deprecated or sync-excluded; they are not
+current user-facing templates.
 ClearML display names are `template/tabular_train_pipeline`,
 `template/tabular_infer`, and `internal/tabular_stage`.
 
@@ -36,15 +39,18 @@ Profiles define the ClearML project layout:
 ```text
 templates    MLPlatform/<Env>/Templates/Tabular
 pipelines    MLPlatform/<Env>/Pipelines/Tabular
-stages       MLPlatform/<Env>/Runs/Tabular/Stages
-tasks        MLPlatform/<Env>/Runs/Tabular/Tasks
+preprocess   MLPlatform/<Env>/Runs/Tabular/Preprocess
+train        MLPlatform/<Env>/Runs/Tabular/Train
+ensemble     MLPlatform/<Env>/Runs/Tabular/Ensemble
+evaluate     MLPlatform/<Env>/Runs/Tabular/Evaluate
+infer        MLPlatform/<Env>/Runs/Tabular/Infer
 experiments  MLPlatform/<Env>/Experiments/Tabular
 ```
 
 Synced templates and runs use tags such as `domain:tabular`,
 `run_type:template`, `run_type:pipeline`, `run_type:stage`, `run_type:task`,
 `user_facing:true`, `internal:true`, `stage:<stage_name>`, and
-`model:<model_name>`.
+`model:<model_name>`. Ensemble method stages also use `ensemble:<method>`.
 
 Old ClearML tasks and runs may remain visible until manually archived on the
 server. Sync creates or updates only the current canonical entries.

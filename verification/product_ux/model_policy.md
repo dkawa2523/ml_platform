@@ -6,7 +6,7 @@ Date: 2026-06-08
 
 Verify Phase 1 model and dependency policy for tabular scalar regression.
 
-Supported models:
+Dependency-free default candidates:
 
 - `linear`
 - `ridge`
@@ -16,7 +16,7 @@ Supported models:
 - `extra_trees`
 - `gradient_boosting`
 
-Experimental optional-dependency models:
+Supported optional-dependency models:
 
 - `lightgbm`
 - `xgboost`
@@ -76,7 +76,9 @@ preprocess_features
   -> train_random_forest
   -> train_extra_trees
   -> train_gradient_boosting
-  -> build_ensemble
+  -> build_ensemble_mean_topk
+  -> build_ensemble_weighted
+  -> build_ensemble_median
   -> evaluate_models
 ```
 
@@ -84,9 +86,9 @@ preprocess_features
 
 - KNN / SVR / MLP are not default candidates.
 - KNN / SVR / MLP are rejected as out of current product scope.
-- LightGBM / XGBoost / CatBoost are experimental and optional dependency only.
-- Experimental packages are not in `requirements.txt` or `requirements-dev.txt`.
-- Supported model flow runs without experimental dependencies installed.
+- LightGBM / XGBoost / CatBoost are supported optional-dependency models.
+- Optional GBM packages are not in `requirements.txt` or `requirements-dev.txt`.
+- Dependency-free model flow runs without optional GBM dependencies installed.
 - No model-specific ClearML templates or model-specific config files were added.
 
 ## Result

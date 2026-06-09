@@ -5,14 +5,21 @@ run:
   seed: 42
 
 # Official tabular training pipeline config.
-# Default graph: preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models.
+# Default graph: preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models.
+# Each ClearML ensemble node runs the internal build_ensemble stage with one method.
 # Inference remains a separate tabular_infer_template task.
-# Local runs can use data.local_path. ClearML remote Pipeline New Run should use
-# Input/clearml_dataset_id + Input/dataset_file; clearml-dev profile provides
-# dev dataset defaults for the template.
+# Required local inputs: Input/local_path and Input/target_column.
+# Required ClearML remote inputs: Input/clearml_dataset_id, Input/dataset_file,
+# and Input/target_column. clearml-dev profile provides dev Dataset defaults.
 # ClearML UI examples:
-#   Model/candidates: ["linear","ridge","random_forest"]
+#   Model/candidates: ["linear","ridge","lasso","elasticnet","random_forest","extra_trees","gradient_boosting"]
 #   Model/model_params_by_name: {"ridge":{"alpha":1.0},"random_forest":{"n_estimators":20}}
+#   Model/ensemble_methods: ["mean_topk","weighted","median"]
+#   Features/drop_columns: ["unused_column"]
+#   Features/passthrough_columns: ["already_numeric_feature"]
+# Supported optional-dependency models lightgbm/xgboost/catboost can be added
+# manually to Model/candidates when pkgs/tabular[gbm] is installed in the Agent
+# environment. Defaults stay dependency-free for portability.
 
 data:
   local_path: data/sample_train.csv
@@ -31,6 +38,12 @@ metrics:
 
 features:
   preset: basic
+  numeric_impute_strategy: median
+  categorical_impute_strategy: missing_token
+  categorical_encoder: onehot
+  scaling: standard
+  drop_columns: []
+  passthrough_columns: []
   params: {}
 
 model:
@@ -68,6 +81,10 @@ model:
   selection_metric: rmse
   ensemble:
     enabled: true
+    methods:
+      - mean_topk
+      - weighted
+      - median
     method: mean_topk
     top_k: 3
 

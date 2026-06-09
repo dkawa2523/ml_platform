@@ -21,8 +21,10 @@ from ml_platform_tabular import run_task
 from adapter import (
     ClearMLAdapter,
     apply_ui_params,
+    as_list,
     as_bool,
     clearml_projects,
+    clearml_stage_project,
     clearml_tags,
     default_ui_params,
     prefixed_task_name,
@@ -35,6 +37,36 @@ def _is_prefixed_name(name: str | None) -> bool:
     return bool(name and name.startswith(("template/", "internal/", "pipeline/", "stage/", "task/")))
 
 
+def _ensemble_method(cfg: dict) -> str | None:
+    ensemble_cfg = cfg.get("model", {}).get("ensemble", {}) or {}
+    if not isinstance(ensemble_cfg, dict):
+        return None
+    methods = as_list(ensemble_cfg.get("methods")) or []
+    if methods:
+        return str(methods[0])
+    method = ensemble_cfg.get("method")
+    return str(method) if method else None
+
+
+def _stage_metadata(cfg: dict) -> tuple[str, str | None, str | None, str, list[str]]:
+    stage = str(cfg.get("run", {}).get("stage") or "stage")
+    model_name = str(cfg.get("model", {}).get("name") or "") or None
+    ensemble_method = _ensemble_method(cfg) if stage == "build_ensemble" else None
+    label = stage_task_label(
+        stage,
+        model_name if stage == "train_model" else None,
+        ensemble_method if stage == "build_ensemble" else None,
+    )
+    tags = clearml_tags(
+        "stage",
+        internal=True,
+        stage=stage,
+        model=model_name if stage == "train_model" else None,
+        ensemble=ensemble_method if stage == "build_ensemble" else None,
+    )
+    return stage, model_name, ensemble_method, label, tags
+
+
 def _initial_clearml_target(cfg: dict) -> tuple[str, str, list[str], str]:
     clearml_cfg = cfg.get("clearml", {})
     projects = clearml_projects(clearml_cfg)
@@ -43,19 +75,17 @@ def _initial_clearml_target(cfg: dict) -> tuple[str, str, list[str], str]:
     run_name = str(run.get("name") or task or "run")
     if task == "tabular_infer":
         return (
-            projects["tasks"],
+            projects["infer"],
             prefixed_task_name("task", "tabular_infer", run_name),
             clearml_tags("task", user_facing=True),
             "User-facing tabular inference task.",
         )
     if task == "tabular_stage":
-        stage = str(run.get("stage") or "stage")
-        model_name = str(cfg.get("model", {}).get("name") or "") or None
-        label = stage_task_label(stage, model_name if stage == "train_model" else None)
+        stage, _, _, label, tags = _stage_metadata(cfg)
         return (
-            projects["stages"],
+            clearml_stage_project(projects, stage),
             prefixed_task_name("stage", label, run_name),
-            clearml_tags("stage", internal=True, stage=stage, model=model_name if stage == "train_model" else None),
+            tags,
             "Internal stage task for the tabular training pipeline graph.",
         )
     return (
@@ -66,24 +96,25 @@ def _initial_clearml_target(cfg: dict) -> tuple[str, str, list[str], str]:
     )
 
 
-def _runtime_clearml_metadata(cfg: dict) -> tuple[str, list[str], str]:
+def _runtime_clearml_metadata(cfg: dict) -> tuple[str | None, str, list[str], str]:
+    clearml_cfg = cfg.get("clearml", {})
+    projects = clearml_projects(clearml_cfg)
     task = cfg.get("task")
     run = cfg.get("run", {}) or {}
     run_name = str(run.get("name") or task or "run")
     if task == "tabular_infer":
         name = run_name if _is_prefixed_name(run_name) else prefixed_task_name("task", "tabular_infer", run_name)
-        return name, clearml_tags("task", user_facing=True), "User-facing tabular inference task."
+        return projects["infer"], name, clearml_tags("task", user_facing=True), "User-facing tabular inference task."
     if task == "tabular_stage":
-        stage = str(run.get("stage") or "stage")
-        model_name = str(cfg.get("model", {}).get("name") or "") or None
-        label = stage_task_label(stage, model_name if stage == "train_model" else None)
+        stage, _, _, label, tags = _stage_metadata(cfg)
         name = run_name if _is_prefixed_name(run_name) else prefixed_task_name("stage", label, run_name)
         return (
+            clearml_stage_project(projects, stage),
             name,
-            clearml_tags("stage", internal=True, stage=stage, model=model_name if stage == "train_model" else None),
+            tags,
             "Internal stage task for the tabular training pipeline graph.",
         )
-    return run_name, clearml_tags("task"), "Compatibility or experiment task."
+    return projects["experiments"], run_name, clearml_tags("task"), "Compatibility or experiment task."
 
 
 def main() -> None:
@@ -117,8 +148,13 @@ def main() -> None:
                 dataset_file=dataset_file,
             )
         cfg = apply_ui_params(cfg, connected, resolved_local_path=resolved_local_path)
-        runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(cfg)
-        adapter.apply_metadata(task_name=runtime_name, tags=runtime_tags, comment=runtime_comment)
+        runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(cfg)
+        adapter.apply_metadata(
+            project_name=runtime_project,
+            task_name=runtime_name,
+            tags=runtime_tags,
+            comment=runtime_comment,
+        )
         if cfg.get("task") == "tabular_infer":
             cfg = adapter.resolve_infer_model_source(cfg)
         else:

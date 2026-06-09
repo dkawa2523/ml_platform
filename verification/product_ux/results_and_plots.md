@@ -12,9 +12,11 @@ Training pipeline artifacts and tables:
 - `feature_summary.json`
 - `model_refs.json`
 - `metrics_by_model.json`
+- `metrics_by_candidate.json`
 - `leaderboard.csv`
 - `best_model.json`
-- `ensemble_info.json`
+- `ensemble_refs.json`
+- `ensemble_info_by_method.json`
 - `evaluation_report.json`
 - `evaluation_predictions.csv`
 - `metrics.json`
@@ -26,12 +28,18 @@ ClearML display:
 
 - scalar metrics from each stage result
 - `metrics_by_model/rmse`, `metrics_by_model/mae`, and `metrics_by_model/r2`
-  series by model
+  series by model or ensemble method
+- `metrics_by_candidate/rmse`, `metrics_by_candidate/mae`, and
+  `metrics_by_candidate/r2` series by candidate
 - `best_model` scalar summary
-- `ensemble` scalar summary when an ensemble is present
-- table reports for `leaderboard`, `evaluation_predictions`, and `predictions`
-- media reports for `metrics_by_model_bar`, `prediction_vs_actual`, and
-  `residual_histogram` when `Output/report_plots=true`
+- `ensemble` scalar summary for each ensemble method
+- table reports for `leaderboard`, train-stage `validation_predictions`,
+  `evaluation_predictions`, per-method `ensemble_predictions_<method>`, and
+  `predictions`
+- native ClearML plot reports for prediction-vs-actual and residual histogram
+  from prediction tables when `Output/report_plots=true`
+- plot artifacts/media for `metrics_by_candidate_bar`, compatibility
+  `metrics_by_model_bar`, `prediction_vs_actual`, and `residual_histogram`
 
 ## Commands
 
@@ -50,11 +58,15 @@ rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core 
 - Sample data generation: pass.
 - Local training pipeline: pass.
 - Local artifacts include `feature_summary`, `model_refs`, `metrics_by_model`,
-  `leaderboard`, `best_model_json`, `ensemble_info`, `evaluation_report`,
-  `evaluation_predictions`, `metrics`, and `manifest`.
-- Local plots include `metrics_by_model_bar`, `prediction_vs_actual`, and
-  `residual_histogram`.
-- Tests: `59 passed`.
+  `metrics_by_candidate`, `leaderboard`, `best_model_json`, `ensemble_refs`,
+  `ensemble_info_by_method`, `evaluation_report`, `evaluation_predictions`,
+  `metrics`, and `manifest`.
+- Local plots include `metrics_by_candidate_bar`, compatibility
+  `metrics_by_model_bar`, `prediction_vs_actual`, and `residual_histogram`.
+- Tests: `52 passed`.
+- Exact `validation_predictions` tables are reported on individual train stages;
+  aggregate parent keys such as `validation_predictions_linear` remain uploaded
+  artifacts/tables only, avoiding noisy ClearML table spam.
 - Template sync dry-run: pass.
 - ClearML pipeline dry-run: pass.
 - `git diff --check`: pass with line-ending warnings only.

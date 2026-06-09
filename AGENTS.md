@@ -1,69 +1,68 @@
-# Codex / Agent Instructions
+# Codex / Agent Development Charter
 
-This repository is the product repository for `ml_platform`.
+This repository is the product repository for `ml_platform`: a ClearML-based
+machine learning execution platform. The current product domain is tabular
+scalar regression, and the repository should stay open to future extensions such
+as richer tabular outputs, distribution mode decomposition, optimization, and
+additional analysis workflows.
 
-`ml_platform` is a ClearML-based machine learning execution platform. It supports local execution and ClearML-managed task / pipeline execution. The first production domain is tabular scalar regression, but the architecture must remain extensible to future domains such as tabular 1D/2D outputs, distribution mode decomposition, optimization, and other analysis workflows.
+The goal is not to freeze the product behind prohibitions. The goal is to make
+it safe to extend. Add useful capabilities when they improve ClearML UX, DS
+productivity, or architecture clarity, while preserving the boundaries below.
 
-Legacy repositories are reference material only. Do not reshape this repository to match them.
+Legacy repositories are reference material only. Learn from them, but do not
+reshape this repository to match them.
 
 ---
 
 ## 1. Product Mission
 
-The product must support two user types.
+The product must serve two audiences.
 
-### ClearML UI users
+### ClearML UI Users
 
 Users who do not read code should be able to:
 
 - select a ClearML Dataset
-- configure parameters in ClearML UI
+- configure understandable parameters
 - run task or pipeline templates
 - review metrics, artifacts, leaderboard, predictions, and pipeline graph
-- understand results without opening source code
+- understand results from ClearML UI
 
-### Developers / data scientists / architects
+### Developers / Data Scientists / Architects
 
 Developers should be able to:
 
-- understand the code structure quickly
-- add or improve preprocessing
-- add or improve feature engineering
-- add or improve models
-- add or improve ensemble logic
-- add or improve evaluation
-- add or improve inference
-- add or improve optimization
-- modify ClearML integration without breaking package logic
-- maintain the platform without excessive contracts, helpers, tests, or docs
+- add or improve preprocessing, features, models, ensembles, metrics, reports,
+  inference, and future optimization
+- identify the right extension point without reading unrelated layers
+- evolve ClearML UI behavior without leaking ClearML SDK dependencies into
+  package code
+- keep the platform maintainable by avoiding excessive helpers, diagnostics,
+  tests, and docs
 
 ---
 
-## 2. Product Principles
+## 2. Safe Extension Principles
 
 Prefer:
 
-- simple product behavior
-- clear directory responsibility
-- small reusable functions
-- explicit artifacts
-- clear ClearML UI parameters
-- local reproducibility
-- minimal but useful tests
-- short and current docs
+- clear product behavior over hidden workflow behavior
+- explicit artifacts and manifests
+- readable ClearML UI parameters
+- local reproducibility before remote verification
+- small functions that remove real duplication
+- focused tests that protect product behavior and boundaries
+- short docs that reflect the current product
 
 Avoid:
 
 - copying legacy repository structure
-- excessive abstraction
-- excessive helper layers
-- excessive diagnostics
-- excessive contract documents
-- excessive tests
-- model-specific ClearML templates
-- dataset-specific ClearML templates
-- hidden workflow behavior
-- putting ClearML dependencies into package code
+- creating broad frameworks before the product needs them
+- adding helper, diagnostics, contract, or test sprawl
+- making scripts contain business logic
+- making ClearML-specific behavior a dependency of `pkgs`
+- multiplying templates when parameters or stages can express the difference
 
 ---
 
@@ -71,142 +70,59 @@ Avoid:
 
 ### `pkgs/core`
 
-Shared utilities only.
+Shared ClearML-free utilities: config loading, IO, result objects, artifact
+helpers, registry utilities, and manifest helpers.
 
-Allowed:
-
-- config loading
-- artifact helpers
-- IO helpers
-- result objects
-- simple registry utilities
-- common manifest helpers
-
-Forbidden:
-
-- ClearML SDK imports
-- ClearML PipelineController
-- ClearML Dataset
-- ClearML Logger
-- tabular-specific training logic
-- model-specific business logic
+Keep out: ClearML SDK imports, PipelineController, Dataset, Logger, tabular
+training logic, and model-specific business logic.
 
 ### `pkgs/tabular`
 
-ClearML-independent tabular ML logic.
+ClearML-free tabular ML logic: data loading, preprocessing, feature engineering,
+model building, training, ensemble building, evaluation, inference, metrics, and
+artifact creation.
 
-Allowed:
-
-- data loading
-- preprocessing
-- feature engineering
-- model building
-- model training
-- ensemble building
-- evaluation
-- inference
-- optimization utilities if not ClearML-specific
-- artifact creation through core utilities
-
-Forbidden:
-
-- ClearML imports
-- PipelineController
-- ClearML Task
-- ClearML Dataset
-- ClearML Logger
-- ClearML StorageManager
-- ClearML-specific UI parameter handling as business logic
+Keep out: ClearML imports, PipelineController, Task, Dataset, Logger,
+StorageManager, and ClearML UI parameter handling.
 
 ### `clearml/`
 
-ClearML integration boundary.
+ClearML integration boundary: Task initialization, Dataset resolution, parameter
+mapping, artifact reporting, PipelineController, template sync, and ClearML
+task / pipeline entrypoints.
 
-Allowed:
-
-- ClearML Task initialization
-- ClearML Dataset resolution
-- ClearML parameter mapping
-- ClearML artifact reporting
-- ClearML PipelineController
-- ClearML template sync
-- ClearML task / pipeline entrypoints
-
-Forbidden:
-
-- tabular model implementation
-- preprocessing implementation
-- feature engineering implementation
-- training implementation
-- evaluation implementation
-- inference implementation
-- ensemble business logic
-- optimization business logic
+Keep out: model implementation, preprocessing implementation, feature
+engineering implementation, training logic, evaluation logic, inference logic,
+and ensemble math.
 
 ### `scripts/`
 
-Wrappers only.
-
-Allowed:
-
-- local command entrypoints
-- template sync entrypoint
-- artifact inspection wrappers
-- sample data generation
-
-Forbidden:
-
-- training logic
-- preprocessing logic
-- model logic
-- ensemble logic
-- evaluation logic
-- inference logic
-- optimization logic
-- ClearML pipeline business logic
+Wrappers only: local entrypoints, template sync entrypoints, artifact inspection,
+and sample data generation. Business logic belongs in `pkgs` or `clearml/`.
 
 ### `config/`
 
-Configuration uses two primary axes:
+Use the two primary axes:
 
 ```text
 config/tasks
 config/profiles
 ```
 
-Allowed:
-
-- task configs that describe what to run
-- profile configs that describe where to run
-- small comments that clarify product scope
-
-Forbidden:
-
-- template proliferation through config files
-- model-specific task configs as primary product entrypoints
-- dataset-specific task configs as primary product entrypoints
+Task configs describe what to run. Profile configs describe where to run.
+Avoid model-specific or dataset-specific task configs as primary product
+entrypoints.
 
 ### `deploy/`
 
-Deployment support only.
-
-Allowed:
-
-- ClearML Agent runtime assumptions
-- container and storage manifests
-- minimal deployment notes
-
-Forbidden:
-
-- training logic
-- inference logic
-- hidden product workflow logic
+Deployment support only: Agent runtime assumptions, container/storage manifests,
+and minimal deployment notes. No training or inference logic.
 
 ---
 
 ## 4. Product Flow Rules
 
-The training pipeline is **not**:
+The training pipeline is not:
 
 ```text
 train -> eval -> infer
@@ -215,10 +131,17 @@ train -> eval -> infer
 The official tabular scalar regression training pipeline is:
 
 ```text
-preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models
+preprocess_features
+  -> train_<model>*
+  -> build_ensemble_<method>*   # or one build_ensembles stage
+  -> evaluate_models
 ```
 
-Inference is a separate task flow:
+The implementation may use a single `build_ensembles` stage when that keeps the
+graph clearer. What matters is that multiple model and ensemble results are
+visible and comparable through leaderboard, metrics, artifacts, and manifests.
+
+Inference remains a separate task flow:
 
 ```text
 source_task_id + model_selector
@@ -229,41 +152,40 @@ or local_model_path
 -> predictions.csv
 ```
 
-Do not mix inference into the training pipeline unless a future product decision
-explicitly introduces an inference pipeline.
+Do not mix inference into the training pipeline unless `docs/SPEC.md` explicitly
+introduces an inference pipeline.
 
-Optimization is future / experimental. Do not present
-`search_trials -> retrain_best -> evaluate_best`, `model.search`, or
-optimization-specific UI as the primary product flow unless the product scope in
-`docs/SPEC.md` is updated with verification evidence.
+Optimization is extensible future product scope. Add it only when SPEC promotes
+the workflow and verification evidence is planned.
 
 ---
 
 ## 5. Template Policy
 
-Official user-facing templates:
+Current user-facing templates:
 
 - `tabular_train_pipeline_template`
 - `tabular_infer_template`
 
-Official internal template:
+Current internal template:
 
 - `tabular_stage_template`
 
-Only these templates should be synced by default.
+Default sync should expose only the current product templates unless SPEC
+promotes another entrypoint.
 
-Forbidden as primary product templates:
+Allowed extension: add models, ensemble methods, metrics, plots, and UI
+parameters through config, stage parameters, and package extension points.
 
-- model-specific templates
-- ensemble-specific templates
-- optimization-specific templates
-- dataset-specific templates
-- legacy `tabular_pipeline_template`
-- `tabular_train_full_pipeline_template`
-- `tabular_train_full_ensemble_pipeline_template`
+Avoid template sprawl:
+
+- do not create model-specific templates
+- do not create dataset-specific templates
+- do not create one template per ensemble method
+- do not revive legacy `tabular_pipeline_template` as a current entrypoint
 
 `tabular_stage_template` is for PipelineController steps. Users should not clone
-it directly as the normal product entrypoint.
+it directly for normal product runs.
 
 ---
 
@@ -275,14 +197,14 @@ Primary product scope:
 - `tabular_infer_template`
 - `tabular_stage_template`
 - `preprocess_features`
-- `train_model`
-- `train_multiple_models`
-- `build_ensemble`
+- `train_model` / `train_<model>*`
+- `build_ensemble_<method>*` or `build_ensembles`
 - `evaluate_models`
 - `leaderboard.csv`
 - `best_model.json`
-- ensemble artifact
+- ensemble artifacts and `ensemble_info.json`
 - `evaluation_report.json`
+- `evaluation_predictions.csv`
 - `predictions.csv`
 
 Supported tabular regression models:
@@ -294,36 +216,20 @@ Supported tabular regression models:
 - `random_forest`
 - `extra_trees`
 - `gradient_boosting`
-
-Experimental models:
-
 - `lightgbm`
 - `xgboost`
 - `catboost`
 
-Experimental models must stay out of default candidates and must run only when
-their optional dependency is installed in the execution environment. Do not mark
-an experimental model as supported without local and ClearML remote evidence.
-Default training pipeline candidates should contain supported models only:
 `linear`, `ridge`, `lasso`, `elasticnet`, `random_forest`, `extra_trees`, and
-`gradient_boosting`.
-ClearML users select models through `Model/candidates`; do not create
-model-specific templates.
+`gradient_boosting` must run with the normal runtime dependencies.
+`lightgbm`, `xgboost`, and `catboost` are supported optional-dependency models:
+they must not become required runtime dependencies. If the dependency is missing
+and the user selects that model, raise a clear error. Missing optional
+dependencies must never break dependency-free model runs.
 
-Future / experimental scope:
-
-- optimization pipeline
-- `search_trials`
-- `retrain_best`
-- `evaluate_best`
-- `artifact_url` inference source
-- `clearml_model_id` inference source
-- external model full pipeline
-- Optuna / Ray Tune
-- per-trial ClearML child tasks
-- online serving
-- tabular 1D/2D productization
-- distribution mode decomposition
+Portable default candidates may remain dependency-free models only. ClearML
+users select additional supported optional models through `Model/candidates`
+when their Agent image includes the dependency.
 
 Out of scope for now:
 
@@ -332,27 +238,118 @@ Out of scope for now:
 - `mlp`
 - `gaussian_process`
 - `tabpfn`
-- stacking
 
-Do not promote future or experimental features into the primary ClearML UI flow
-without explicit verification evidence and a product-scope update.
+Future scope:
+
+- optimization pipeline
+- `search_trials`, `retrain_best`, `evaluate_best`
+- `artifact_url` / `clearml_model_id` as primary inference sources
+- stacking
+- Optuna / Ray Tune
+- per-trial ClearML child tasks
+- online serving
+- tabular 1D/2D productization
+- distribution mode decomposition
 
 ---
 
-## 7. Reference Repositories
+## 7. Ensemble Policy
 
-Legacy repositories may exist as sibling read-only material, usually under
-`_reference_repos/` or `reference_repos/`.
+Ensemble is an extensible product area. Do not limit the product to one method.
+Support multiple methods when that improves comparison and UI value.
 
-- Read them only to understand features and product intent.
+Current or near-term methods:
+
+- `mean_topk`
+- `weighted`
+- `median`
+
+Future method:
+
+- `stacking`
+
+A training run may specify multiple ensemble methods, for example:
+
+```yaml
+ensemble:
+  methods:
+    - mean_topk
+    - weighted
+    - median
+```
+
+Each ensemble result should be visible in leaderboard, metrics, artifacts, and
+evaluation reports.
+
+---
+
+## 8. ClearML UI Policy
+
+ClearML UI users must be able to understand what happened without reading code.
+
+Parameter groups are not fixed to four categories. Use the smallest set that is
+clear. These semantic groups are allowed when they improve UI readability:
+
+- `Input`
+- `Split`
+- `Features`
+- `Models`
+- `Ensemble`
+- `Evaluation`
+- `Output`
+- `Run`
+
+Do not add groups just to mirror internal code. Add them when they make
+preprocessing, model selection, ensemble configuration, or evaluation easier for
+ClearML UI users.
+
+The training Pipeline UI should make product-level preprocessing and feature
+choices visible. Do not hide these behind developer-only config if users need to
+run the product from ClearML:
+
+- `Split/valid_size`
+- `Features/preset`
+- `Features/params`
+- `Input/feature_columns`
+- `Input/id_columns`
+- `Models/candidates`
+- `Models/model_params_by_name`
+- `Ensemble/methods`
+- `Evaluation/metrics`
+- `Evaluation/selection_metric`
+
+A training pipeline run should make these visible:
+
+- pipeline controller task
+- preprocess stage
+- `train_<model>` stages
+- ensemble stage or `build_ensemble_<method>` stages
+- evaluate stage
+- scalar metrics
+- leaderboard table/artifact
+- evaluation artifacts
+- prediction-vs-actual plot
+- residual histogram
+- final manifest
+
+If a run succeeds technically but users cannot understand the results in ClearML
+UI, the product behavior is incomplete.
+
+---
+
+## 9. Reference Repositories
+
+Legacy repositories may exist under `_reference_repos/` or `reference_repos/`.
+
+- Read them to understand features and product intent.
 - Do not import from them.
 - Do not bulk copy source, docs, tests, helpers, or directory layout.
-- Reimplement only the small behavior needed inside the current repository
+- Reimplement only the small behavior needed inside current repository
   boundaries.
 
 ---
 
-## 8. Required Checks
+## 10. Required Checks
 
 Run the narrow checks that match the change. For product-flow changes, prefer:
 
@@ -372,11 +369,13 @@ rg -n "reference_repos|Plartform_pipe|table_analysis" pkgs clearml scripts confi
 
 ---
 
-## 9. Change Style
+## 11. Change Style
 
-- Prefer small, product-facing fixes.
+- Prefer product-facing improvements over defensive bureaucracy.
 - Reuse existing functions before adding new helpers.
 - Keep docs short and current.
-- Keep tests focused on smoke behavior and boundaries.
+- Keep `docs/SPEC.md` as the product specification and
+  `docs/CLEARML_UI_SPEC.md` as the ClearML screen-level operation contract.
+- Keep tests focused on smoke behavior, result visibility, and boundaries.
 - Do not add real ClearML server calls to normal pytest or CI.
 - Keep optional dependencies optional.

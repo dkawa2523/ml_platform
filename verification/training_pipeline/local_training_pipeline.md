@@ -1,9 +1,9 @@
 # Local Training Pipeline Verification
 
-Date: 2026-06-08
+Date: 2026-06-09
 
-Scope: Phase B local training pipeline only. Inference and optimization are
-intentionally not part of the primary training pipeline.
+Scope: current local training pipeline. Inference remains a separate task, and
+optimization is future scope rather than part of the primary training pipeline.
 
 ## Commands
 
@@ -15,7 +15,7 @@ intentionally not part of the primary training pipeline.
 Run directory:
 
 ```text
-outputs\tabular_training_pipeline_20260608T080026Z
+outputs\tabular_training_pipeline_20260609T003910Z
 ```
 
 ## Stage Summary
@@ -29,8 +29,7 @@ preprocess_features
   -> train_random_forest
   -> train_extra_trees
   -> train_gradient_boosting
-  -> train_multiple_models
-  -> build_ensemble
+  -> build_ensemble_<method>*
   -> evaluate_models
 ```
 
@@ -56,18 +55,21 @@ seven supported candidate models: `linear`, `ridge`, `lasso`, `elasticnet`,
 | `train_extra_trees/model.joblib` | present |
 | `train_gradient_boosting/model.joblib` | present |
 | per-model `validation_predictions.csv` | present |
-| per-model `validation_prediction_vs_actual.svg` | present |
-| per-model `validation_residual_histogram.svg` | present |
-| `train_multiple_models/model_refs.json` | present |
-| `train_multiple_models/metrics_by_model.json` | present |
-| `build_ensemble/model.joblib` | present |
-| `build_ensemble/ensemble_info.json` | present |
-| `build_ensemble/ensemble_predictions.csv` | present |
-| `build_ensemble/ensemble_prediction_vs_actual.svg` | present |
-| `build_ensemble/ensemble_residual_histogram.svg` | present |
+| per-model `validation_prediction_vs_actual.png` | present |
+| per-model `validation_residual_histogram.png` | present |
+| `evaluate_models/model_refs.json` | present |
+| `evaluate_models/metrics_by_model.json` | present |
+| `build_ensemble/ensemble_refs.json` | present |
+| `build_ensemble/ensemble_info_by_method.json` | present |
+| per-method ensemble model artifacts | present |
+| per-method ensemble info / metrics | present |
+| per-method `ensemble_predictions_<method>.csv` | present |
+| per-method ensemble prediction plots | present |
 | `evaluate_models/leaderboard.csv` | present |
 | `evaluate_models/best_model.json` | present |
 | `evaluate_models/best_model.joblib` | present |
+| `evaluate_models/metrics_by_candidate.json` | present |
+| `evaluate_models/evaluation_predictions.csv` | present |
 | `evaluate_models/evaluation_report.json` | present |
 | root `metrics.json` | present |
 | root `manifest.json` | present |
@@ -79,5 +81,5 @@ produce inference outputs. Validation prediction tables include `actual`,
 `prediction`, `residual`, and `abs_error`. `tabular_infer_template` remains the
 separate inference path.
 
-`model.search.enabled=true` is rejected by the primary local training pipeline
-in Phase B. Optimization remains future / experimental.
+`model.search.enabled=true` is rejected by the primary local training pipeline.
+Optimization remains future scope.
