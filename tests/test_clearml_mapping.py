@@ -313,6 +313,8 @@ def test_clearml_default_ui_params_cover_primary_and_compat_tasks():
         "Model/ensemble_top_k",
         "Output/report_plots",
     }.issubset(pipeline)
+    # default_ui_params is still used for compatibility/internal task surfaces.
+    # The user-facing Pipeline New Run surface is asserted separately below.
     assert "Model/search_enabled" not in pipeline
     assert "Model/search_method" not in pipeline
     assert "Model/search_space" not in pipeline
@@ -353,11 +355,11 @@ def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
         "Model/selection_metric",
         "Model/ensemble_enabled",
         "Model/ensemble_methods",
-        "Model/ensemble_method",
         "Model/ensemble_top_k",
     }.issubset(params)
     assert "Run/task" not in params
     assert "Model/params" not in params
+    assert "Model/ensemble_method" not in params
     assert "Model/feature_preset" not in params
     assert "Model/search_enabled" not in params
     assert "Model/search_method" not in params

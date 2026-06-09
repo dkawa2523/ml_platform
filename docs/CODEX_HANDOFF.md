@@ -29,7 +29,7 @@ This repo has V2 product scope for tabular scalar regression. Keep the implement
   `Model/model_params_by_name` as model-keyed JSON parameters,
   `Model/evaluation_metrics`, and `Model/selection_metric`; it writes
   `leaderboard.csv` and saves only the best model artifact.
-- Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_methods`, and `Model/ensemble_top_k` in ClearML, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk`, `weighted`, and `median`; `Model/ensemble_method` is a compatibility alias when `ensemble_methods` is absent.
+- Ensemble uses `Model/ensemble_enabled`, `Model/ensemble_methods`, and `Model/ensemble_top_k` in the user-facing ClearML pipeline UI, while local config stays nested under `model.ensemble`. Supported methods are `mean_topk`, `weighted`, and `median`; `Model/ensemble_method` remains an internal/compatibility alias when `ensemble_methods` is absent.
 - Primary inference uses `source_task_id + model_selector` or
   `local_model_path`. `artifact_url` and `clearml_model_id` remain
   future/experimental sources.

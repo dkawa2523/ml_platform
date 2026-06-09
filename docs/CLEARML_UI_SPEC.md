@@ -97,7 +97,6 @@ ClearML remote runs should use Dataset inputs, not repo-local paths.
 | `Model/model_params_by_name` | optional | JSON object keyed by model name. |
 | `Model/ensemble_enabled` | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
-| `Model/ensemble_method` | optional | Compatibility alias used when `ensemble_methods` is absent. |
 | `Model/ensemble_top_k` | optional | Number of ranked base models for top-k methods. |
 | `Model/evaluation_metrics` | optional | JSON array or comma-separated metric names. |
 | `Model/selection_metric` | optional | `rmse`, `mae`, or `r2`. |
@@ -110,6 +109,10 @@ Classification:
 - Optional: feature/id columns, split settings, concrete feature settings, run name/seed, candidates, model params, ensemble settings, metrics, selection metric, plot reporting
 - Supported optional dependency models: `lightgbm`, `xgboost`, `catboost` in `Model/candidates` when optional dependencies are installed
 - Future / hidden from primary UI: optimization/search settings, artifact name overrides, and `pipeline_mode`
+
+`Model/ensemble_method` is accepted by internal stage tasks and compatibility
+paths when `Model/ensemble_methods` is absent, but normal users should set the
+list-valued `Model/ensemble_methods` field.
 
 Feature and preprocessing settings are product inputs. They should be visible in
 Pipeline UI when users need to run the product from ClearML, even if the current

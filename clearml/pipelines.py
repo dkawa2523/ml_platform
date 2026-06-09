@@ -124,7 +124,6 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
         "Model/selection_metric": model.get("selection_metric", "rmse"),
         "Model/ensemble_enabled": as_bool(ensemble.get("enabled")),
         "Model/ensemble_methods": _json(ensemble.get("methods", [ensemble.get("method", "mean_topk")]) or []),
-        "Model/ensemble_method": ensemble.get("method", "mean_topk"),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
         "Output/report_plots": as_bool(output.get("report_plots"), default=True),
     }
@@ -567,7 +566,9 @@ def _apply_pipeline_template_metadata(task: Any) -> None:
     if callable(set_comment):
         set_comment(
             "USER-FACING training pipeline template. Remote runs should use "
-            "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths."
+            "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
+            "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
+            "Add lightgbm/xgboost/catboost to Model/candidates only when the Agent has pkgs/tabular[gbm]."
         )
 
 

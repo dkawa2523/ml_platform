@@ -333,7 +333,6 @@ Primary training UI parameters:
 | `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
-| `Model/ensemble_method` | optional | optional | Compatibility alias used when `ensemble_methods` is absent. |
 | `Model/ensemble_top_k` | optional | optional | Number of ranked base models for top-k ensemble methods. |
 | `Model/evaluation_metrics` | optional | optional | JSON array or comma-separated metric names. |
 | `Model/selection_metric` | optional | optional | `rmse`, `mae`, or `r2`; used for leaderboard selection. |
@@ -347,6 +346,10 @@ operator clarity.
 
 Future feature inputs are `datetime_columns`, `text_columns`, and custom
 transformers. Keep them documented as future until implemented.
+
+`Model/ensemble_method` remains accepted as a compatibility/internal stage
+alias when `Model/ensemble_methods` is absent, but it is not part of the
+user-facing training Pipeline New Run parameter set.
 
 Future inference UI parameters, if still present in code, must be documented as
 future rather than primary:

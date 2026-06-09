@@ -45,8 +45,10 @@ def _template_note(task_name: str) -> str:
     if task_name == "tabular_train_pipeline_template":
         return (
             "USER-FACING training Pipeline-tab draft: preprocess_features -> train_<model>* "
-            "-> build_ensemble_<method>* -> evaluate_models. Remote runs should set "
-            "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column."
+            "-> build_ensemble_<method>* -> evaluate_models. Set remote inputs with "
+            "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; tune "
+            "preprocessing under Features/* and ensembles with Model/ensemble_methods. "
+            "Use lightgbm/xgboost/catboost only when the Agent has pkgs/tabular[gbm]."
         )
     return "Unsupported template name for the current product surface"
 
