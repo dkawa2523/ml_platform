@@ -107,7 +107,7 @@ Classification:
 - Required local: `Input/local_path`, `Input/target_column`
 - Required remote: `Input/clearml_dataset_id`, `Input/dataset_file`, `Input/target_column`
 - Optional: feature/id columns, split settings, concrete feature settings, run name/seed, candidates, model params, ensemble settings, metrics, selection metric, plot reporting
-- Supported optional dependency models: `lightgbm`, `xgboost`, `catboost` in `Model/candidates` when optional dependencies are installed
+- Supported optional dependency models: `lightgbm`, `xgboost`, `catboost`; the standard Agent image includes `pkgs/tabular[gbm]` for the default 10-model run
 - Future / hidden from primary UI: optimization/search settings, artifact name overrides, and `pipeline_mode`
 
 `Model/ensemble_method` is accepted by internal stage tasks and compatibility
@@ -138,9 +138,10 @@ ClearML New Run default candidates should show all supported models:
 ```
 
 `gradient_boosting` is the sklearn GBDT-style model name. `lightgbm`,
-`xgboost`, and `catboost` are supported optional-dependency models. Remove
-those optional names before running if the Agent environment does not include
-the extra, for example `pip install -e "pkgs/tabular[gbm]"`.
+`xgboost`, and `catboost` are supported optional-dependency models. The standard
+deploy Agent image includes `pkgs/tabular[gbm]`, so the 10 default candidates can
+execute there. Remove those optional names only when running on a slim/custom
+Agent that does not include the extra.
 
 The New Run form should still prefill `Model/model_params_by_name` with
 `lightgbm`, `xgboost`, and `catboost` parameter keys. Those entries are settings
@@ -230,7 +231,9 @@ Inference tasks should expose:
 - Do not create model-specific, dataset-specific, or one-template-per-ensemble-method variants.
 - Do not make `train -> eval -> infer` the training pipeline.
 - Do not present optimization as the current primary UI flow.
-- Do not expose optional model dependencies as required runtime packages.
+- Do not add optional model dependencies to package required dependencies or
+  `requirements.txt`; install them in the ClearML Agent image when the default
+  10-model template should run unchanged.
 - Do not add a diagnostics framework when a simple table, scalar, or plot is
   enough.
 

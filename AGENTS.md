@@ -227,9 +227,12 @@ they must not become required runtime dependencies. If the dependency is missing
 and the user selects that model, raise a clear error. Missing optional
 dependencies must never break dependency-free model runs.
 
-Portable default candidates may remain dependency-free models only. ClearML
-users select additional supported optional models through `Model/candidates`
-when their Agent image includes the dependency.
+Local task config may remain dependency-free for portable smoke runs. The
+user-facing ClearML training template should prefill all 10 supported models in
+`Model/candidates`; the standard ClearML Agent image should install
+`pkgs/tabular[gbm]` so those defaults execute. Slim/custom Agents that omit GBM
+extras must remove `lightgbm`, `xgboost`, and `catboost` from New Run
+candidates.
 
 Out of scope for now:
 

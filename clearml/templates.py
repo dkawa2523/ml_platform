@@ -48,7 +48,8 @@ def _template_note(task_name: str) -> str:
             "-> build_ensemble_<method>* -> evaluate_models. Set remote inputs with "
             "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; tune "
             "preprocessing under Features/* and ensembles with Model/ensemble_methods. "
-            "Use lightgbm/xgboost/catboost only when the Agent has pkgs/tabular[gbm]."
+            "Model/candidates is prefilled with all 10 supported models; the standard "
+            "Agent image includes pkgs/tabular[gbm]. Remove GBM names only for slim/custom Agents."
         )
     return "Unsupported template name for the current product surface"
 

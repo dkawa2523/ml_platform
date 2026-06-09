@@ -25,10 +25,11 @@ stage template with a different method. ClearML sync exposes only
 Local config defaults remain dependency-free so local smoke runs work without
 heavy extras. ClearML New Run defaults show all supported model names in
 `Model/candidates`, including optional-dependency models. `gradient_boosting` is
-the sklearn GBDT-style model name. Remove `lightgbm`, `xgboost`, and `catboost`
-before running if the Agent image does not have `pkgs/tabular[gbm]` or
-equivalent optional dependencies installed. `Model/model_params_by_name` is also
-prefilled with all supported model keys.
+the sklearn GBDT-style model name. The standard deploy Agent image installs
+`pkgs/tabular[gbm]`, so the default 10 candidates are executable on that image.
+Remove `lightgbm`, `xgboost`, and `catboost` only when running on a slim/custom
+Agent without those extras. `Model/model_params_by_name` is also prefilled with
+all supported model keys.
 
 Future scope includes optimization, `artifact_url` / `clearml_model_id`
 inference sources, Optuna, Ray Tune, per-trial ClearML child tasks, advanced
@@ -124,8 +125,8 @@ KNN/SVR/MLP, advanced diagnostics, runtime leaderboard tasks, or weight
 optimization.
 
 ClearML users choose models through `Model/candidates`; this repo does not add
-model-specific templates. Optional-dependency supported model names should be
-used only in environments with the matching optional dependency installed.
+model-specific templates. The standard Agent image includes GBM extras for the
+10 default candidates, while local/package required dependencies remain light.
 
 Optimization is future / experimental. Do not present search settings as the
 primary ClearML UI flow.
@@ -189,7 +190,7 @@ Primary training parameters:
 | `Features/scaling` | optional | optional | `standard` or `none`. |
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
-| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults show all supported models; optional GBM names require their dependencies. |
+| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults show all supported models; the standard Agent image includes GBM extras. |
 | `Model/model_params_by_name` | optional | optional | JSON object keyed by model name, prefilled with dependency-free and optional GBM model keys. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |

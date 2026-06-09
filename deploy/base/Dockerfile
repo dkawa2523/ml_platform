@@ -16,6 +16,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt clearml-agent
 
 COPY . .
-RUN pip install --no-cache-dir -e pkgs/core -e pkgs/tabular
+RUN pip install --no-cache-dir -e pkgs/core -e "pkgs/tabular[gbm]"
 
 CMD ["sh", "-lc", "clearml-agent daemon --queue \"$CLEARML_AGENT_QUEUE\""]

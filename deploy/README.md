@@ -26,15 +26,15 @@ docker push registry.example.com/ml-platform/clearml-agent:prod
 
 Replace `registry.example.com/ml-platform/clearml-agent` in the overlays with the real image repository.
 
-The base image intentionally installs only supported tabular model dependencies.
-Experimental models require an explicit image build choice, for example:
+The standard Agent image installs `pkgs/tabular[gbm]` so the ClearML New Run
+default candidates can execute all 10 supported models, including LightGBM,
+XGBoost, and CatBoost. These packages remain out of `requirements.txt` and the
+package required dependencies; they are Agent-runtime extras for the default
+ClearML template.
 
-```powershell
-pip install -e "pkgs/tabular[experimental]"
-```
-
-Do not add LightGBM, XGBoost, or CatBoost to required dependencies unless the
-product scope explicitly promotes them.
+If you build a slim/custom Agent without `pkgs/tabular[gbm]`, remove
+`lightgbm`, `xgboost`, and `catboost` from `Model/candidates` before running the
+training pipeline.
 
 ## Create Secret
 

@@ -568,7 +568,8 @@ def _apply_pipeline_template_metadata(task: Any) -> None:
             "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
             "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
-            "Add lightgbm/xgboost/catboost to Model/candidates only when the Agent has pkgs/tabular[gbm]."
+            "Model/candidates is prefilled with all 10 supported models; the standard "
+            "Agent image includes pkgs/tabular[gbm]. Remove GBM names only for slim/custom Agents."
         )
 
 

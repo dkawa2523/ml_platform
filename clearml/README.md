@@ -59,3 +59,8 @@ For remote training runs, open `template/tabular_train_pipeline` in the Pipeline
 tab and set `Input/clearml_dataset_id`, `Input/dataset_file`, and
 `Input/target_column`. `Input/local_path` is only valid when the Agent can see
 the same path inside its container or mounted volume.
+
+The training template pre-fills `Model/candidates` with all 10 supported models.
+The standard deploy Agent image installs `pkgs/tabular[gbm]` so LightGBM,
+XGBoost, and CatBoost can run with those defaults. Remove the GBM names only for
+slim/custom Agents that omit the extra.

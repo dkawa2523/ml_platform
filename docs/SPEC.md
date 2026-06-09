@@ -143,8 +143,10 @@ without breaking dependency-free model runs.
 GBDT-style sklearn boosting is exposed as `gradient_boosting`, not `gbdt`.
 
 Install optional model dependencies explicitly, for example
-`pip install -e "pkgs/tabular[gbm]"`. Do not add them to base runtime
-requirements.
+`pip install -e "pkgs/tabular[gbm]"`. Do not add them to package required
+dependencies or `requirements.txt`. The standard ClearML Agent image may install
+`pkgs/tabular[gbm]` so the user-facing New Run default candidates can execute
+all 10 supported models.
 
 Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 
@@ -335,7 +337,7 @@ Primary training UI parameters:
 | `Features/scaling` | optional | optional | `standard` or `none`. |
 | `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
 | `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
-| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults should include all supported models; remove optional GBM names if the Agent lacks those dependencies. |
+| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults should include all supported models; the standard Agent image includes GBM extras. Remove GBM names only for slim/custom Agents without those dependencies. |
 | `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
 | `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
 | `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |

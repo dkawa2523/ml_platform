@@ -19,8 +19,9 @@ run:
 #   Features/drop_columns: ["unused_column"]
 #   Features/passthrough_columns: ["already_numeric_feature"]
 # Supported optional-dependency models lightgbm/xgboost/catboost require
-# pkgs/tabular[gbm] in the Agent environment. Remove them from Model/candidates
-# in New Run if that image does not include the optional dependencies.
+# pkgs/tabular[gbm] in the Agent environment. The standard deploy Agent image
+# includes that extra; remove GBM names from Model/candidates only for slim
+# custom Agents without optional dependencies.
 
 data:
   local_path: data/sample_train.csv

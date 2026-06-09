@@ -7,8 +7,8 @@ issue-template style process docs.
 
 1. ClearML remote verification for `tabular_train_pipeline_template`.
    - Purpose: prove the stage graph on the dev server.
-   - Scope: run with ClearML Dataset id/file, dependency-free default candidates, and ensemble methods enabled.
-   - Acceptance: graph shows `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`; required artifacts are visible.
+   - Scope: run with ClearML Dataset id/file, the standard Agent image, all 10 default candidates, and ensemble methods enabled.
+   - Acceptance: graph shows `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`; required artifacts are visible and the leaderboard includes 10 base models plus ensembles.
    - Do not do: add full templates, optimization templates, or model-specific templates.
 
 2. ClearML remote inference verification for `tabular_infer_template`.
@@ -28,8 +28,9 @@ issue-template style process docs.
 - Revisit optimization pipeline only after the primary training and inference
   route is stable.
 - Keep LightGBM, XGBoost, and CatBoost as supported optional-dependency models.
-  Do not add their heavy packages to base requirements; use `pkgs/tabular[gbm]`
-  or an Agent image with those packages when selecting them.
+  Do not add their heavy packages to package required dependencies or
+  `requirements.txt`; the standard Agent image installs `pkgs/tabular[gbm]` for
+  the default 10-model ClearML template.
 - Keep Optuna, Ray Tune, per-trial child tasks, stacking, advanced diagnostics,
   and online serving out of the primary flow.
 
