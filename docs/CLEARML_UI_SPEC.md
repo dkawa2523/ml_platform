@@ -162,7 +162,7 @@ Expected ClearML screens:
 | --- | --- |
 | Configuration / Hyperparameters | Dataset id/file, split, target column, feature settings, candidates, ensemble methods, evaluation metric. |
 | Scalars | feature counts under `features/*`; `metrics_by_candidate/rmse`, `metrics_by_candidate/mae`, `metrics_by_candidate/r2`; compatibility `metrics_by_model/*`; `ensemble/*`; `best_model/*`. |
-| Plots | feature missingness, feature importance where available, prediction-vs-actual and residual histogram from `evaluation_predictions`, per-method ensemble plots, prediction distribution for inference. |
+| Plots | feature missingness, feature importance where available, prediction-vs-actual with `R2` and `y=x`, residual histogram with axis labels, residual-vs-predicted, candidate comparison plots from `candidate_predictions`, per-method ensemble plots, prediction distribution for inference. |
 | Artifacts | model artifacts, per-method ensemble artifacts, `feature_summary`, `feature_missingness`, `leaderboard`, `metrics_by_candidate`, `metrics_by_model`, `best_model_json`, `evaluation_report`, `evaluation_predictions`, `manifest`. |
 | Debug Samples / Tables | `feature_summary`, `feature_missingness`, `leaderboard`, `evaluation_summary`, train-stage `validation_predictions`, `feature_importance_<model>`, aggregate `evaluation_predictions`, per-method `ensemble_predictions_<method>`, `ensemble_members_<method>`, `ensemble_weights_<method>`, inference-only `predictions` and `prediction_summary`. |
 | Console | dataset resolution, stage selection, artifact resolution, missing dependency errors. |
@@ -170,6 +170,12 @@ Expected ClearML screens:
 
 If a run succeeds but users cannot understand these outputs in UI, product UX is
 not complete.
+
+Each `train_<model>` stage shows only that model's plots. Cross-model and
+cross-ensemble comparison belongs in `evaluate_models`, where
+`candidate_prediction_vs_actual`, `candidate_residual_histogram`, and
+`candidate_residual_vs_predicted` should include base models and ensemble
+methods in the same view.
 
 ## Inference Parameters
 

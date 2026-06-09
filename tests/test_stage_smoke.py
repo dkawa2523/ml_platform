@@ -87,8 +87,10 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
         assert result.tables["feature_importance"].exists()
         assert "prediction_vs_actual" in result.plots
         assert "residual_histogram" in result.plots
+        assert "residual_vs_predicted" in result.plots
         assert "validation_prediction_vs_actual" in result.plots
         assert "validation_residual_histogram" in result.plots
+        assert "validation_residual_vs_predicted" in result.plots
         assert "feature_importance" in result.plots
         assert "feature_importance_bar" in result.plots
 
@@ -128,6 +130,7 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert evaluation.tables["metrics_by_candidate"].exists()
     assert evaluation.tables["evaluation_summary"].exists()
     assert evaluation.tables["evaluation_predictions"].exists()
+    assert evaluation.tables["candidate_predictions"].exists()
     assert evaluation.artifacts["model_refs"].exists()
     assert evaluation.artifacts["metrics_by_model"].exists()
     assert evaluation.artifacts["metrics_by_candidate"].exists()
@@ -139,8 +142,13 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert "metrics_by_candidate_bar" in evaluation.plots
     assert "prediction_vs_actual" in evaluation.plots
     assert "residual_histogram" in evaluation.plots
+    assert "residual_vs_predicted" in evaluation.plots
     assert "best_prediction_vs_actual" in evaluation.plots
     assert "best_residual_histogram" in evaluation.plots
+    assert "best_residual_vs_predicted" in evaluation.plots
+    assert "candidate_prediction_vs_actual" in evaluation.plots
+    assert "candidate_residual_histogram" in evaluation.plots
+    assert "candidate_residual_vs_predicted" in evaluation.plots
 
 
 def test_tabular_stage_runner_rejects_future_optimization_stages(tmp_path):

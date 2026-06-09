@@ -502,6 +502,64 @@ def test_clearml_adapter_reports_prediction_scatter_as_markers():
     ]
 
 
+def test_clearml_adapter_reports_plotly_and_axis_named_histogram():
+    adapter_module = load_clearml_adapter_module()
+
+    class FakeLogger:
+        def __init__(self):
+            self.plotly_calls = []
+            self.histogram_calls = []
+
+        def report_plotly(self, **kwargs):
+            self.plotly_calls.append(kwargs)
+
+        def report_histogram(self, **kwargs):
+            self.histogram_calls.append(kwargs)
+
+    class FakeTask:
+        def __init__(self):
+            self.logger = FakeLogger()
+
+        def get_logger(self):
+            return self.logger
+
+    task = FakeTask()
+    adapter = adapter_module.ClearMLAdapter(task)
+    adapter.report_plotly(
+        "prediction_vs_actual",
+        "validation_predictions",
+        {"data": [{"type": "scatter"}], "layout": {"xaxis": {"title": "actual"}}},
+        iteration=2,
+    )
+    adapter.report_histogram(
+        "residual_histogram",
+        "validation_predictions",
+        [0.1, -0.2],
+        iteration=3,
+        xaxis="residual (actual - prediction)",
+        yaxis="count",
+    )
+
+    assert task.logger.plotly_calls == [
+        {
+            "title": "prediction_vs_actual",
+            "series": "validation_predictions",
+            "figure": {"data": [{"type": "scatter"}], "layout": {"xaxis": {"title": "actual"}}},
+            "iteration": 2,
+        }
+    ]
+    assert task.logger.histogram_calls == [
+        {
+            "title": "residual_histogram",
+            "series": "validation_predictions",
+            "values": [0.1, -0.2],
+            "iteration": 3,
+            "xaxis": "residual (actual - prediction)",
+            "yaxis": "count",
+        }
+    ]
+
+
 def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     reports = load_clearml_reports_module()
     metrics = tmp_path / "metrics.json"
@@ -600,6 +658,13 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     prediction_preview.write_text("prediction\n1.1\n", encoding="utf-8")
     ensemble_predictions = tmp_path / "ensemble_predictions_weighted.csv"
     ensemble_predictions.write_text("actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n", encoding="utf-8")
+    candidate_predictions = tmp_path / "candidate_predictions.csv"
+    candidate_predictions.write_text(
+        "candidate_name,artifact_kind,actual,prediction,residual,abs_error\n"
+        "ridge,model,1,0.9,0.1,0.1\n"
+        "weighted,ensemble,1,1.05,-0.05,0.05\n",
+        encoding="utf-8",
+    )
     ensemble_metrics_table = tmp_path / "ensemble_metrics_table.csv"
     ensemble_metrics_table.write_text("ensemble_method,rmse,mae,r2\nweighted,0.24,0.17,0.93\n", encoding="utf-8")
     ensemble_members = tmp_path / "ensemble_members_weighted.csv"
@@ -633,11 +698,14 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
         def report_media(self, title, series, path, iteration=0):
             self.media.append((title, series, path, iteration))
 
+        def report_plotly(self, title, series, figure, iteration=0):
+            self.plots.append(("plotly", title, series, figure, iteration))
+
         def report_scatter(self, title, series, points, iteration=0):
             self.plots.append(("scatter", title, series, points, iteration))
 
-        def report_histogram(self, title, series, values, iteration=0):
-            self.plots.append(("histogram", title, series, values, iteration))
+        def report_histogram(self, title, series, values, iteration=0, **kwargs):
+            self.plots.append(("histogram", title, series, values, iteration, kwargs))
 
     adapter = FakeAdapter()
     result = RunResult(
@@ -670,6 +738,7 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "prediction_preview": prediction_preview,
             "ensemble_metrics_table": ensemble_metrics_table,
             "ensemble_predictions_weighted": ensemble_predictions,
+            "candidate_predictions": candidate_predictions,
             "ensemble_members_weighted": ensemble_members,
             "ensemble_weights_weighted": ensemble_weights,
         },
@@ -698,7 +767,7 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("tables", "feature_missingness", feature_missingness, 0) in adapter.tables
     assert ("tables", "feature_importance_linear", feature_importance, 0) in adapter.tables
     assert ("tables", "metrics_table", metrics_table, 0) in adapter.tables
-    assert ("tables", "evaluation_summary", evaluation_summary, 0) in adapter.tables
+    assert ("tables", "evaluation_summary_table", evaluation_summary, 0) in adapter.tables
     assert ("tables", "validation_predictions", validation_predictions, 0) in adapter.tables
     assert ("tables", "evaluation_predictions", evaluation_predictions, 0) in adapter.tables
     assert ("tables", "predictions_table", predictions, 0) in adapter.tables
@@ -706,15 +775,23 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("tables", "prediction_preview_table", prediction_preview, 0) in adapter.tables
     assert ("tables", "ensemble_metrics_table", ensemble_metrics_table, 0) in adapter.tables
     assert ("tables", "ensemble_predictions_weighted", ensemble_predictions, 0) in adapter.tables
+    assert ("tables", "candidate_predictions_table", candidate_predictions, 0) in adapter.tables
     assert ("tables", "ensemble_members_weighted", ensemble_members, 0) in adapter.tables
     assert ("tables", "ensemble_weights_weighted", ensemble_weights, 0) in adapter.tables
     assert ("tables", "validation_predictions_linear", aggregate_validation_predictions, 0) not in adapter.tables
-    assert any(item[:3] == ("scatter", "prediction_vs_actual", "validation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("histogram", "residual_histogram", "validation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("scatter", "prediction_vs_actual", "evaluation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("histogram", "residual_histogram", "evaluation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("scatter", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
-    assert any(item[:3] == ("histogram", "prediction_distribution", "predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "residual_histogram", "validation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "residual_vs_predicted", "validation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "prediction_vs_actual", "evaluation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "residual_histogram", "evaluation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "candidate_prediction_vs_actual", "candidate_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "candidate_residual_histogram", "candidate_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "prediction_distribution_histogram", "predictions") for item in adapter.plots)
+    prediction_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions"))
+    assert any(trace.get("name") == "y=x" for trace in prediction_fig["data"])
+    assert prediction_fig["layout"]["xaxis"]["title"] == "actual"
+    assert prediction_fig["layout"]["yaxis"]["title"] == "prediction"
     assert ("plots", "metrics_by_candidate_bar", plot, 0) in adapter.images
     assert adapter.media == []
 

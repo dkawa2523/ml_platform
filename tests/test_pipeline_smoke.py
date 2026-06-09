@@ -155,6 +155,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     )
     assert "prediction_vs_actual_linear" in result.plots
     assert "residual_histogram_linear" in result.plots
+    assert "residual_vs_predicted_linear" in result.plots
     assert "metrics_by_model_bar" in result.plots
     assert "metrics_by_candidate_bar" in result.plots
     assert result.plots["metrics_by_candidate_bar"].suffix == ".png"
@@ -168,10 +169,21 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "ensemble_metrics_bar" in result.plots
     assert "prediction_vs_actual" in result.plots
     assert "residual_histogram" in result.plots
+    assert "residual_vs_predicted" in result.plots
     assert "best_prediction_vs_actual" in result.plots
     assert "best_residual_histogram" in result.plots
+    assert "best_residual_vs_predicted" in result.plots
+    assert "candidate_predictions" in result.tables
+    assert "candidate_prediction_vs_actual" in result.plots
+    assert "candidate_residual_histogram" in result.plots
+    assert "candidate_residual_vs_predicted" in result.plots
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
+    candidate_predictions = pd.read_csv(result.tables["candidate_predictions"])
+    assert {"candidate_name", "artifact_kind", "actual", "prediction", "residual", "abs_error"} <= set(
+        candidate_predictions.columns
+    )
+    assert {"linear", "mean_topk", "weighted", "median"} <= set(candidate_predictions["candidate_name"])
     evaluation_summary = pd.read_csv(result.tables["evaluation_summary"])
     assert {"best_overall", "best_ensemble"} <= set(evaluation_summary["summary"])
     assert "predictions" not in result.tables

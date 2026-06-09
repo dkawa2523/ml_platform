@@ -38,6 +38,36 @@ def _finite(values: Iterable[float]) -> np.ndarray:
     return arr[np.isfinite(arr)]
 
 
+def _paired_finite(y_true, y_pred) -> tuple[np.ndarray, np.ndarray]:
+    actual = np.asarray(list(y_true), dtype=float).reshape(-1)
+    prediction = np.asarray(list(y_pred), dtype=float).reshape(-1)
+    count = min(actual.size, prediction.size)
+    actual = actual[:count]
+    prediction = prediction[:count]
+    valid = np.isfinite(actual) & np.isfinite(prediction)
+    return actual[valid], prediction[valid]
+
+
+def _r2_score(actual: np.ndarray, prediction: np.ndarray) -> float | None:
+    if actual.size == 0:
+        return None
+    ss_res = float(np.sum((actual - prediction) ** 2))
+    ss_tot = float(np.sum((actual - float(np.mean(actual))) ** 2))
+    if ss_tot <= 1e-12:
+        return None
+    return 1.0 - ss_res / ss_tot
+
+
+def _value_range(*arrays: np.ndarray) -> tuple[float, float, float]:
+    values = np.concatenate([arr.reshape(-1) for arr in arrays if arr.size])
+    if values.size == 0:
+        return 0.0, 1.0, 1.0
+    min_value = float(np.min(values))
+    max_value = float(np.max(values))
+    span = max(max_value - min_value, 1e-12)
+    return min_value, max_value, span
+
+
 def transformed_columns_from_transformer(transformer: Any) -> list[str]:
     columns = list(getattr(transformer, "numeric_cols", []))
     for col in getattr(transformer, "categorical_cols", []):
@@ -138,6 +168,7 @@ def write_metrics_bar_plot(
     title: str,
     value_label: str = "value",
     top_n: int = 20,
+    sort: str = "abs_desc",
 ) -> Path:
     pairs = []
     for name, value in items:
@@ -147,7 +178,12 @@ def write_metrics_bar_plot(
             continue
         if np.isfinite(numeric):
             pairs.append((str(name), numeric))
-    pairs.sort(key=lambda item: abs(item[1]), reverse=True)
+    if sort == "value_asc":
+        pairs.sort(key=lambda item: item[1])
+    elif sort == "value_desc":
+        pairs.sort(key=lambda item: item[1], reverse=True)
+    else:
+        pairs.sort(key=lambda item: abs(item[1]), reverse=True)
     if top_n > 0:
         pairs = pairs[:top_n]
 
@@ -167,24 +203,24 @@ def write_metrics_bar_plot(
     for index, (name, value) in enumerate(pairs):
         y = top + index * row_h
         bar_w = int(abs(value) / max_value * plot_w)
+        fill = "#2878b8" if index == 0 and sort in {"value_asc", "value_desc"} else "#e17c45"
         draw.text((36, y + 4), _short_label(name), fill="#243042", font=font)
-        draw.rectangle((left, y + 3, left + bar_w, y + 18), fill="#e17c45")
+        draw.rectangle((left, y + 3, left + bar_w, y + 18), fill=fill)
         draw.text((left + bar_w + 6, y + 4), f"{value:.6g}", fill="#243042", font=font)
     return _save(image, path)
 
 
 def write_prediction_vs_actual_plot(y_true, y_pred, path: Path, *, title: str = "Prediction vs actual") -> Path:
-    actual = _finite(y_true)
-    prediction = _finite(y_pred)
-    count = min(actual.size, prediction.size)
-    actual = actual[:count]
-    prediction = prediction[:count]
+    actual, prediction = _paired_finite(y_true, y_pred)
+    count = actual.size
 
     width, height = 720, 480
     image, draw = _canvas(width, height)
     font = _font()
     left, top, plot_w, plot_h = 78, 48, 560, 340
-    draw.text((left, 18), title, fill="#243042", font=font)
+    r2 = _r2_score(actual, prediction)
+    title_text = title if r2 is None else f"{title} (R2={r2:.3f})"
+    draw.text((left, 18), title_text, fill="#243042", font=font)
     draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
     draw.line((left, top, left, top + plot_h), fill="#596579")
     draw.text((left + plot_w - 56, top + plot_h + 28), "actual", fill="#596579", font=font)
@@ -193,10 +229,9 @@ def write_prediction_vs_actual_plot(y_true, y_pred, path: Path, *, title: str = 
         draw.text((left + 20, top + 30), "No prediction data available", fill="#243042", font=font)
         return _save(image, path)
 
-    min_value = float(min(np.min(actual), np.min(prediction)))
-    max_value = float(max(np.max(actual), np.max(prediction)))
-    span = max(max_value - min_value, 1e-12)
+    min_value, max_value, span = _value_range(actual, prediction)
     draw.line((left, top + plot_h, left + plot_w, top), fill="#9aa4b2", width=1)
+    draw.text((left + plot_w - 40, top + 8), "y=x", fill="#596579", font=font)
     for a, p in zip(actual, prediction):
         x = left + int((float(a) - min_value) / span * plot_w)
         y = top + plot_h - int((float(p) - min_value) / span * plot_h)
@@ -205,11 +240,39 @@ def write_prediction_vs_actual_plot(y_true, y_pred, path: Path, *, title: str = 
 
 
 def write_residual_histogram(y_true, y_pred, path: Path, *, title: str = "Residual histogram") -> Path:
-    actual = _finite(y_true)
-    prediction = _finite(y_pred)
-    count = min(actual.size, prediction.size)
-    residual = actual[:count] - prediction[:count]
-    return write_histogram_plot(residual, path, title=title, x_label="residual")
+    actual, prediction = _paired_finite(y_true, y_pred)
+    residual = actual - prediction
+    return write_histogram_plot(residual, path, title=title, x_label="residual (actual - prediction)")
+
+
+def write_residual_vs_predicted_plot(y_true, y_pred, path: Path, *, title: str = "Residuals vs predicted") -> Path:
+    actual, prediction = _paired_finite(y_true, y_pred)
+    residual = actual - prediction
+
+    width, height = 720, 480
+    image, draw = _canvas(width, height)
+    font = _font()
+    left, top, plot_w, plot_h = 78, 48, 560, 340
+    draw.text((left, 18), title, fill="#243042", font=font)
+    draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
+    draw.line((left, top, left, top + plot_h), fill="#596579")
+    draw.text((left + plot_w - 74, top + plot_h + 28), "prediction", fill="#596579", font=font)
+    draw.text((14, top + 4), "residual", fill="#596579", font=font)
+    if prediction.size == 0:
+        draw.text((left + 20, top + 30), "No residual data available", fill="#243042", font=font)
+        return _save(image, path)
+
+    x_min, _, x_span = _value_range(prediction)
+    y_min, y_max, y_span = _value_range(residual)
+    if y_min <= 0.0 <= y_max:
+        zero_y = top + plot_h - int((0.0 - y_min) / y_span * plot_h)
+        draw.line((left, zero_y, left + plot_w, zero_y), fill="#9aa4b2", width=1)
+        draw.text((left + plot_w - 32, zero_y + 4), "0", fill="#596579", font=font)
+    for p, r in zip(prediction, residual):
+        x = left + int((float(p) - x_min) / x_span * plot_w)
+        y = top + plot_h - int((float(r) - y_min) / y_span * plot_h)
+        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill="#e17c45")
+    return _save(image, path)
 
 
 def write_histogram_plot(
@@ -218,6 +281,7 @@ def write_histogram_plot(
     *,
     title: str,
     x_label: str,
+    y_label: str = "count",
     bins: int = 20,
 ) -> Path:
     arr = _finite(values)
@@ -234,6 +298,7 @@ def write_histogram_plot(
     draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
     draw.line((left, top, left, top + plot_h), fill="#596579")
     draw.text((left + plot_w - 66, top + plot_h + 28), x_label, fill="#596579", font=font)
+    draw.text((16, top + 18), y_label, fill="#596579", font=font)
     max_count = max(int(np.max(counts)), 1)
     bar_w = plot_w / len(counts)
     for index, value in enumerate(counts):
@@ -259,12 +324,143 @@ def write_regression_plot_artifacts(y_true, y_pred, output_dir: Path, *, prefix:
         output_dir / f"{prefix}_residual_histogram.png",
         title="Residual histogram",
     )
+    residual_vs_predicted = write_residual_vs_predicted_plot(
+        y_true,
+        y_pred,
+        output_dir / f"{prefix}_residual_vs_predicted.png",
+        title="Residuals vs predicted",
+    )
     return {
         "prediction_vs_actual": scatter,
         "residual_histogram": histogram,
+        "residual_vs_predicted": residual_vs_predicted,
         f"{prefix}_prediction_vs_actual": scatter,
         f"{prefix}_residual_histogram": histogram,
+        f"{prefix}_residual_vs_predicted": residual_vs_predicted,
     }
+
+
+def _candidate_groups(frame: pd.DataFrame):
+    if "candidate_name" in frame.columns:
+        return frame.groupby("candidate_name", sort=False)
+    return [("candidate", frame)]
+
+
+def write_candidate_prediction_vs_actual_plot(frame: pd.DataFrame, path: Path, *, title: str = "Candidate prediction vs actual") -> Path:
+    width, height = 780, 520
+    image, draw = _canvas(width, height)
+    font = _font()
+    left, top, plot_w, plot_h = 86, 54, 560, 350
+    actual_all = pd.to_numeric(frame.get("actual"), errors="coerce") if "actual" in frame else pd.Series(dtype=float)
+    pred_all = pd.to_numeric(frame.get("prediction"), errors="coerce") if "prediction" in frame else pd.Series(dtype=float)
+    valid_all = actual_all.notna() & pred_all.notna()
+    actual_values = actual_all[valid_all].to_numpy(dtype=float)
+    pred_values = pred_all[valid_all].to_numpy(dtype=float)
+    _, _, span = _value_range(actual_values, pred_values)
+    min_value = float(min(np.min(actual_values), np.min(pred_values))) if actual_values.size else 0.0
+
+    draw.text((left, 18), title, fill="#243042", font=font)
+    draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
+    draw.line((left, top, left, top + plot_h), fill="#596579")
+    draw.text((left + plot_w - 56, top + plot_h + 28), "actual", fill="#596579", font=font)
+    draw.text((14, top + 4), "prediction", fill="#596579", font=font)
+    if not actual_values.size:
+        draw.text((left + 20, top + 30), "No candidate prediction data available", fill="#243042", font=font)
+        return _save(image, path)
+    draw.line((left, top + plot_h, left + plot_w, top), fill="#9aa4b2", width=1)
+    draw.text((left + plot_w - 40, top + 8), "y=x", fill="#596579", font=font)
+    for index, (candidate, group) in enumerate(_candidate_groups(frame)):
+        color = PALETTE[index % len(PALETTE)]
+        actual = pd.to_numeric(group["actual"], errors="coerce")
+        prediction = pd.to_numeric(group["prediction"], errors="coerce")
+        valid = actual.notna() & prediction.notna()
+        for a, p in zip(actual[valid], prediction[valid]):
+            x = left + int((float(a) - min_value) / span * plot_w)
+            y = top + plot_h - int((float(p) - min_value) / span * plot_h)
+            draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=color)
+        legend_y = 58 + index * 18
+        draw.rectangle((665, legend_y + 4, 675, legend_y + 14), fill=color)
+        draw.text((682, legend_y), _short_label(candidate, 20), fill="#243042", font=font)
+    return _save(image, path)
+
+
+def write_candidate_residual_vs_predicted_plot(frame: pd.DataFrame, path: Path, *, title: str = "Candidate residuals vs predicted") -> Path:
+    width, height = 780, 520
+    image, draw = _canvas(width, height)
+    font = _font()
+    left, top, plot_w, plot_h = 86, 54, 560, 350
+    prediction_all = pd.to_numeric(frame.get("prediction"), errors="coerce") if "prediction" in frame else pd.Series(dtype=float)
+    residual_all = pd.to_numeric(frame.get("residual"), errors="coerce") if "residual" in frame else pd.Series(dtype=float)
+    valid_all = prediction_all.notna() & residual_all.notna()
+    pred_values = prediction_all[valid_all].to_numpy(dtype=float)
+    residual_values = residual_all[valid_all].to_numpy(dtype=float)
+    x_min, _, x_span = _value_range(pred_values)
+    y_min, y_max, y_span = _value_range(residual_values)
+
+    draw.text((left, 18), title, fill="#243042", font=font)
+    draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
+    draw.line((left, top, left, top + plot_h), fill="#596579")
+    draw.text((left + plot_w - 74, top + plot_h + 28), "prediction", fill="#596579", font=font)
+    draw.text((14, top + 4), "residual", fill="#596579", font=font)
+    if not pred_values.size:
+        draw.text((left + 20, top + 30), "No candidate residual data available", fill="#243042", font=font)
+        return _save(image, path)
+    if y_min <= 0.0 <= y_max:
+        zero_y = top + plot_h - int((0.0 - y_min) / y_span * plot_h)
+        draw.line((left, zero_y, left + plot_w, zero_y), fill="#9aa4b2", width=1)
+    for index, (candidate, group) in enumerate(_candidate_groups(frame)):
+        color = PALETTE[index % len(PALETTE)]
+        prediction = pd.to_numeric(group["prediction"], errors="coerce")
+        residual = pd.to_numeric(group["residual"], errors="coerce")
+        valid = prediction.notna() & residual.notna()
+        for p, r in zip(prediction[valid], residual[valid]):
+            x = left + int((float(p) - x_min) / x_span * plot_w)
+            y = top + plot_h - int((float(r) - y_min) / y_span * plot_h)
+            draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=color)
+        legend_y = 58 + index * 18
+        draw.rectangle((665, legend_y + 4, 675, legend_y + 14), fill=color)
+        draw.text((682, legend_y), _short_label(candidate, 20), fill="#243042", font=font)
+    return _save(image, path)
+
+
+def write_candidate_residual_histogram(frame: pd.DataFrame, path: Path, *, title: str = "Candidate residual histogram", bins: int = 20) -> Path:
+    width, height = 780, 520
+    image, draw = _canvas(width, height)
+    font = _font()
+    left, top, plot_w, plot_h = 86, 54, 560, 350
+    residual_all = pd.to_numeric(frame.get("residual"), errors="coerce") if "residual" in frame else pd.Series(dtype=float)
+    residual_values = residual_all.dropna().to_numpy(dtype=float)
+    if residual_values.size == 0:
+        residual_values = np.asarray([0.0], dtype=float)
+    bins = min(max(int(bins), 5), 50)
+    counts_all, edges = np.histogram(residual_values, bins=bins)
+    max_count = max(int(np.max(counts_all)), 1)
+    x_min, x_max = float(edges[0]), float(edges[-1])
+    x_span = max(x_max - x_min, 1e-12)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+
+    draw.text((left, 18), title, fill="#243042", font=font)
+    draw.line((left, top + plot_h, left + plot_w, top + plot_h), fill="#596579")
+    draw.line((left, top, left, top + plot_h), fill="#596579")
+    draw.text((left + plot_w - 170, top + plot_h + 28), "residual (actual - prediction)", fill="#596579", font=font)
+    draw.text((16, top + 18), "count", fill="#596579", font=font)
+    for index, (candidate, group) in enumerate(_candidate_groups(frame)):
+        color = PALETTE[index % len(PALETTE)]
+        residual = pd.to_numeric(group["residual"], errors="coerce").dropna().to_numpy(dtype=float)
+        if residual.size == 0:
+            continue
+        counts, _ = np.histogram(residual, bins=edges)
+        points = []
+        for center, count in zip(centers, counts):
+            x = left + int((float(center) - x_min) / x_span * plot_w)
+            y = top + plot_h - int(float(count) / max_count * plot_h)
+            points.append((x, y))
+        for start, end in zip(points, points[1:]):
+            draw.line((*start, *end), fill=color, width=2)
+        legend_y = 58 + index * 18
+        draw.rectangle((665, legend_y + 4, 675, legend_y + 14), fill=color)
+        draw.text((682, legend_y), _short_label(candidate, 20), fill="#243042", font=font)
+    return _save(image, path)
 
 
 def write_leaderboard_table(rows: Iterable[dict[str, Any]], path: Path) -> Path:
@@ -327,6 +523,11 @@ def write_prediction_summary_tables(
                         actual[valid],
                         prediction[valid],
                         output_dir / "residual_histogram.png",
+                    ),
+                    "residual_vs_predicted": write_residual_vs_predicted_plot(
+                        actual[valid],
+                        prediction[valid],
+                        output_dir / "residual_vs_predicted.png",
                     ),
                 }
             )

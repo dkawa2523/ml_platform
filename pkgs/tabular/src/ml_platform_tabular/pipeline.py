@@ -30,6 +30,9 @@ from .model_artifact import write_model_info
 from .models import MeanTopKEnsemble, MedianEnsemble, TabularEstimator, build_model, model_candidates
 from .plots import (
     transformed_columns_from_transformer,
+    write_candidate_prediction_vs_actual_plot,
+    write_candidate_residual_histogram,
+    write_candidate_residual_vs_predicted_plot,
     write_feature_importance_plot_if_available,
     write_feature_summary_tables,
     write_leaderboard_table,
@@ -38,6 +41,7 @@ from .plots import (
     write_prediction_vs_actual_plot,
     write_regression_plot_artifacts,
     write_residual_histogram,
+    write_residual_vs_predicted_plot,
 )
 
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
@@ -701,15 +705,67 @@ def _write_evaluation_predictions(best: dict[str, Any], stage_dir: Path) -> tupl
             stage_dir / "best_residual_histogram.png",
             title="Best residual histogram",
         )
+        residual_vs_predicted = write_residual_vs_predicted_plot(
+            frame["actual"],
+            frame["prediction"],
+            stage_dir / "best_residual_vs_predicted.png",
+            title="Best residuals vs predicted",
+        )
         plots = {
             "best_prediction_vs_actual": scatter,
             "best_residual_histogram": residual,
+            "best_residual_vs_predicted": residual_vs_predicted,
             "prediction_vs_actual": scatter,
             "residual_histogram": residual,
+            "residual_vs_predicted": residual_vs_predicted,
         }
     else:
         plots = {}
     return destination, plots
+
+
+def _write_candidate_predictions(candidates: list[dict[str, Any]], stage_dir: Path) -> tuple[Path | None, dict[str, Path]]:
+    frames = []
+    for rank, item in enumerate(candidates, start=1):
+        source = _prediction_table_path(item)
+        if source is None or not source.exists():
+            continue
+        frame = pd.read_csv(source)
+        if not {"actual", "prediction"} <= set(frame.columns):
+            continue
+        candidate_name = str(item["model_name"])
+        frame = frame.copy()
+        frame.insert(0, "candidate_rank", rank)
+        frame.insert(1, "candidate_name", candidate_name)
+        frame.insert(2, "artifact_kind", item["artifact_kind"])
+        frame.insert(3, "ensemble_method", item.get("ensemble_method"))
+        frame.insert(4, "source_stage", item["stage"])
+        if "residual" not in frame.columns:
+            frame["residual"] = pd.to_numeric(frame["actual"], errors="coerce") - pd.to_numeric(
+                frame["prediction"], errors="coerce"
+            )
+        if "abs_error" not in frame.columns:
+            frame["abs_error"] = frame["residual"].abs()
+        frames.append(frame)
+    if not frames:
+        return None, {}
+    combined = pd.concat(frames, ignore_index=True)
+    predictions_path = write_table(combined, stage_dir / "candidate_predictions.csv")
+    plots = {
+        "candidate_prediction_vs_actual": write_candidate_prediction_vs_actual_plot(
+            combined,
+            stage_dir / "candidate_prediction_vs_actual.png",
+        ),
+        "candidate_residual_histogram": write_candidate_residual_histogram(
+            combined,
+            stage_dir / "candidate_residual_histogram.png",
+        ),
+        "candidate_residual_vs_predicted": write_candidate_residual_vs_predicted_plot(
+            combined,
+            stage_dir / "candidate_residual_vs_predicted.png",
+        ),
+    }
+    return predictions_path, plots
 
 
 def _evaluate_models(
@@ -739,6 +795,8 @@ def _evaluate_models(
 
     leaderboard_path = write_leaderboard_table(_leaderboard_rows(ranked, selection_metric), stage_dir / "leaderboard.csv")
     evaluation_predictions_path, plots = _write_evaluation_predictions(best, stage_dir)
+    candidate_predictions_path, candidate_plots = _write_candidate_predictions(ranked, stage_dir)
+    plots.update(candidate_plots)
     model_refs_payload = {
         "stage": "evaluate_models",
         "candidate_count": len(model_results),
@@ -775,12 +833,14 @@ def _evaluate_models(
         stage_dir / "metrics_by_model_bar.png",
         title=f"Metrics by candidate ({selection_metric})",
         value_label=selection_metric,
+        sort="value_desc" if selection_metric == "r2" else "value_asc",
     )
     metrics_by_candidate_bar_path = write_metrics_bar_plot(
         bar_items,
         stage_dir / "metrics_by_candidate_bar.png",
         title=f"Metrics by candidate ({selection_metric})",
         value_label=selection_metric,
+        sort="value_desc" if selection_metric == "r2" else "value_asc",
     )
     best_model_path = stage_dir / "best_model.joblib"
     shutil.copy2(best["artifacts"]["model"], best_model_path)
@@ -888,6 +948,8 @@ def _evaluate_models(
     }
     if evaluation_predictions_path is not None:
         artifacts["evaluation_predictions"] = evaluation_predictions_path
+    if candidate_predictions_path is not None:
+        artifacts["candidate_predictions"] = candidate_predictions_path
     return {
         "stage": "evaluate_models",
         "stage_dir": stage_dir,
@@ -900,6 +962,7 @@ def _evaluate_models(
             "metrics_by_candidate": metrics_by_candidate_table_path,
             "evaluation_summary": evaluation_summary_path,
             **({"evaluation_predictions": evaluation_predictions_path} if evaluation_predictions_path else {}),
+            **({"candidate_predictions": candidate_predictions_path} if candidate_predictions_path else {}),
         },
         "plots": {
             "metrics_by_model_bar": metrics_by_model_bar_path,

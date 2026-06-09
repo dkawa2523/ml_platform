@@ -866,17 +866,62 @@ class ClearMLAdapter:
         except Exception:
             return
 
-    def report_histogram(self, title: str, series: str, values: list[float], iteration: int = 0) -> None:
+    def report_plotly(self, title: str, series: str, figure: dict[str, Any], iteration: int = 0) -> None:
+        if not figure:
+            return
+        report_plotly = getattr(self.task.get_logger(), "report_plotly", None)
+        if not callable(report_plotly):
+            return
+        try:
+            report_plotly(title=title, series=series, figure=figure, iteration=iteration)
+        except TypeError:
+            try:
+                report_plotly(title=title, series=series, plotly_object=figure, iteration=iteration)
+            except Exception:
+                return
+        except Exception:
+            return
+
+    def report_histogram(
+        self,
+        title: str,
+        series: str,
+        values: list[float],
+        iteration: int = 0,
+        *,
+        xaxis: str | None = None,
+        yaxis: str | None = None,
+        mode: str | None = None,
+    ) -> None:
         if not values:
             return
         report_histogram = getattr(self.task.get_logger(), "report_histogram", None)
         if not callable(report_histogram):
             return
+        kwargs: dict[str, Any] = {
+            "title": title,
+            "series": series,
+            "values": values,
+            "iteration": iteration,
+        }
+        if xaxis:
+            kwargs["xaxis"] = xaxis
+        if yaxis:
+            kwargs["yaxis"] = yaxis
+        if mode:
+            kwargs["mode"] = mode
         try:
-            report_histogram(title=title, series=series, values=values, iteration=iteration)
+            report_histogram(**kwargs)
         except TypeError:
             try:
-                report_histogram(title=title, series=series, histogram=values, iteration=iteration)
+                kwargs.pop("values", None)
+                kwargs["histogram"] = values
+                report_histogram(**kwargs)
+            except TypeError:
+                try:
+                    report_histogram(title=title, series=series, values=values, iteration=iteration)
+                except Exception:
+                    return
             except Exception:
                 return
         except Exception:
