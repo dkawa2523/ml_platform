@@ -331,6 +331,9 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
         extra={
             "pipeline_stage": "evaluate_models",
             "stage_name": "evaluate_models",
+            "report_schema_version": result["report"].get("report_schema_version"),
+            "code_version": result["report"].get("code_version"),
+            "source_task_id": result["report"].get("source_task_id"),
             "best_model": result["report"]["best_model"],
             "candidate_count": result["report"]["candidate_count"],
             "ensemble_enabled": result["report"]["ensemble_enabled"],

@@ -656,9 +656,18 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
         encoding="utf-8",
     )
     leaderboard = tmp_path / "leaderboard.csv"
-    leaderboard.write_text("rank,model_name,rmse\n1,mean_topk,0.25\n", encoding="utf-8")
+    leaderboard.write_text(
+        "rank,model_name,artifact_kind,ensemble_method,selection_metric,rmse,mae,r2,infer_target,ref_kind\n"
+        "1,mean_topk,ensemble,mean_topk,rmse,0.25,0.18,0.92,ensemble:mean_topk,task_artifact\n"
+        "2,ridge,model,,rmse,0.3,0.2,0.9,ridge,task_artifact\n",
+        encoding="utf-8",
+    )
     leaderboard_topk = tmp_path / "leaderboard_topk.csv"
-    leaderboard_topk.write_text("rank,model_name,rmse\n1,mean_topk,0.25\n", encoding="utf-8")
+    leaderboard_topk.write_text(
+        "rank,model_name,artifact_kind,ensemble_method,selection_metric,rmse,mae,r2,infer_target,ref_kind\n"
+        "1,mean_topk,ensemble,mean_topk,rmse,0.25,0.18,0.92,ensemble:mean_topk,task_artifact\n",
+        encoding="utf-8",
+    )
     feature_summary_table = tmp_path / "feature_summary_table.csv"
     feature_summary_table.write_text("metric,value\ninput_rows,100\n", encoding="utf-8")
     missing_rate_by_column = tmp_path / "missing_rate_by_column.csv"
@@ -842,17 +851,27 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "evaluation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "residual_histogram", "evaluation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "topk_prediction_vs_actual", "candidate_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "topk_residual_histogram", "candidate_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "table") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "top_k_scores") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "pareto_rmse_r2") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "topk_residual_histogram") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_distribution_histogram", "predictions") for item in adapter.plots)
     prediction_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions"))
     assert any(trace.get("name") == "y=x" for trace in prediction_fig["data"])
     assert prediction_fig["layout"]["xaxis"]["title"] == "actual"
     assert prediction_fig["layout"]["yaxis"]["title"] == "prediction"
-    topk_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "topk_prediction_vs_actual", "candidate_predictions"))
+    topk_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual"))
     candidate_traces = [trace for trace in topk_fig["data"] if trace.get("name") != "y=x"]
     assert len(candidate_traces) <= 5
     assert all("rank " in trace.get("name", "") for trace in candidate_traces)
+    leaderboard_table = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "table"))
+    assert leaderboard_table["data"][0]["type"] == "table"
+    top_scores = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "top_k_scores"))
+    assert top_scores["data"][0]["type"] == "bar"
+    pareto = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "pareto_rmse_r2"))
+    assert pareto["layout"]["xaxis"]["title"] == "r2"
+    assert pareto["layout"]["yaxis"]["title"] == "rmse"
     assert ("plots", "metrics_by_candidate_bar", plot, 0) in adapter.images
     assert adapter.media == []
 
@@ -947,6 +966,27 @@ def test_clearml_apply_metadata_can_move_runtime_task_project():
     assert task.name == "stage/train_ridge/run"
     assert task.tags == ["domain:tabular", "run_type:stage", "model:ridge"]
     assert task.comment == "stage task"
+
+
+def test_clearml_apply_metadata_can_replace_stale_runtime_tags():
+    adapter = load_clearml_adapter_module()
+
+    class FakeTaskForMetadata:
+        def __init__(self):
+            self.tags = ["domain:tabular", "run_type:stage", "stage:preprocess_features"]
+
+        def set_tags(self, tags):
+            self.tags = list(tags)
+
+    task = FakeTaskForMetadata()
+    adapter.ClearMLAdapter(task).apply_metadata(
+        tags=["domain:tabular", "run_type:stage", "stage:evaluate_models", "internal:true"],
+        replace_tags=True,
+    )
+
+    assert "stage:evaluate_models" in task.tags
+    assert "stage:preprocess_features" not in task.tags
+    assert task.tags == sorted({"domain:tabular", "run_type:stage", "stage:evaluate_models", "internal:true"})
 
 
 class FakeArtifact:

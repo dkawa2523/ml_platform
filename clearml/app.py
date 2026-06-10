@@ -148,12 +148,16 @@ def main() -> None:
                 dataset_file=dataset_file,
             )
         cfg = apply_ui_params(cfg, connected, resolved_local_path=resolved_local_path)
+        task_id = getattr(adapter.task, "id", None)
+        if task_id:
+            cfg.setdefault("runtime", {})["clearml_task_id"] = task_id
         runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(cfg)
         adapter.apply_metadata(
             project_name=runtime_project,
             task_name=runtime_name,
             tags=runtime_tags,
             comment=runtime_comment,
+            replace_tags=True,
         )
         if cfg.get("task") == "tabular_infer":
             cfg = adapter.resolve_infer_model_source(cfg)

@@ -167,8 +167,8 @@ Expected ClearML screens:
 | --- | --- |
 | Configuration / Hyperparameters | Dataset id/file, split, target column, feature settings, candidates, ensemble methods, evaluation metric. |
 | Scalars | feature counts under `features/*`; `metrics_by_candidate/rmse`, `metrics_by_candidate/mae`, `metrics_by_candidate/r2`; compatibility `metrics_by_model/*`; `ensemble/*`; `best_model/*`. |
-| Plots | feature missingness, feature importance where available, per-task prediction-vs-actual with `R2` and `y=x`, residual histogram with axis labels, residual-vs-predicted, Leaderboard top-k plots, per-method ensemble plots, prediction distribution for inference. |
-| Artifacts | model artifacts, per-method ensemble artifacts, `feature_summary`, `feature_missingness`, `leaderboard`, `candidate_predictions`, `metrics_by_candidate`, `metrics_by_model`, `best_model_json`, `evaluation_report`, `evaluation_predictions`, `manifest`. |
+| Plots | feature missingness, feature importance where available, per-task prediction-vs-actual with `R2` and `y=x`, residual histogram with axis labels, residual-vs-predicted, `leaderboard/table`, `leaderboard/top_k_scores`, `leaderboard/pareto_rmse_r2`, Leaderboard top-k prediction/residual plots, per-method ensemble plots, prediction distribution for inference. |
+| Artifacts | model artifacts, per-method ensemble artifacts, `feature_summary`, `feature_missingness`, `leaderboard`, `candidate_predictions`, `metrics_by_candidate`, `metrics_by_model`, `best_model_json`, `evaluation_report`, `recommendation`, `decision_summary`, `evaluation_predictions`, `manifest`. |
 | Debug Samples / Tables | `feature_summary`, `feature_missingness`, `leaderboard`, `leaderboard_topk`, `leaderboard_decision_summary`, `best_vs_ensemble_summary`, `evaluation_summary`, train-stage `validation_predictions`, `feature_importance_<model>`, aggregate `evaluation_predictions`, full `candidate_predictions`, per-method `ensemble_predictions_<method>`, `ensemble_members_<method>`, `ensemble_weights_<method>`, inference-only `predictions`, `prediction_summary`, `prediction_preview`, and `source_summary`. |
 | Console | dataset resolution, stage selection, artifact resolution, missing dependency errors. |
 | Graph | stage order and parent/child handoff. |
@@ -179,12 +179,15 @@ not complete.
 Each `train_<model>` stage shows only that model's plots. Each
 `build_ensemble_<method>` stage shows only that ensemble method. Cross-model
 and cross-ensemble comparison belongs in `evaluate_models`, where the UI should
-start with `leaderboard_table`, `leaderboard_topk_table`,
-`leaderboard_decision_summary_table`, `best_vs_ensemble_summary_table`, and
-top-k plots such as `topk_prediction_vs_actual`,
+start with `leaderboard/table`, `leaderboard/top_k_scores`,
+`leaderboard/pareto_rmse_r2`, `leaderboard_decision_summary_table`,
+`best_vs_ensemble_summary_table`, and top-k plots under the `leaderboard`
+plot group such as `topk_prediction_vs_actual`,
 `topk_residual_histogram`, and `topk_residual_vs_predicted`. The full
-`candidate_predictions` table remains available as evidence, but it should not
-be the primary all-series plot.
+`candidate_predictions` table remains available as evidence, but it must not
+be the primary all-series plot. Current Leaderboard dashboard runs should carry
+`report_schema_version=leaderboard_dashboard_v2` in `evaluation_report`,
+`recommendation`, `decision_summary_json`, and `manifest`.
 
 ## Inference Parameters
 

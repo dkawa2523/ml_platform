@@ -140,7 +140,11 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert evaluation.artifacts["best_model"].exists()
     assert evaluation.artifacts["best_model_json"].exists()
     assert evaluation.artifacts["evaluation_report"].exists()
+    assert evaluation.artifacts["recommendation"].exists()
+    assert evaluation.artifacts["decision_summary"].exists()
+    assert evaluation.artifacts["decision_summary_json"].exists()
     assert evaluation.artifacts["manifest"].exists()
+    assert evaluation.extra["report_schema_version"] == "leaderboard_dashboard_v2"
     assert "metrics_by_model_bar" in evaluation.plots
     assert "metrics_by_candidate_bar" in evaluation.plots
     assert "leaderboard_topk_score_bar" in evaluation.plots

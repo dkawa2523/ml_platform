@@ -411,6 +411,157 @@ def _prediction_distribution_figure(frame, *, title: str = "Prediction distribut
     }
 
 
+def _format_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number != number:
+        return ""
+    return f"{number:.6g}"
+
+
+def _leaderboard_label(row: dict[str, Any]) -> str:
+    rank = row.get("rank", "?")
+    name = row.get("model_name") or "unknown"
+    method = row.get("ensemble_method")
+    label = f"{rank}:{name}"
+    if method:
+        label = f"{label}:{method}"
+    return label
+
+
+def _leaderboard_topk(frame, top_k: int = MAX_CANDIDATE_PLOT_GROUPS):
+    if "rank" not in frame.columns:
+        return frame.head(top_k).copy()
+    import pandas as pd
+
+    ranks = pd.to_numeric(frame["rank"], errors="coerce")
+    top = frame[ranks.notna() & (ranks <= top_k)].copy()
+    return top if not top.empty else frame.head(top_k).copy()
+
+
+def _leaderboard_table_figure(frame, *, title: str = "Leaderboard") -> dict[str, Any] | None:
+    if frame.empty:
+        return None
+    columns = [
+        "rank",
+        "model_name",
+        "artifact_kind",
+        "ensemble_method",
+        "rmse",
+        "mae",
+        "r2",
+        "infer_target",
+        "ref_kind",
+    ]
+    columns = [column for column in columns if column in frame.columns]
+    if not columns:
+        return None
+    view = frame.head(20)
+    row_colors = ["#fff4cc" if str(row.get("rank")) in {"1", "1.0"} else "#ffffff" for row in view.to_dict("records")]
+    return {
+        "data": [
+            {
+                "type": "table",
+                "header": {
+                    "values": columns,
+                    "fill": {"color": "#f2f2f2"},
+                    "align": "left",
+                },
+                "cells": {
+                    "values": [[_format_cell(value) for value in view[column].tolist()] for column in columns],
+                    "fill": {"color": [row_colors for _ in columns]},
+                    "align": "left",
+                },
+            }
+        ],
+        "layout": {"title": title, "margin": {"l": 20, "r": 20, "t": 42, "b": 20}},
+    }
+
+
+def _selection_metric(frame) -> str:
+    if "selection_metric" in frame.columns:
+        values = frame["selection_metric"].dropna()
+        if not values.empty:
+            metric = str(values.iloc[0]).strip()
+            if metric:
+                return metric
+    for candidate in ("rmse", "mae", "r2"):
+        if candidate in frame.columns:
+            return candidate
+    return "score"
+
+
+def _leaderboard_topk_bar_figure(frame, *, title: str = "Top-K score") -> dict[str, Any] | None:
+    top = _leaderboard_topk(frame)
+    metric = _selection_metric(top)
+    if metric not in top.columns or top.empty:
+        return None
+    import pandas as pd
+
+    values = pd.to_numeric(top[metric], errors="coerce")
+    valid = values.notna()
+    if not valid.any():
+        return None
+    rows = top[valid].to_dict("records")
+    colors = ["#f28e2b" if str(row.get("rank")) in {"1", "1.0"} else "#4c78a8" for row in rows]
+    return {
+        "data": [
+            {
+                "type": "bar",
+                "x": [_leaderboard_label(row) for row in rows],
+                "y": [float(value) for value in values[valid]],
+                "marker": {"color": colors},
+                "name": metric,
+            }
+        ],
+        "layout": {
+            "title": f"{title} ({metric})",
+            "xaxis": {"title": "rank/model"},
+            "yaxis": {"title": metric},
+            "showlegend": False,
+        },
+    }
+
+
+def _leaderboard_pareto_figure(frame, *, title: str = "Pareto: r2 vs rmse") -> dict[str, Any] | None:
+    if not {"r2", "rmse"} <= set(frame.columns):
+        return None
+    import pandas as pd
+
+    top = _leaderboard_topk(frame, top_k=10)
+    r2 = pd.to_numeric(top["r2"], errors="coerce")
+    rmse = pd.to_numeric(top["rmse"], errors="coerce")
+    valid = r2.notna() & rmse.notna()
+    if not valid.any():
+        return None
+    rows = top[valid].to_dict("records")
+    colors = ["#f28e2b" if str(row.get("rank")) in {"1", "1.0"} else "#4c78a8" for row in rows]
+    return {
+        "data": [
+            {
+                "type": "scatter",
+                "mode": "markers+text",
+                "x": [float(value) for value in r2[valid]],
+                "y": [float(value) for value in rmse[valid]],
+                "text": [_leaderboard_label(row) for row in rows],
+                "textposition": "top center",
+                "marker": {"size": 9, "color": colors, "opacity": 0.85},
+                "name": "candidate",
+            }
+        ],
+        "layout": {
+            "title": title,
+            "xaxis": {"title": "r2"},
+            "yaxis": {"title": "rmse"},
+            "showlegend": False,
+        },
+    }
+
+
 def _report_plotly(adapter, title: str, series: str, figure: dict[str, Any] | None) -> bool:
     if not figure:
         return False
@@ -419,6 +570,21 @@ def _report_plotly(adapter, title: str, series: str, figure: dict[str, Any] | No
         return False
     report_plotly(title, series, figure, iteration=0)
     return True
+
+
+def _report_leaderboard_dashboard(adapter, path: str | Path) -> None:
+    report_plotly = getattr(adapter, "report_plotly", None)
+    if not callable(report_plotly):
+        return
+    try:
+        import pandas as pd
+
+        frame = pd.read_csv(path)
+    except Exception:
+        return
+    _report_plotly(adapter, "leaderboard", "table", _leaderboard_table_figure(frame))
+    _report_plotly(adapter, "leaderboard", "top_k_scores", _leaderboard_topk_bar_figure(frame))
+    _report_plotly(adapter, "leaderboard", "pareto_rmse_r2", _leaderboard_pareto_figure(frame))
 
 
 def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None:
@@ -463,22 +629,28 @@ def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None
     plot_prefix = "topk_" if is_candidate_comparison else ""
     title_prefix = f"Top-{MAX_CANDIDATE_PLOT_GROUPS} candidate " if is_candidate_comparison else ""
     if callable(report_plotly):
+        plot_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}prediction_vs_actual"
+        residual_vs_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}residual_vs_predicted"
+        residual_hist_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}residual_histogram"
+        prediction_series = "topk_prediction_vs_actual" if is_candidate_comparison else table_name
+        residual_vs_series = "topk_residual_vs_predicted" if is_candidate_comparison else table_name
+        residual_hist_series = "topk_residual_histogram" if is_candidate_comparison else table_name
         _report_plotly(
             adapter,
-            f"{plot_prefix}prediction_vs_actual",
-            table_name,
+            plot_title,
+            prediction_series,
             _prediction_vs_actual_figure(frame, table_name, title=f"{title_prefix}prediction vs actual"),
         )
         _report_plotly(
             adapter,
-            f"{plot_prefix}residual_vs_predicted",
-            table_name,
+            residual_vs_title,
+            residual_vs_series,
             _residual_vs_predicted_figure(frame, table_name, title=f"{title_prefix}residuals vs predicted"),
         )
         _report_plotly(
             adapter,
-            f"{plot_prefix}residual_histogram",
-            table_name,
+            residual_hist_title,
+            residual_hist_series,
             _residual_histogram_figure(frame, table_name, title=f"{title_prefix}residual histogram"),
         )
         return
@@ -551,6 +723,8 @@ def report_result(adapter, result: RunResult, *, report_plots: bool = True) -> N
         adapter.upload_artifact(name, path)
         if _is_report_table(name):
             _report_table(adapter, name, path)
+        if report_plots and name == "leaderboard":
+            _report_leaderboard_dashboard(adapter, path)
         if name == "metrics_table" or name.startswith("metrics_table_"):
             _report_metrics_table(adapter, path)
         if name == "ensemble_metrics_table":

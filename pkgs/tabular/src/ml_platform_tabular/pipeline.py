@@ -7,14 +7,16 @@ preprocess_features -> train_<model>* -> build_ensemble optional -> evaluate_mod
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from ml_platform_core.artifacts import prepare_run_dir, update_latest, write_config_snapshot, write_manifest
+from ml_platform_core.artifacts import prepare_run_dir, update_latest, utc_timestamp, write_config_snapshot, write_manifest
 from ml_platform_core.io import dump_joblib, write_json, write_table
 from ml_platform_core.result import RunResult
 
@@ -49,11 +51,37 @@ from .plots import (
 
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
 LEADERBOARD_TOP_K = 5
+LEADERBOARD_REPORT_SCHEMA_VERSION = "leaderboard_dashboard_v2"
 SELECTION_METRICS = {"rmse", "mae", "r2"}
 
 
 def _path_map(mapping: dict[str, Path]) -> dict[str, str]:
     return {name: str(path) for name, path in mapping.items()}
+
+
+def _code_version() -> str:
+    try:
+        root = Path(__file__).resolve().parents[4]
+        completed = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return "unknown"
+    version = completed.stdout.strip()
+    return version or "unknown"
+
+
+def _runtime_task_id() -> str | None:
+    for name in ("CLEARML_TASK_ID", "TRAINS_TASK_ID", "TASK_ID"):
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
 
 
 def _metric_name(value: Any) -> str:
@@ -845,6 +873,83 @@ def _best_vs_ensemble_rows(
     return rows
 
 
+def _recommendation_payload(
+    *,
+    best: dict[str, Any],
+    best_single: dict[str, Any] | None,
+    best_ensemble: dict[str, Any] | None,
+    selection_metric: str,
+    leaderboard_rows: list[dict[str, Any]],
+    task_id: str | None,
+) -> dict[str, Any]:
+    selector = _selector_for_item(best)
+    recommended = _summary_row("recommended", best, selection_metric)
+    return {
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "created_at": utc_timestamp(),
+        "code_version": _code_version(),
+        "source_task_id": task_id,
+        "source_task_hint": "Use this evaluate_models ClearML task id as Input/source_task_id when source_task_id is null.",
+        "recommended_ref_kind": "clearml_task_artifact",
+        "recommended_infer_key": "Input/source_task_id + Model/model_selector",
+        "recommended_infer_value": selector,
+        "recommended_assignment": {
+            "Input/source_task_id": task_id or "<this evaluate_models task id>",
+            "Model/model_selector": selector,
+        },
+        "recommended": recommended,
+        "best_overall": _summary_row("best_overall", best, selection_metric),
+        "best_single_model": _summary_row("best_single_model", best_single, selection_metric),
+        "best_ensemble": _summary_row("best_ensemble", best_ensemble, selection_metric),
+        "top_candidates": leaderboard_rows[:LEADERBOARD_TOP_K],
+    }
+
+
+def _decision_summary_markdown(recommendation: dict[str, Any], leaderboard_rows: list[dict[str, Any]]) -> str:
+    assignment = recommendation.get("recommended_assignment") or {}
+    top_rows = leaderboard_rows[:LEADERBOARD_TOP_K]
+    lines = [
+        "# Leaderboard Decision Summary",
+        "",
+        "## Infer Run Input",
+        f"- Input/source_task_id: {assignment.get('Input/source_task_id')}",
+        f"- Model/model_selector: {assignment.get('Model/model_selector')}",
+        f"- ref_kind: {recommendation.get('recommended_ref_kind')}",
+        f"- report_schema_version: {recommendation.get('report_schema_version')}",
+        f"- code_version: {recommendation.get('code_version')}",
+        "",
+        "## Recommendation",
+    ]
+    recommended = recommendation.get("recommended") or {}
+    lines.extend(
+        [
+            f"- model_name: {recommended.get('model_name')}",
+            f"- artifact_kind: {recommended.get('artifact_kind')}",
+            f"- ensemble_method: {recommended.get('ensemble_method')}",
+            f"- selection_metric: {recommended.get('selection_metric')}",
+            f"- selection_value: {recommended.get('selection_value')}",
+            "",
+            "## Top Candidates",
+            "| rank | model_name | artifact_kind | ensemble_method | rmse | mae | r2 | model_selector |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in top_rows:
+        lines.append(
+            "| {rank} | {model_name} | {artifact_kind} | {ensemble_method} | {rmse} | {mae} | {r2} | {infer_target} |".format(
+                rank=row.get("rank"),
+                model_name=row.get("model_name"),
+                artifact_kind=row.get("artifact_kind"),
+                ensemble_method=row.get("ensemble_method") or "",
+                rmse=row.get("rmse"),
+                mae=row.get("mae"),
+                r2=row.get("r2"),
+                infer_target=row.get("infer_target"),
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _evaluate_models(
     cfg: dict[str, Any],
     model_results: list[dict[str, Any]],
@@ -871,6 +976,8 @@ def _evaluate_models(
     ranked_ensembles = _ranked_results(ensemble_items, selection_metric) if ensemble_items else []
     best_ensemble = ranked_ensembles[0] if ranked_ensembles else None
     metrics_by_model = _metrics_by_model_payload(ranked, selection_metric)
+    task_id = cfg.get("runtime", {}).get("clearml_task_id") or _runtime_task_id()
+    code_version = _code_version()
 
     leaderboard_rows = _leaderboard_rows(ranked, selection_metric)
     leaderboard_path = write_leaderboard_table(leaderboard_rows, stage_dir / "leaderboard.csv")
@@ -986,7 +1093,33 @@ def _evaluate_models(
         pd.DataFrame(_best_vs_ensemble_rows(best_single, best_ensemble)),
         stage_dir / "best_vs_ensemble_summary.csv",
     )
+    recommendation = _recommendation_payload(
+        best=best,
+        best_single=best_single,
+        best_ensemble=best_ensemble,
+        selection_metric=selection_metric,
+        leaderboard_rows=leaderboard_rows,
+        task_id=task_id,
+    )
+    recommendation_path = write_json(recommendation, stage_dir / "recommendation.json")
+    decision_summary_md_path = stage_dir / "decision_summary.md"
+    decision_summary_md_path.write_text(_decision_summary_markdown(recommendation, leaderboard_rows), encoding="utf-8")
+    decision_summary_json_path = write_json(
+        {
+            "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+            "created_at": recommendation["created_at"],
+            "code_version": code_version,
+            "recommendation": recommendation,
+            "leaderboard_topk": leaderboard_rows[:LEADERBOARD_TOP_K],
+            "best_vs_ensemble_summary": _best_vs_ensemble_rows(best_single, best_ensemble),
+        },
+        stage_dir / "decision_summary.json",
+    )
     report = {
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "created_at": recommendation["created_at"],
+        "code_version": code_version,
+        "source_task_id": task_id,
         "stage": "evaluate_models",
         "candidate_count": len(model_results),
         "ensemble_enabled": bool(ensemble_items),
@@ -1011,10 +1144,14 @@ def _evaluate_models(
         "leaderboard_topk": str(leaderboard_topk_path),
         "leaderboard_decision_summary": str(leaderboard_decision_summary_path),
         "best_vs_ensemble_summary": str(best_vs_ensemble_summary_path),
+        "recommendation": str(recommendation_path),
+        "decision_summary": str(decision_summary_md_path),
+        "decision_summary_json": str(decision_summary_json_path),
     }
     evaluation_report_path = write_json(report, stage_dir / "evaluation_report.json")
     metrics_payload = {
         **best["metrics"],
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
         "best_model": best_payload,
         "best_ensemble": best_ensemble_payload,
         "selection_metric": selection_metric,
@@ -1030,6 +1167,9 @@ def _evaluate_models(
         "best_model": best_model_path,
         "best_model_json": best_model_json_path,
         "evaluation_report": evaluation_report_path,
+        "recommendation": recommendation_path,
+        "decision_summary": decision_summary_md_path,
+        "decision_summary_json": decision_summary_json_path,
         "metrics": metrics_path,
     }
     if evaluation_predictions_path is not None:
@@ -1133,6 +1273,8 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
 
     summary = {
         "pipeline_kind": "training",
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "code_version": evaluation["report"].get("code_version"),
         "stages": [
             "preprocess_features",
             *[item["stage"] for item in model_results],

@@ -183,6 +183,9 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "leaderboard_topk" in result.tables
     assert "leaderboard_decision_summary" in result.tables
     assert "best_vs_ensemble_summary" in result.tables
+    assert "recommendation" in result.artifacts
+    assert "decision_summary" in result.artifacts
+    assert "decision_summary_json" in result.artifacts
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
     candidate_predictions = pd.read_csv(result.tables["candidate_predictions"])
@@ -196,6 +199,10 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert {"best_overall", "best_single_model", "best_ensemble"} <= set(decision_summary["summary"])
     best_vs_ensemble = pd.read_csv(result.tables["best_vs_ensemble_summary"])
     assert set(best_vs_ensemble["metric"]) == {"rmse", "mae", "r2"}
+    recommendation = read_json(result.artifacts["recommendation"])
+    assert recommendation["report_schema_version"] == "leaderboard_dashboard_v2"
+    assert recommendation["recommended_infer_key"] == "Input/source_task_id + Model/model_selector"
+    assert recommendation["recommended_assignment"]["Model/model_selector"]
     assert "predictions" not in result.tables
 
     best_model = read_json(result.artifacts["best_model_json"])
@@ -241,6 +248,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
+    assert manifest["extra"]["report_schema_version"] == "leaderboard_dashboard_v2"
     assert "infer_predictions" not in manifest["tables"]
     assert (tmp_path / "outputs" / "latest_training_pipeline" / "manifest.json").exists()
     assert not (tmp_path / "outputs" / "latest_train").exists()

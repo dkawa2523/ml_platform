@@ -101,12 +101,20 @@ def stage_task_label(stage: str, model_name: str | None = None, ensemble_method:
     return stage
 
 
-def _apply_clearml_metadata(task: Any, *, tags: list[str] | None = None, comment: str | None = None) -> None:
+def _apply_clearml_metadata(
+    task: Any,
+    *,
+    tags: list[str] | None = None,
+    comment: str | None = None,
+    replace_tags: bool = False,
+) -> None:
     tags = tags or []
     if tags:
         add_tags = getattr(task, "add_tags", None)
         set_tags = getattr(task, "set_tags", None)
-        if callable(add_tags):
+        if replace_tags and callable(set_tags):
+            set_tags(sorted(set(tags)))
+        elif callable(add_tags):
             add_tags(tags)
         elif callable(set_tags):
             current = []
@@ -621,6 +629,7 @@ class ClearMLAdapter:
         task_name: str | None = None,
         tags: list[str] | None = None,
         comment: str | None = None,
+        replace_tags: bool = False,
     ) -> None:
         if project_name:
             move_to_project = getattr(self.task, "move_to_project", None)
@@ -633,7 +642,7 @@ class ClearMLAdapter:
             set_name = getattr(self.task, "set_name", None)
             if callable(set_name):
                 set_name(task_name)
-        _apply_clearml_metadata(self.task, tags=tags, comment=comment)
+        _apply_clearml_metadata(self.task, tags=tags, comment=comment, replace_tags=replace_tags)
 
     def connect_params(self, params: dict[str, Any]) -> dict[str, Any]:
         connected: dict[str, Any] = {}
