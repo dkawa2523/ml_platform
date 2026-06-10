@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from ml_platform_core.config import load_run_config
+from ml_platform_core.io import read_json
 from ml_platform_tabular import run_task
 
 
@@ -150,15 +151,18 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert "leaderboard_topk_score_bar" in evaluation.plots
     assert "leaderboard_metric_panel" in evaluation.plots
     assert "leaderboard_pareto_rmse_r2" in evaluation.plots
-    assert "prediction_vs_actual" in evaluation.plots
-    assert "residual_histogram" in evaluation.plots
-    assert "residual_vs_predicted" in evaluation.plots
     assert "best_prediction_vs_actual" in evaluation.plots
     assert "best_residual_histogram" in evaluation.plots
     assert "best_residual_vs_predicted" in evaluation.plots
+    assert "prediction_vs_actual" not in evaluation.plots
+    assert "residual_histogram" not in evaluation.plots
+    assert "residual_vs_predicted" not in evaluation.plots
     assert "topk_prediction_vs_actual" in evaluation.plots
     assert "topk_residual_histogram" in evaluation.plots
     assert "topk_residual_vs_predicted" in evaluation.plots
+    evaluation_manifest = read_json(evaluation.artifacts["manifest"])
+    assert "leaderboard_topk_score_bar" in evaluation_manifest["plots"]
+    assert "best_prediction_vs_actual" in evaluation_manifest["plots"]
 
 
 def test_tabular_stage_runner_rejects_future_optimization_stages(tmp_path):

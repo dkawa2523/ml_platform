@@ -747,9 +747,6 @@ def _write_evaluation_predictions(best: dict[str, Any], stage_dir: Path) -> tupl
             "best_prediction_vs_actual": scatter,
             "best_residual_histogram": residual,
             "best_residual_vs_predicted": residual_vs_predicted,
-            "prediction_vs_actual": scatter,
-            "residual_histogram": residual,
-            "residual_vs_predicted": residual_vs_predicted,
         }
     else:
         plots = {}
@@ -1313,6 +1310,7 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
         metrics=evaluation["metrics"],
         artifacts=artifacts,
         tables=tables,
+        plots=plots,
         extra=summary,
     )
     artifacts["manifest"] = manifest_path

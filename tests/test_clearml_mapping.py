@@ -712,6 +712,11 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     source_summary.write_text("field,value\nmodel_selector,best\nartifact_kind,model\n", encoding="utf-8")
     ensemble_predictions = tmp_path / "ensemble_predictions_weighted.csv"
     ensemble_predictions.write_text("actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n", encoding="utf-8")
+    ensemble_predictions_alias = tmp_path / "ensemble_predictions.csv"
+    ensemble_predictions_alias.write_text(
+        "actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n",
+        encoding="utf-8",
+    )
     candidate_predictions = tmp_path / "candidate_predictions.csv"
     candidate_predictions.write_text(
         "candidate_rank,candidate_name,artifact_kind,ensemble_method,actual,prediction,residual,abs_error\n"
@@ -799,6 +804,7 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "prediction_preview": prediction_preview,
             "source_summary": source_summary,
             "ensemble_metrics_table": ensemble_metrics_table,
+            "ensemble_predictions": ensemble_predictions_alias,
             "ensemble_predictions_weighted": ensemble_predictions,
             "candidate_predictions": candidate_predictions,
             "ensemble_members_weighted": ensemble_members,
@@ -824,10 +830,8 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("tables", "leaderboard_table", leaderboard, 0) in adapter.tables
     assert ("tables", "leaderboard_topk_table", leaderboard_topk, 0) in adapter.tables
     assert ("tables", "feature_summary_table", feature_summary_table, 0) in adapter.tables
-    assert ("tables", "feature_summary", feature_summary_table, 0) in adapter.tables
     assert ("tables", "missing_rate_by_column", missing_rate_by_column, 0) in adapter.tables
     assert ("tables", "feature_type_counts", feature_type_counts, 0) in adapter.tables
-    assert ("tables", "feature_missingness", feature_missingness, 0) in adapter.tables
     assert ("tables", "feature_importance_linear", feature_importance, 0) in adapter.tables
     assert ("tables", "metrics_table", metrics_table, 0) in adapter.tables
     assert ("tables", "evaluation_summary_table", evaluation_summary, 0) in adapter.tables
@@ -844,15 +848,21 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("tables", "candidate_predictions_table", candidate_predictions, 0) in adapter.tables
     assert ("tables", "ensemble_members_weighted", ensemble_members, 0) in adapter.tables
     assert ("tables", "ensemble_weights_weighted", ensemble_weights, 0) in adapter.tables
+    assert ("tables", "feature_summary", feature_summary_table, 0) not in adapter.tables
+    assert ("tables", "feature_missingness", feature_missingness, 0) not in adapter.tables
+    assert ("tables", "ensemble_predictions", ensemble_predictions_alias, 0) not in adapter.tables
     assert ("tables", "validation_predictions_linear", aggregate_validation_predictions, 0) not in adapter.tables
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "residual_histogram", "validation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "residual_vs_predicted", "validation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "prediction_vs_actual", "evaluation_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "residual_histogram", "evaluation_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "best_prediction_vs_actual") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "best_residual_histogram") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "best_residual_vs_predicted") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
+    assert not any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "table") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "top_k_scores") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "leaderboard", "metric_panel") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "pareto_rmse_r2") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "topk_residual_histogram") for item in adapter.plots)
@@ -869,6 +879,8 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert leaderboard_table["data"][0]["type"] == "table"
     top_scores = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "top_k_scores"))
     assert top_scores["data"][0]["type"] == "bar"
+    metric_panel = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "metric_panel"))
+    assert {trace["name"] for trace in metric_panel["data"]} == {"rmse", "mae", "r2"}
     pareto = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "pareto_rmse_r2"))
     assert pareto["layout"]["xaxis"]["title"] == "r2"
     assert pareto["layout"]["yaxis"]["title"] == "rmse"

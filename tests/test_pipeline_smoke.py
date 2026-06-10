@@ -170,12 +170,12 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "ensemble_weights_mean_topk" in result.plots
     assert "ensemble_weights_weighted" in result.plots
     assert "ensemble_metrics_bar" in result.plots
-    assert "prediction_vs_actual" in result.plots
-    assert "residual_histogram" in result.plots
-    assert "residual_vs_predicted" in result.plots
     assert "best_prediction_vs_actual" in result.plots
     assert "best_residual_histogram" in result.plots
     assert "best_residual_vs_predicted" in result.plots
+    assert "prediction_vs_actual" not in result.plots
+    assert "residual_histogram" not in result.plots
+    assert "residual_vs_predicted" not in result.plots
     assert "candidate_predictions" in result.tables
     assert "topk_prediction_vs_actual" in result.plots
     assert "topk_residual_histogram" in result.plots
@@ -250,6 +250,8 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert manifest["extra"]["pipeline_kind"] == "training"
     assert manifest["extra"]["report_schema_version"] == "leaderboard_dashboard_v2"
     assert "infer_predictions" not in manifest["tables"]
+    assert "leaderboard_topk_score_bar" in manifest["plots"]
+    assert "best_prediction_vs_actual" in manifest["plots"]
     assert (tmp_path / "outputs" / "latest_training_pipeline" / "manifest.json").exists()
     assert not (tmp_path / "outputs" / "latest_train").exists()
 

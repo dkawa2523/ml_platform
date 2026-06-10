@@ -54,6 +54,7 @@ def _finish_stage(
         metrics=metrics or {},
         artifacts=artifacts,
         tables=tables,
+        plots=plots,
         extra=extra,
     )
     artifacts["manifest"] = manifest_path

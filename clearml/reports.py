@@ -34,9 +34,7 @@ TABLE_REPORTS = {
     "prediction_preview",
     "source_summary",
     "feature_summary_table",
-    "feature_summary",
     "missing_rate_by_column",
-    "feature_missingness",
     "feature_type_counts",
     "metrics_table",
     "metrics_by_candidate",
@@ -55,7 +53,6 @@ TABLE_SERIES_ALIASES = {
     "source_summary": "source_summary_table",
 }
 TABLE_REPORT_PREFIXES = (
-    "ensemble_predictions",
     "feature_importance",
     "ensemble_members",
     "ensemble_weights",
@@ -65,8 +62,21 @@ PREDICTION_PLOT_TABLES = {
     "candidate_predictions",
     "validation_predictions",
     "evaluation_predictions",
-    "ensemble_predictions",
     "predictions",
+}
+NON_REPORT_TABLES = {
+    # Compatibility aliases remain uploaded as artifacts, but the UI should
+    # show the canonical table names only.
+    "feature_summary",
+    "feature_missingness",
+    "ensemble_predictions",
+}
+NON_REPORT_PLOT_IMAGES = {
+    # Generic aliases of best-entry plots; keep the artifacts, but avoid
+    # duplicate image panels in ClearML PLOTS.
+    "prediction_vs_actual",
+    "residual_histogram",
+    "residual_vs_predicted",
 }
 
 
@@ -527,6 +537,41 @@ def _leaderboard_topk_bar_figure(frame, *, title: str = "Top-K score") -> dict[s
     }
 
 
+def _leaderboard_metric_panel_figure(frame, *, title: str = "Top-K metric panel") -> dict[str, Any] | None:
+    top = _leaderboard_topk(frame)
+    if top.empty:
+        return None
+    import pandas as pd
+
+    labels = [_leaderboard_label(row) for row in top.to_dict("records")]
+    traces = []
+    for metric in ("rmse", "mae", "r2"):
+        if metric not in top.columns:
+            continue
+        values = pd.to_numeric(top[metric], errors="coerce")
+        if values.notna().any():
+            traces.append(
+                {
+                    "type": "bar",
+                    "x": labels,
+                    "y": [None if pd.isna(value) else float(value) for value in values],
+                    "name": metric,
+                }
+            )
+    if not traces:
+        return None
+    return {
+        "data": traces,
+        "layout": {
+            "title": title,
+            "xaxis": {"title": "rank/model"},
+            "yaxis": {"title": "metric value"},
+            "barmode": "group",
+            "showlegend": True,
+        },
+    }
+
+
 def _leaderboard_pareto_figure(frame, *, title: str = "Pareto: r2 vs rmse") -> dict[str, Any] | None:
     if not {"r2", "rmse"} <= set(frame.columns):
         return None
@@ -584,6 +629,7 @@ def _report_leaderboard_dashboard(adapter, path: str | Path) -> None:
         return
     _report_plotly(adapter, "leaderboard", "table", _leaderboard_table_figure(frame))
     _report_plotly(adapter, "leaderboard", "top_k_scores", _leaderboard_topk_bar_figure(frame))
+    _report_plotly(adapter, "leaderboard", "metric_panel", _leaderboard_metric_panel_figure(frame))
     _report_plotly(adapter, "leaderboard", "pareto_rmse_r2", _leaderboard_pareto_figure(frame))
 
 
@@ -624,17 +670,39 @@ def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None
     if not valid.any():
         return
     is_candidate_comparison = table_name == "candidate_predictions"
+    is_best_evaluation = table_name == "evaluation_predictions"
     if is_candidate_comparison:
         frame = _topk_candidate_plot_frame(frame)
-    plot_prefix = "topk_" if is_candidate_comparison else ""
-    title_prefix = f"Top-{MAX_CANDIDATE_PLOT_GROUPS} candidate " if is_candidate_comparison else ""
+    plot_prefix = "topk_" if is_candidate_comparison else "best_" if is_best_evaluation else ""
+    title_prefix = (
+        f"Top-{MAX_CANDIDATE_PLOT_GROUPS} candidate "
+        if is_candidate_comparison
+        else "Best "
+        if is_best_evaluation
+        else ""
+    )
     if callable(report_plotly):
-        plot_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}prediction_vs_actual"
-        residual_vs_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}residual_vs_predicted"
-        residual_hist_title = "leaderboard" if is_candidate_comparison else f"{plot_prefix}residual_histogram"
-        prediction_series = "topk_prediction_vs_actual" if is_candidate_comparison else table_name
-        residual_vs_series = "topk_residual_vs_predicted" if is_candidate_comparison else table_name
-        residual_hist_series = "topk_residual_histogram" if is_candidate_comparison else table_name
+        if is_candidate_comparison:
+            plot_title = "leaderboard"
+            residual_vs_title = "leaderboard"
+            residual_hist_title = "leaderboard"
+            prediction_series = "topk_prediction_vs_actual"
+            residual_vs_series = "topk_residual_vs_predicted"
+            residual_hist_series = "topk_residual_histogram"
+        elif is_best_evaluation:
+            plot_title = "leaderboard"
+            residual_vs_title = "leaderboard"
+            residual_hist_title = "leaderboard"
+            prediction_series = "best_prediction_vs_actual"
+            residual_vs_series = "best_residual_vs_predicted"
+            residual_hist_series = "best_residual_histogram"
+        else:
+            plot_title = f"{plot_prefix}prediction_vs_actual"
+            residual_vs_title = f"{plot_prefix}residual_vs_predicted"
+            residual_hist_title = f"{plot_prefix}residual_histogram"
+            prediction_series = table_name
+            residual_vs_series = table_name
+            residual_hist_series = table_name
         _report_plotly(
             adapter,
             plot_title,
@@ -676,11 +744,19 @@ def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None
 
 
 def _is_report_table(name: str) -> bool:
-    return name in TABLE_REPORTS or any(name.startswith(prefix) for prefix in TABLE_REPORT_PREFIXES)
+    if name in NON_REPORT_TABLES:
+        return False
+    return (
+        name in TABLE_REPORTS
+        or name.startswith("ensemble_predictions_")
+        or any(name.startswith(prefix) for prefix in TABLE_REPORT_PREFIXES)
+    )
 
 
 def _is_prediction_plot_table(name: str) -> bool:
-    return name in PREDICTION_PLOT_TABLES or name.startswith("ensemble_predictions")
+    if name == "ensemble_predictions":
+        return False
+    return name in PREDICTION_PLOT_TABLES or name.startswith("ensemble_predictions_")
 
 
 def _report_table(adapter, name: str, path: str | Path) -> None:
@@ -688,6 +764,8 @@ def _report_table(adapter, name: str, path: str | Path) -> None:
 
 
 def _report_plot_image(adapter, name: str, path: str | Path) -> None:
+    if name in NON_REPORT_PLOT_IMAGES:
+        return
     report_image = getattr(adapter, "report_image", None)
     if callable(report_image):
         report_image("plots", name, path, iteration=0)
