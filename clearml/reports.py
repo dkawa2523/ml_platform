@@ -8,6 +8,7 @@ from typing import Any
 from ml_platform_core.result import RunResult
 
 MODEL_METRICS = ("rmse", "mae", "r2")
+MAX_CANDIDATE_PLOT_GROUPS = 5
 FEATURE_SUMMARY_SCALARS = (
     "input_rows",
     "train_rows",
@@ -21,13 +22,17 @@ FEATURE_SUMMARY_SCALARS = (
 )
 TABLE_REPORTS = {
     "leaderboard",
+    "leaderboard_topk",
     "candidate_predictions",
     "validation_predictions",
     "evaluation_predictions",
     "evaluation_summary",
+    "leaderboard_decision_summary",
+    "best_vs_ensemble_summary",
     "predictions",
     "prediction_summary",
     "prediction_preview",
+    "source_summary",
     "feature_summary_table",
     "feature_summary",
     "missing_rate_by_column",
@@ -39,11 +44,15 @@ TABLE_REPORTS = {
 }
 TABLE_SERIES_ALIASES = {
     "leaderboard": "leaderboard_table",
+    "leaderboard_topk": "leaderboard_topk_table",
     "candidate_predictions": "candidate_predictions_table",
     "evaluation_summary": "evaluation_summary_table",
+    "leaderboard_decision_summary": "leaderboard_decision_summary_table",
+    "best_vs_ensemble_summary": "best_vs_ensemble_summary_table",
     "predictions": "predictions_table",
     "prediction_summary": "prediction_summary_table",
     "prediction_preview": "prediction_preview_table",
+    "source_summary": "source_summary_table",
 }
 TABLE_REPORT_PREFIXES = (
     "ensemble_predictions",
@@ -180,7 +189,22 @@ def _candidate_label(frame, table_name: str) -> str:
     if "candidate_name" in frame.columns:
         value = frame["candidate_name"].dropna()
         if not value.empty:
-            return str(value.iloc[0])
+            name = str(value.iloc[0])
+            parts = []
+            if "candidate_rank" in frame.columns:
+                rank = frame["candidate_rank"].dropna()
+                if not rank.empty:
+                    parts.append(f"rank {int(float(rank.iloc[0]))}")
+            if "artifact_kind" in frame.columns:
+                kind = frame["artifact_kind"].dropna()
+                if not kind.empty:
+                    parts.append(str(kind.iloc[0]))
+            if "ensemble_method" in frame.columns:
+                method = frame["ensemble_method"].dropna()
+                if not method.empty:
+                    parts.append(str(method.iloc[0]))
+            suffix = f" ({', '.join(parts)})" if parts else ""
+            return f"{name}{suffix}"
     if table_name.startswith("ensemble_predictions_"):
         return table_name.replace("ensemble_predictions_", "ensemble:")
     return table_name
@@ -189,9 +213,24 @@ def _candidate_label(frame, table_name: str) -> str:
 def _grouped_prediction_frames(frame, table_name: str):
     if "candidate_name" in frame.columns:
         for candidate_name, group in frame.groupby("candidate_name", sort=False):
-            yield str(candidate_name), group
+            yield _candidate_label(group, table_name) or str(candidate_name), group
     else:
         yield _candidate_label(frame, table_name), frame
+
+
+def _topk_candidate_plot_frame(frame):
+    if "candidate_name" not in frame.columns:
+        return frame
+    if "candidate_rank" in frame.columns:
+        import pandas as pd
+
+        ranks = pd.to_numeric(frame["candidate_rank"], errors="coerce")
+        top = frame[ranks.notna() & (ranks <= MAX_CANDIDATE_PLOT_GROUPS)].copy()
+        if not top.empty:
+            return top
+    names = list(dict.fromkeys(str(value) for value in frame["candidate_name"].dropna()))
+    keep = set(names[:MAX_CANDIDATE_PLOT_GROUPS])
+    return frame[frame["candidate_name"].astype(str).isin(keep)].copy()
 
 
 def _value_range(*values) -> tuple[float, float]:
@@ -418,8 +457,11 @@ def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None
     valid = actual.notna() & prediction.notna()
     if not valid.any():
         return
-    plot_prefix = "candidate_" if table_name == "candidate_predictions" else ""
-    title_prefix = "Candidate " if plot_prefix else ""
+    is_candidate_comparison = table_name == "candidate_predictions"
+    if is_candidate_comparison:
+        frame = _topk_candidate_plot_frame(frame)
+    plot_prefix = "topk_" if is_candidate_comparison else ""
+    title_prefix = f"Top-{MAX_CANDIDATE_PLOT_GROUPS} candidate " if is_candidate_comparison else ""
     if callable(report_plotly):
         _report_plotly(
             adapter,

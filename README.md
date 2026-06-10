@@ -131,9 +131,10 @@ model-specific templates. The standard Agent image includes GBM extras for the
 Optimization is future / experimental. Do not present search settings as the
 primary ClearML UI flow.
 
-Inference writes table artifacts named `predictions` and `prediction_summary`,
-plus a lightweight prediction distribution plot. The prediction file name comes
-from `output.prediction_name` locally or `Output/prediction_name` in ClearML.
+Inference writes table artifacts named `predictions`, `prediction_summary`,
+`prediction_preview`, and `source_summary`, plus a lightweight prediction
+distribution plot. The prediction file name comes from `output.prediction_name`
+locally or `Output/prediction_name` in ClearML.
 Input tables must not already contain the reserved output columns
 `prediction`, `model_name`, `artifact_kind`, `model_artifact_id`, or
 `prediction_run_id`. Use `Output/chunk_size` only for CSV batch inference; input

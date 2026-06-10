@@ -167,20 +167,24 @@ Expected ClearML screens:
 | --- | --- |
 | Configuration / Hyperparameters | Dataset id/file, split, target column, feature settings, candidates, ensemble methods, evaluation metric. |
 | Scalars | feature counts under `features/*`; `metrics_by_candidate/rmse`, `metrics_by_candidate/mae`, `metrics_by_candidate/r2`; compatibility `metrics_by_model/*`; `ensemble/*`; `best_model/*`. |
-| Plots | feature missingness, feature importance where available, prediction-vs-actual with `R2` and `y=x`, residual histogram with axis labels, residual-vs-predicted, candidate comparison plots from `candidate_predictions`, per-method ensemble plots, prediction distribution for inference. |
-| Artifacts | model artifacts, per-method ensemble artifacts, `feature_summary`, `feature_missingness`, `leaderboard`, `metrics_by_candidate`, `metrics_by_model`, `best_model_json`, `evaluation_report`, `evaluation_predictions`, `manifest`. |
-| Debug Samples / Tables | `feature_summary`, `feature_missingness`, `leaderboard`, `evaluation_summary`, train-stage `validation_predictions`, `feature_importance_<model>`, aggregate `evaluation_predictions`, per-method `ensemble_predictions_<method>`, `ensemble_members_<method>`, `ensemble_weights_<method>`, inference-only `predictions` and `prediction_summary`. |
+| Plots | feature missingness, feature importance where available, per-task prediction-vs-actual with `R2` and `y=x`, residual histogram with axis labels, residual-vs-predicted, Leaderboard top-k plots, per-method ensemble plots, prediction distribution for inference. |
+| Artifacts | model artifacts, per-method ensemble artifacts, `feature_summary`, `feature_missingness`, `leaderboard`, `candidate_predictions`, `metrics_by_candidate`, `metrics_by_model`, `best_model_json`, `evaluation_report`, `evaluation_predictions`, `manifest`. |
+| Debug Samples / Tables | `feature_summary`, `feature_missingness`, `leaderboard`, `leaderboard_topk`, `leaderboard_decision_summary`, `best_vs_ensemble_summary`, `evaluation_summary`, train-stage `validation_predictions`, `feature_importance_<model>`, aggregate `evaluation_predictions`, full `candidate_predictions`, per-method `ensemble_predictions_<method>`, `ensemble_members_<method>`, `ensemble_weights_<method>`, inference-only `predictions`, `prediction_summary`, `prediction_preview`, and `source_summary`. |
 | Console | dataset resolution, stage selection, artifact resolution, missing dependency errors. |
 | Graph | stage order and parent/child handoff. |
 
 If a run succeeds but users cannot understand these outputs in UI, product UX is
 not complete.
 
-Each `train_<model>` stage shows only that model's plots. Cross-model and
-cross-ensemble comparison belongs in `evaluate_models`, where
-`candidate_prediction_vs_actual`, `candidate_residual_histogram`, and
-`candidate_residual_vs_predicted` should include base models and ensemble
-methods in the same view.
+Each `train_<model>` stage shows only that model's plots. Each
+`build_ensemble_<method>` stage shows only that ensemble method. Cross-model
+and cross-ensemble comparison belongs in `evaluate_models`, where the UI should
+start with `leaderboard_table`, `leaderboard_topk_table`,
+`leaderboard_decision_summary_table`, `best_vs_ensemble_summary_table`, and
+top-k plots such as `topk_prediction_vs_actual`,
+`topk_residual_histogram`, and `topk_residual_vs_predicted`. The full
+`candidate_predictions` table remains available as evidence, but it should not
+be the primary all-series plot.
 
 ## Inference Parameters
 

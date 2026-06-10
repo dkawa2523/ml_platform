@@ -29,12 +29,15 @@ from .metrics import (
 from .model_artifact import write_model_info
 from .models import MeanTopKEnsemble, MedianEnsemble, TabularEstimator, build_model, model_candidates
 from .plots import (
+    topk_candidate_predictions,
     transformed_columns_from_transformer,
     write_candidate_prediction_vs_actual_plot,
     write_candidate_residual_histogram,
     write_candidate_residual_vs_predicted_plot,
     write_feature_importance_plot_if_available,
     write_feature_summary_tables,
+    write_leaderboard_metric_panel,
+    write_leaderboard_pareto_plot,
     write_leaderboard_table,
     write_metrics_bar_plot,
     write_metrics_by_candidate_table,
@@ -45,6 +48,7 @@ from .plots import (
 )
 
 LEADERBOARD_METRICS = ["rmse", "mae", "r2"]
+LEADERBOARD_TOP_K = 5
 SELECTION_METRICS = {"rmse", "mae", "r2"}
 
 
@@ -751,21 +755,94 @@ def _write_candidate_predictions(candidates: list[dict[str, Any]], stage_dir: Pa
         return None, {}
     combined = pd.concat(frames, ignore_index=True)
     predictions_path = write_table(combined, stage_dir / "candidate_predictions.csv")
+    topk = topk_candidate_predictions(combined, top_k=LEADERBOARD_TOP_K)
     plots = {
-        "candidate_prediction_vs_actual": write_candidate_prediction_vs_actual_plot(
-            combined,
-            stage_dir / "candidate_prediction_vs_actual.png",
+        "topk_prediction_vs_actual": write_candidate_prediction_vs_actual_plot(
+            topk,
+            stage_dir / "topk_prediction_vs_actual.png",
+            title=f"Top-{LEADERBOARD_TOP_K} prediction vs actual",
         ),
-        "candidate_residual_histogram": write_candidate_residual_histogram(
-            combined,
-            stage_dir / "candidate_residual_histogram.png",
+        "topk_residual_histogram": write_candidate_residual_histogram(
+            topk,
+            stage_dir / "topk_residual_histogram.png",
+            title=f"Top-{LEADERBOARD_TOP_K} residual histogram",
         ),
-        "candidate_residual_vs_predicted": write_candidate_residual_vs_predicted_plot(
-            combined,
-            stage_dir / "candidate_residual_vs_predicted.png",
+        "topk_residual_vs_predicted": write_candidate_residual_vs_predicted_plot(
+            topk,
+            stage_dir / "topk_residual_vs_predicted.png",
+            title=f"Top-{LEADERBOARD_TOP_K} residuals vs predicted",
         ),
     }
     return predictions_path, plots
+
+
+def _selector_for_item(item: dict[str, Any]) -> str:
+    if item["artifact_kind"] == "ensemble" and item.get("ensemble_method"):
+        return f"ensemble:{item['ensemble_method']}"
+    return str(item["model_name"])
+
+
+def _summary_row(summary: str, item: dict[str, Any] | None, selection_metric: str) -> dict[str, Any]:
+    if item is None:
+        return {
+            "summary": summary,
+            "model_name": None,
+            "artifact_kind": None,
+            "ensemble_method": None,
+            "selection_metric": selection_metric,
+            "selection_value": None,
+            "rmse": None,
+            "mae": None,
+            "r2": None,
+            "model_selector": None,
+            "infer_target": None,
+        }
+    return {
+        "summary": summary,
+        "model_name": item["model_name"],
+        "artifact_kind": item["artifact_kind"],
+        "ensemble_method": item.get("ensemble_method"),
+        "selection_metric": selection_metric,
+        "selection_value": metric_value(item["metrics"], selection_metric),
+        "rmse": item["metrics"].get("rmse"),
+        "mae": item["metrics"].get("mae"),
+        "r2": item["metrics"].get("r2"),
+        "model_selector": _selector_for_item(item),
+        "infer_target": _selector_for_item(item),
+    }
+
+
+def _best_vs_ensemble_rows(
+    best_single: dict[str, Any] | None,
+    best_ensemble: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    def _optional_metric(item: dict[str, Any] | None, metric_name: str) -> float | None:
+        if item is None:
+            return None
+        value = item.get("metrics", {}).get(metric_name)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    rows: list[dict[str, Any]] = []
+    for metric_name in LEADERBOARD_METRICS:
+        single_value = _optional_metric(best_single, metric_name)
+        ensemble_value = _optional_metric(best_ensemble, metric_name)
+        delta = None
+        improved = None
+        if single_value is not None and ensemble_value is not None:
+            delta = ensemble_value - single_value
+            improved = delta > 0 if metric_name == "r2" else delta < 0
+        rows.append(
+            {
+                "metric": metric_name,
+                "best_single_model": best_single.get("model_name") if best_single else None,
+                "best_single_value": single_value,
+                "best_ensemble_method": best_ensemble.get("ensemble_method") if best_ensemble else None,
+                "best_ensemble_value": ensemble_value,
+                "ensemble_minus_single": delta,
+                "ensemble_improved": improved,
+            }
+        )
+    return rows
 
 
 def _evaluate_models(
@@ -789,11 +866,18 @@ def _evaluate_models(
     candidates.extend(ensemble_items)
     ranked = _ranked_results(candidates, selection_metric)
     best = ranked[0]
+    ranked_models = _ranked_results(model_results, selection_metric) if model_results else []
+    best_single = ranked_models[0] if ranked_models else None
     ranked_ensembles = _ranked_results(ensemble_items, selection_metric) if ensemble_items else []
     best_ensemble = ranked_ensembles[0] if ranked_ensembles else None
     metrics_by_model = _metrics_by_model_payload(ranked, selection_metric)
 
-    leaderboard_path = write_leaderboard_table(_leaderboard_rows(ranked, selection_metric), stage_dir / "leaderboard.csv")
+    leaderboard_rows = _leaderboard_rows(ranked, selection_metric)
+    leaderboard_path = write_leaderboard_table(leaderboard_rows, stage_dir / "leaderboard.csv")
+    leaderboard_topk_path = write_leaderboard_table(
+        leaderboard_rows[:LEADERBOARD_TOP_K],
+        stage_dir / "leaderboard_topk.csv",
+    )
     evaluation_predictions_path, plots = _write_evaluation_predictions(best, stage_dir)
     candidate_predictions_path, candidate_plots = _write_candidate_predictions(ranked, stage_dir)
     plots.update(candidate_plots)
@@ -842,6 +926,24 @@ def _evaluate_models(
         value_label=selection_metric,
         sort="value_desc" if selection_metric == "r2" else "value_asc",
     )
+    leaderboard_topk_score_bar_path = write_metrics_bar_plot(
+        [(row["model_name"], row.get(selection_metric)) for row in leaderboard_rows],
+        stage_dir / "leaderboard_topk_score_bar.png",
+        title=f"Leaderboard top-{LEADERBOARD_TOP_K} ({selection_metric})",
+        value_label=selection_metric,
+        top_n=LEADERBOARD_TOP_K,
+        sort="input",
+    )
+    leaderboard_metric_panel_path = write_leaderboard_metric_panel(
+        leaderboard_rows,
+        stage_dir / "leaderboard_metric_panel.png",
+        top_k=LEADERBOARD_TOP_K,
+    )
+    leaderboard_pareto_path = write_leaderboard_pareto_plot(
+        leaderboard_rows,
+        stage_dir / "leaderboard_pareto_rmse_r2.png",
+        top_k=max(LEADERBOARD_TOP_K, 10),
+    )
     best_model_path = stage_dir / "best_model.joblib"
     shutil.copy2(best["artifacts"]["model"], best_model_path)
     best_payload = {
@@ -871,39 +973,19 @@ def _evaluate_models(
         }
     best_model_json_path = write_json(best_payload, stage_dir / "best_model.json")
     summary_rows = [
-        {
-            "summary": "best_overall",
-            "model_name": best_payload["model_name"],
-            "artifact_kind": best_payload["artifact_kind"],
-            "ensemble_method": best_payload.get("ensemble_method"),
-            "selection_metric": selection_metric,
-            "selection_value": best_payload["selection_value"],
-            "rmse": best_payload["metrics"].get("rmse"),
-            "mae": best_payload["metrics"].get("mae"),
-            "r2": best_payload["metrics"].get("r2"),
-            "model_selector": (
-                f"ensemble:{best_payload['ensemble_method']}"
-                if best_payload["artifact_kind"] == "ensemble" and best_payload.get("ensemble_method")
-                else best_payload["model_name"]
-            ),
-        }
+        _summary_row("best_overall", best, selection_metric),
+        _summary_row("best_single_model", best_single, selection_metric),
+        _summary_row("best_ensemble", best_ensemble, selection_metric),
     ]
-    if best_ensemble_payload is not None:
-        summary_rows.append(
-            {
-                "summary": "best_ensemble",
-                "model_name": best_ensemble_payload["model_name"],
-                "artifact_kind": best_ensemble_payload["artifact_kind"],
-                "ensemble_method": best_ensemble_payload.get("ensemble_method"),
-                "selection_metric": selection_metric,
-                "selection_value": best_ensemble_payload["selection_value"],
-                "rmse": best_ensemble_payload["metrics"].get("rmse"),
-                "mae": best_ensemble_payload["metrics"].get("mae"),
-                "r2": best_ensemble_payload["metrics"].get("r2"),
-                "model_selector": f"ensemble:{best_ensemble_payload['ensemble_method']}",
-            }
-        )
     evaluation_summary_path = write_table(pd.DataFrame(summary_rows), stage_dir / "evaluation_summary.csv")
+    leaderboard_decision_summary_path = write_table(
+        pd.DataFrame(summary_rows),
+        stage_dir / "leaderboard_decision_summary.csv",
+    )
+    best_vs_ensemble_summary_path = write_table(
+        pd.DataFrame(_best_vs_ensemble_rows(best_single, best_ensemble)),
+        stage_dir / "best_vs_ensemble_summary.csv",
+    )
     report = {
         "stage": "evaluate_models",
         "candidate_count": len(model_results),
@@ -911,8 +993,9 @@ def _evaluate_models(
         "ensemble_count": len(ensemble_items),
         "selection_metric": selection_metric,
         "best_model": best_payload,
+        "best_single_model": _summary_row("best_single_model", best_single, selection_metric),
         "best_ensemble": best_ensemble_payload,
-        "ranked_models": _leaderboard_rows(ranked, selection_metric),
+        "ranked_models": leaderboard_rows,
         "ensemble_metrics": {
             item["model_name"]: {
                 "ensemble_method": item.get("ensemble_method"),
@@ -925,6 +1008,9 @@ def _evaluate_models(
         "metrics_by_model": metrics_by_model,
         "metrics_by_candidate": metrics_by_model,
         "evaluation_predictions": str(evaluation_predictions_path) if evaluation_predictions_path else None,
+        "leaderboard_topk": str(leaderboard_topk_path),
+        "leaderboard_decision_summary": str(leaderboard_decision_summary_path),
+        "best_vs_ensemble_summary": str(best_vs_ensemble_summary_path),
     }
     evaluation_report_path = write_json(report, stage_dir / "evaluation_report.json")
     metrics_payload = {
@@ -959,14 +1045,20 @@ def _evaluate_models(
         "artifacts": artifacts,
         "tables": {
             "leaderboard": leaderboard_path,
+            "leaderboard_topk": leaderboard_topk_path,
             "metrics_by_candidate": metrics_by_candidate_table_path,
             "evaluation_summary": evaluation_summary_path,
+            "leaderboard_decision_summary": leaderboard_decision_summary_path,
+            "best_vs_ensemble_summary": best_vs_ensemble_summary_path,
             **({"evaluation_predictions": evaluation_predictions_path} if evaluation_predictions_path else {}),
             **({"candidate_predictions": candidate_predictions_path} if candidate_predictions_path else {}),
         },
         "plots": {
             "metrics_by_model_bar": metrics_by_model_bar_path,
             "metrics_by_candidate_bar": metrics_by_candidate_bar_path,
+            "leaderboard_topk_score_bar": leaderboard_topk_score_bar_path,
+            "leaderboard_metric_panel": leaderboard_metric_panel_path,
+            "leaderboard_pareto_rmse_r2": leaderboard_pareto_path,
             **plots,
         },
     }

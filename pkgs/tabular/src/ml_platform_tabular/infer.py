@@ -423,7 +423,6 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         **artifacts,
         "model_source": model_path,
     }
-    tables = {"predictions": predictions_path, **prediction_tables}
     data_cfg = cfg.get("data", {})
     model_cfg = cfg.get("model", {})
     manifest_extra = {
@@ -451,6 +450,24 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         "target_column": data_cfg.get("target_column"),
         "chunk_size": chunk_size,
     }
+    source_summary_path = write_table(
+        pd.DataFrame(
+            [
+                {"field": "source_type", "value": manifest_extra["source_type"]},
+                {"field": "source_task_id", "value": manifest_extra["source_task_id"]},
+                {"field": "model_selector", "value": manifest_extra["model_selector"]},
+                {"field": "artifact_kind", "value": manifest_extra["artifact_kind"]},
+                {"field": "model_name", "value": manifest_extra["model_name"]},
+                {"field": "ensemble_method", "value": manifest_extra["ensemble_method"]},
+                {"field": "resolved_model_path", "value": manifest_extra["resolved_model_path"]},
+                {"field": "model_artifact_id", "value": manifest_extra["model_artifact_id"]},
+                {"field": "feature_spec_path", "value": manifest_extra["feature_spec_path"]},
+                {"field": "preprocess_bundle_path", "value": manifest_extra["preprocess_bundle_path"]},
+            ]
+        ),
+        run_dir / "source_summary.csv",
+    )
+    tables = {"predictions": predictions_path, **prediction_tables, "source_summary": source_summary_path}
     manifest_path = write_manifest(
         run_dir,
         config=cfg,

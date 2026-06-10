@@ -382,6 +382,9 @@ Training pipeline artifacts:
 - `metrics_by_model.json`
 - `metrics_by_candidate.json`
 - `leaderboard.csv`
+- `leaderboard_topk.csv`
+- `leaderboard_decision_summary.csv`
+- `best_vs_ensemble_summary.csv`
 - `best_model.json`
 - `ensemble_refs.json`
 - `ensemble_info_by_method.json`
@@ -398,19 +401,23 @@ ClearML result display:
 
 - artifacts: model files, `feature_summary`, `leaderboard`, `best_model_json`,
   `ensemble_info`, `evaluation_report`, `manifest`
-- tables: feature summary/missingness, leaderboard, evaluation summary,
-  evaluation predictions, feature importance, ensemble members/weights, and
-  inference predictions
+- tables: feature summary/missingness, leaderboard, leaderboard top-k,
+  decision summary, best-vs-ensemble summary, evaluation predictions, feature
+  importance, ensemble members/weights, and inference predictions/source
+  summary
 - scalars: feature counts, per-model `rmse`, `mae`, `r2`; ensemble and
   best-model summaries
 - plots: feature missingness, feature importance where available,
-  prediction-vs-actual and residual histogram from prediction tables, prediction
-  distribution for inference, plus metrics-by-candidate/model artifacts
+  per-task prediction-vs-actual and residual plots, Leaderboard top-k score /
+  metric / Pareto plots, prediction distribution for inference, plus
+  metrics-by-candidate/model artifacts
 
 Inference artifacts:
 
 - `predictions.csv`
 - `prediction_summary.csv`
+- `prediction_preview.csv`
+- `source_summary.csv`
 - `prediction_distribution_histogram.png`
 - `manifest.json`
 

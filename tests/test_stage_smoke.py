@@ -127,8 +127,11 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     evaluation = run_task(eval_cfg)
 
     assert evaluation.tables["leaderboard"].exists()
+    assert evaluation.tables["leaderboard_topk"].exists()
     assert evaluation.tables["metrics_by_candidate"].exists()
     assert evaluation.tables["evaluation_summary"].exists()
+    assert evaluation.tables["leaderboard_decision_summary"].exists()
+    assert evaluation.tables["best_vs_ensemble_summary"].exists()
     assert evaluation.tables["evaluation_predictions"].exists()
     assert evaluation.tables["candidate_predictions"].exists()
     assert evaluation.artifacts["model_refs"].exists()
@@ -140,15 +143,18 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert evaluation.artifacts["manifest"].exists()
     assert "metrics_by_model_bar" in evaluation.plots
     assert "metrics_by_candidate_bar" in evaluation.plots
+    assert "leaderboard_topk_score_bar" in evaluation.plots
+    assert "leaderboard_metric_panel" in evaluation.plots
+    assert "leaderboard_pareto_rmse_r2" in evaluation.plots
     assert "prediction_vs_actual" in evaluation.plots
     assert "residual_histogram" in evaluation.plots
     assert "residual_vs_predicted" in evaluation.plots
     assert "best_prediction_vs_actual" in evaluation.plots
     assert "best_residual_histogram" in evaluation.plots
     assert "best_residual_vs_predicted" in evaluation.plots
-    assert "candidate_prediction_vs_actual" in evaluation.plots
-    assert "candidate_residual_histogram" in evaluation.plots
-    assert "candidate_residual_vs_predicted" in evaluation.plots
+    assert "topk_prediction_vs_actual" in evaluation.plots
+    assert "topk_residual_histogram" in evaluation.plots
+    assert "topk_residual_vs_predicted" in evaluation.plots
 
 
 def test_tabular_stage_runner_rejects_future_optimization_stages(tmp_path):

@@ -657,6 +657,8 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     )
     leaderboard = tmp_path / "leaderboard.csv"
     leaderboard.write_text("rank,model_name,rmse\n1,mean_topk,0.25\n", encoding="utf-8")
+    leaderboard_topk = tmp_path / "leaderboard_topk.csv"
+    leaderboard_topk.write_text("rank,model_name,rmse\n1,mean_topk,0.25\n", encoding="utf-8")
     feature_summary_table = tmp_path / "feature_summary_table.csv"
     feature_summary_table.write_text("metric,value\ninput_rows,100\n", encoding="utf-8")
     missing_rate_by_column = tmp_path / "missing_rate_by_column.csv"
@@ -671,6 +673,20 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     metrics_table.write_text("metric,value\nrmse,0.25\nmae,0.18\nr2,0.92\n", encoding="utf-8")
     evaluation_summary = tmp_path / "evaluation_summary.csv"
     evaluation_summary.write_text("summary,model_name,rmse\nbest_overall,ridge,0.3\n", encoding="utf-8")
+    leaderboard_decision_summary = tmp_path / "leaderboard_decision_summary.csv"
+    leaderboard_decision_summary.write_text(
+        "summary,model_name,artifact_kind,ensemble_method,rmse,model_selector\n"
+        "best_overall,ridge,model,,0.3,ridge\n"
+        "best_single_model,ridge,model,,0.3,ridge\n"
+        "best_ensemble,weighted,ensemble,weighted,0.24,ensemble:weighted\n",
+        encoding="utf-8",
+    )
+    best_vs_ensemble_summary = tmp_path / "best_vs_ensemble_summary.csv"
+    best_vs_ensemble_summary.write_text(
+        "metric,best_single_model,best_single_value,best_ensemble_method,best_ensemble_value,ensemble_minus_single,ensemble_improved\n"
+        "rmse,ridge,0.3,weighted,0.24,-0.06,true\n",
+        encoding="utf-8",
+    )
     validation_predictions = tmp_path / "validation_predictions.csv"
     validation_predictions.write_text("actual,prediction,residual,abs_error\n1,0.9,0.1,0.1\n", encoding="utf-8")
     aggregate_validation_predictions = tmp_path / "validation_predictions_linear.csv"
@@ -683,13 +699,19 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     prediction_summary.write_text("metric,value\nprediction_rows,1\n", encoding="utf-8")
     prediction_preview = tmp_path / "prediction_preview.csv"
     prediction_preview.write_text("prediction\n1.1\n", encoding="utf-8")
+    source_summary = tmp_path / "source_summary.csv"
+    source_summary.write_text("field,value\nmodel_selector,best\nartifact_kind,model\n", encoding="utf-8")
     ensemble_predictions = tmp_path / "ensemble_predictions_weighted.csv"
     ensemble_predictions.write_text("actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n", encoding="utf-8")
     candidate_predictions = tmp_path / "candidate_predictions.csv"
     candidate_predictions.write_text(
-        "candidate_name,artifact_kind,actual,prediction,residual,abs_error\n"
-        "ridge,model,1,0.9,0.1,0.1\n"
-        "weighted,ensemble,1,1.05,-0.05,0.05\n",
+        "candidate_rank,candidate_name,artifact_kind,ensemble_method,actual,prediction,residual,abs_error\n"
+        "1,ridge,model,,1,0.9,0.1,0.1\n"
+        "2,weighted,ensemble,weighted,1,1.05,-0.05,0.05\n"
+        "3,median,ensemble,median,1,1.02,-0.02,0.02\n"
+        "4,linear,model,,1,0.8,0.2,0.2\n"
+        "5,lasso,model,,1,0.85,0.15,0.15\n"
+        "6,elasticnet,model,,1,0.75,0.25,0.25\n",
         encoding="utf-8",
     )
     ensemble_metrics_table = tmp_path / "ensemble_metrics_table.csv"
@@ -749,6 +771,7 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
         },
         tables={
             "leaderboard": leaderboard,
+            "leaderboard_topk": leaderboard_topk,
             "feature_summary_table": feature_summary_table,
             "feature_summary": feature_summary_table,
             "missing_rate_by_column": missing_rate_by_column,
@@ -757,12 +780,15 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "feature_importance_linear": feature_importance,
             "metrics_table": metrics_table,
             "evaluation_summary": evaluation_summary,
+            "leaderboard_decision_summary": leaderboard_decision_summary,
+            "best_vs_ensemble_summary": best_vs_ensemble_summary,
             "validation_predictions": validation_predictions,
             "validation_predictions_linear": aggregate_validation_predictions,
             "evaluation_predictions": evaluation_predictions,
             "predictions": predictions,
             "prediction_summary": prediction_summary,
             "prediction_preview": prediction_preview,
+            "source_summary": source_summary,
             "ensemble_metrics_table": ensemble_metrics_table,
             "ensemble_predictions_weighted": ensemble_predictions,
             "candidate_predictions": candidate_predictions,
@@ -787,6 +813,7 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("metrics", "mae", 0.18, 0) in adapter.scalars
     assert ("metrics", "rmse", 0.25, 0) in adapter.scalars
     assert ("tables", "leaderboard_table", leaderboard, 0) in adapter.tables
+    assert ("tables", "leaderboard_topk_table", leaderboard_topk, 0) in adapter.tables
     assert ("tables", "feature_summary_table", feature_summary_table, 0) in adapter.tables
     assert ("tables", "feature_summary", feature_summary_table, 0) in adapter.tables
     assert ("tables", "missing_rate_by_column", missing_rate_by_column, 0) in adapter.tables
@@ -795,11 +822,14 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert ("tables", "feature_importance_linear", feature_importance, 0) in adapter.tables
     assert ("tables", "metrics_table", metrics_table, 0) in adapter.tables
     assert ("tables", "evaluation_summary_table", evaluation_summary, 0) in adapter.tables
+    assert ("tables", "leaderboard_decision_summary_table", leaderboard_decision_summary, 0) in adapter.tables
+    assert ("tables", "best_vs_ensemble_summary_table", best_vs_ensemble_summary, 0) in adapter.tables
     assert ("tables", "validation_predictions", validation_predictions, 0) in adapter.tables
     assert ("tables", "evaluation_predictions", evaluation_predictions, 0) in adapter.tables
     assert ("tables", "predictions_table", predictions, 0) in adapter.tables
     assert ("tables", "prediction_summary_table", prediction_summary, 0) in adapter.tables
     assert ("tables", "prediction_preview_table", prediction_preview, 0) in adapter.tables
+    assert ("tables", "source_summary_table", source_summary, 0) in adapter.tables
     assert ("tables", "ensemble_metrics_table", ensemble_metrics_table, 0) in adapter.tables
     assert ("tables", "ensemble_predictions_weighted", ensemble_predictions, 0) in adapter.tables
     assert ("tables", "candidate_predictions_table", candidate_predictions, 0) in adapter.tables
@@ -812,13 +842,17 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "evaluation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "residual_histogram", "evaluation_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "candidate_prediction_vs_actual", "candidate_predictions") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "candidate_residual_histogram", "candidate_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "topk_prediction_vs_actual", "candidate_predictions") for item in adapter.plots)
+    assert any(item[:3] == ("plotly", "topk_residual_histogram", "candidate_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_distribution_histogram", "predictions") for item in adapter.plots)
     prediction_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions"))
     assert any(trace.get("name") == "y=x" for trace in prediction_fig["data"])
     assert prediction_fig["layout"]["xaxis"]["title"] == "actual"
     assert prediction_fig["layout"]["yaxis"]["title"] == "prediction"
+    topk_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "topk_prediction_vs_actual", "candidate_predictions"))
+    candidate_traces = [trace for trace in topk_fig["data"] if trace.get("name") != "y=x"]
+    assert len(candidate_traces) <= 5
+    assert all("rank " in trace.get("name", "") for trace in candidate_traces)
     assert ("plots", "metrics_by_candidate_bar", plot, 0) in adapter.images
     assert adapter.media == []
 

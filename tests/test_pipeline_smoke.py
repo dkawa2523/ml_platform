@@ -159,6 +159,9 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "metrics_by_model_bar" in result.plots
     assert "metrics_by_candidate_bar" in result.plots
     assert result.plots["metrics_by_candidate_bar"].suffix == ".png"
+    assert "leaderboard_topk_score_bar" in result.plots
+    assert "leaderboard_metric_panel" in result.plots
+    assert "leaderboard_pareto_rmse_r2" in result.plots
     assert "missing_rate_by_column_bar" in result.plots
     assert "feature_missingness_bar" in result.plots
     assert result.plots["feature_missingness_bar"].suffix == ".png"
@@ -174,9 +177,12 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "best_residual_histogram" in result.plots
     assert "best_residual_vs_predicted" in result.plots
     assert "candidate_predictions" in result.tables
-    assert "candidate_prediction_vs_actual" in result.plots
-    assert "candidate_residual_histogram" in result.plots
-    assert "candidate_residual_vs_predicted" in result.plots
+    assert "topk_prediction_vs_actual" in result.plots
+    assert "topk_residual_histogram" in result.plots
+    assert "topk_residual_vs_predicted" in result.plots
+    assert "leaderboard_topk" in result.tables
+    assert "leaderboard_decision_summary" in result.tables
+    assert "best_vs_ensemble_summary" in result.tables
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
     candidate_predictions = pd.read_csv(result.tables["candidate_predictions"])
@@ -185,7 +191,11 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     )
     assert {"linear", "mean_topk", "weighted", "median"} <= set(candidate_predictions["candidate_name"])
     evaluation_summary = pd.read_csv(result.tables["evaluation_summary"])
-    assert {"best_overall", "best_ensemble"} <= set(evaluation_summary["summary"])
+    assert {"best_overall", "best_single_model", "best_ensemble"} <= set(evaluation_summary["summary"])
+    decision_summary = pd.read_csv(result.tables["leaderboard_decision_summary"])
+    assert {"best_overall", "best_single_model", "best_ensemble"} <= set(decision_summary["summary"])
+    best_vs_ensemble = pd.read_csv(result.tables["best_vs_ensemble_summary"])
+    assert set(best_vs_ensemble["metric"]) == {"rmse", "mae", "r2"}
     assert "predictions" not in result.tables
 
     best_model = read_json(result.artifacts["best_model_json"])
@@ -302,6 +312,7 @@ def test_training_pipeline_feature_drop_passthrough_and_infer_alignment(tmp_path
     assert infer_result.tables["predictions"].exists()
     assert infer_result.tables["prediction_summary"].exists()
     assert infer_result.tables["prediction_preview"].exists()
+    assert infer_result.tables["source_summary"].exists()
     assert "prediction_distribution" in infer_result.plots
     assert "prediction_distribution_histogram" in infer_result.plots
 
@@ -349,6 +360,7 @@ def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path)
     assert best_result.tables["predictions"].exists()
     assert best_result.tables["prediction_summary"].exists()
     assert best_result.tables["prediction_preview"].exists()
+    assert best_result.tables["source_summary"].exists()
     assert "prediction_distribution" in best_result.plots
     assert "prediction_distribution_histogram" in best_result.plots
 
