@@ -95,6 +95,9 @@ model:
     - random_forest
     - extra_trees
     - gradient_boosting
+    - lightgbm
+    - xgboost
+    - catboost
   selection_metric: rmse
   ensemble:
     enabled: true

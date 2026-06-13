@@ -5,6 +5,7 @@ import pytest
 from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
 from ml_platform_tabular.infer import run_infer
+from ml_platform_tabular.models import DEPENDENCY_FREE_MODELS
 from ml_platform_tabular.pipeline import run_pipeline
 
 
@@ -53,6 +54,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["candidates"] = list(DEPENDENCY_FREE_MODELS)
 
     result = run_pipeline(cfg)
 
@@ -349,6 +351,7 @@ def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path)
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["candidates"] = list(DEPENDENCY_FREE_MODELS)
     pipeline_result = run_pipeline(cfg)
 
     infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
@@ -397,6 +400,7 @@ def test_infer_rejects_unknown_local_training_pipeline_selector(tmp_path):
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
+    cfg["model"]["candidates"] = list(DEPENDENCY_FREE_MODELS)
     pipeline_result = run_pipeline(cfg)
 
     infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")

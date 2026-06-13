@@ -1,43 +1,29 @@
 # Next Release Backlog
 
-Current scope is defined in `docs/SPEC.md`. Keep this backlog short; do not add
-issue-template style process docs.
+Keep this list short. Product scope is in `docs/SPEC.md`.
 
-## Now
+## Required Before Release
 
-1. ClearML remote verification for `tabular_train_pipeline_template`.
-   - Purpose: prove the stage graph on the dev server.
-   - Scope: run with ClearML Dataset id/file, the standard Agent image, all 10 default candidates, and ensemble methods enabled.
-   - Acceptance: graph shows `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`; required artifacts are visible and the leaderboard includes 10 base models plus ensembles.
-   - Do not do: add full templates, optimization templates, or model-specific templates.
+1. Rebuild and push the standard ClearML Agent image with `pkgs/tabular[gbm]`.
+   - Goal: default 10-model New Run executes without removing GBM candidates.
+   - Evidence: Agent log shows LightGBM, XGBoost, and CatBoost imports work.
 
-2. ClearML remote inference verification for `tabular_infer_template`.
-   - Purpose: prove source-task inference from a completed training pipeline.
-   - Scope: run `model_selector=best` and `model_selector=ensemble`.
-   - Acceptance: `predictions.csv` and `manifest.json` are visible; source task and selector are recorded.
-   - Do not do: create an inference pipeline or online serving API.
+2. Remote training verification from `template/tabular_train_pipeline`.
+   - Goal: graph shows `preprocess_features`, 10 `train_<model>` steps, three
+     `build_ensemble_<method>` steps, and `evaluate_models`.
+   - Evidence: `evaluate_models` leaderboard includes base models and ensemble
+     rows; Scalars, Tables, Plots, and Artifacts are visible.
 
-3. ClearML UI input polish.
-   - Purpose: make required remote parameters obvious.
-   - Scope: template tags, descriptions, and short docs for `clearml_dataset_id`, `dataset_file`, `target_column`, feature settings, candidates, and ensemble methods.
-   - Acceptance: users can distinguish local path from remote Dataset usage without reading code.
-   - Do not do: add broad troubleshooting, contracts, or diagnostics helpers.
+3. Remote inference verification from `template/tabular_infer`.
+   - Goal: `model_selector=best` and `model_selector=ensemble` both produce
+     `predictions.csv`, prediction summary, and prediction distribution plots.
+
+4. Archive stale ClearML server tasks manually after the latest templates are
+   confirmed.
 
 ## Later
 
-- Revisit optimization pipeline only after the primary training and inference
-  route is stable.
-- Keep LightGBM, XGBoost, and CatBoost as supported optional-dependency models.
-  Do not add their heavy packages to package required dependencies or
-  `requirements.txt`; the standard Agent image installs `pkgs/tabular[gbm]` for
-  the default 10-model ClearML template.
-- Keep Optuna, Ray Tune, per-trial child tasks, stacking, advanced diagnostics,
-  and online serving out of the primary flow.
-
-## Delete Candidates After Human Review
-
-- Remaining historical verification files that continue to be mistaken for
-  current readiness evidence.
-- Obsolete compatibility docs that duplicate `docs/SPEC.md`.
-- Legacy `tabular_train_template`, `tabular_eval_template`, and old
-  `train -> eval -> infer` instructions if no longer useful for migration.
+- Optional local GBM smoke in an environment with `pkgs/tabular[gbm]`.
+- Stacking and optimization only after the primary training and inference route
+  is stable.
+- Advanced diagnostics only when they have a clear user-facing decision value.

@@ -1,213 +1,111 @@
-# Specification
+# Product Specification
 
-## Product Goal
+`ml_platform` is a ClearML-based execution platform for tabular scalar
+regression. It must be usable from ClearML UI and maintainable by data
+scientists extending features, models, ensembles, metrics, plots, and reports.
 
-`ml_platform` is a ClearML-based machine learning execution platform. The
-current primary product domain is tabular scalar regression.
+Legacy repositories are reference-only material. This repo does not preserve
+legacy layout or full parity.
 
-The product must support two workflows:
+## Training
 
-- ClearML UI users select a dataset, set parameters, run a task or pipeline,
-  and inspect metrics, leaderboard, artifacts, predictions, and pipeline graph
-  without reading code.
-- Data scientists and architects can improve preprocessing, feature
-  engineering, models, ensemble logic, evaluation, inference, and ClearML
-  integration without being blocked by unnecessary prohibitions, helpers,
-  diagnostics, tests, or docs.
-
-Legacy repositories are reference material only. This repository does not target
-legacy full parity or legacy directory/config recreation.
-
-## Product Scope
-
-### Supported
-
-- local tabular scalar regression training pipeline
-- local tabular batch inference task
-- ClearML Dataset id / dataset file handling
-- dependency-free supported models: `linear`, `ridge`, `lasso`, `elasticnet`,
-  `random_forest`, `extra_trees`, `gradient_boosting`
-- optional-dependency supported models: `lightgbm`, `xgboost`, `catboost`
-- user-facing preprocessing and feature parameters in the training Pipeline UI
-- multiple model training through `model.candidates`
-- one training pipeline can run and compare multiple ensemble methods such as
-  `mean_topk`, `weighted`, and `median`
-- leaderboard and best model selection
-- validation prediction tables with `actual`, `prediction`, `residual`, and
-  `abs_error`
-- lightweight prediction-vs-actual and residual histogram artifacts
-- current ClearML template sync and dry-run surface
-
-Supported currently means local execution plus repository-side dry-run evidence.
-ClearML remote execution is promoted only after dev-server evidence is recorded
-in `verification/training_pipeline/release_gate.md`.
-
-### Experimental / Future
-
-- ClearML remote execution of the stage-based training pipeline until dev-server
-  evidence is recorded
-- ClearML remote inference from `source_task_id` until best/ensemble evidence is
-  recorded
-- optimization pipeline
-- `search_trials`, `retrain_best`, `evaluate_best`
-- `artifact_url` inference source
-- `clearml_model_id` inference source
-- external model full pipeline
-- Optuna / Ray Tune
-- per-trial ClearML child tasks
-- online serving
-- tabular 1D/2D productization
-- distribution mode decomposition
-- advanced plots and reports
-
-### Out Of Scope
-
-- calling `train -> eval -> infer` the training pipeline
-- optimization as the primary product flow
-- full pipeline templates as primary templates
-- full ensemble pipeline templates as primary templates
-- `knn`, `svr`, and `mlp`
-- `gaussian_process`
-- `tabpfn`
-- stacking
-- model-specific templates
-- one-template-per-ensemble-method variants
-- optimization-specific templates
-- dataset-specific templates
-- direct copy of legacy `train_ensemble_full`
-- excessive diagnostics, tests, helpers, and docs
-
-## Training Pipeline
-
-The official training pipeline is:
+Official graph:
 
 ```text
-preprocess_features
-  -> train_<model>*
-  -> build_ensemble_<method>*
-  -> evaluate_models
+preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
-Each ClearML ensemble step uses the same internal `build_ensemble` stage runner
-and one ensemble method. Do not create ensemble-specific templates.
+Primary task configs:
 
-The intended ClearML graph for the default tabular regression product is:
+- `config/tasks/tabular_pipeline.yaml`
+- `config/tasks/tabular_stage.yaml`
+- `config/tasks/tabular_infer.yaml`
+
+Compatibility or future utilities may remain in `config/tasks`, but they are
+not product entrypoints and must not be synced as user-facing ClearML templates.
+
+## Models
+
+Supported models:
 
 ```text
-preprocess_features
-  -> train_linear
-  -> train_ridge
-  -> train_lasso
-  -> train_elasticnet
-  -> train_random_forest
-  -> train_extra_trees
-  -> train_gradient_boosting
-  -> build_ensemble_mean_topk
-  -> build_ensemble_weighted
-  -> build_ensemble_median
-  -> evaluate_models
+linear, ridge, lasso, elasticnet,
+random_forest, extra_trees, gradient_boosting,
+lightgbm, xgboost, catboost
 ```
 
-Each `train_<model>` node uses the same internal stage template with a different
-step name and `Model/name`. Do not create model-specific templates.
+`lightgbm`, `xgboost`, and `catboost` require optional dependencies. They stay
+out of package required dependencies and `requirements.txt`; the standard
+ClearML Agent image installs `pkgs/tabular[gbm]` so the product-facing default
+10-candidate run can execute. Local or slim-Agent runs may override
+`model.candidates` to the dependency-free subset.
 
-Model selection is done with `model.candidates` locally and `Model/candidates`
-in ClearML UI. Local task config may stay dependency-free for portability, while
-the user-facing ClearML New Run form should prefill `Model/candidates` with all
-supported model names so operators can see the full selectable model set.
+Out-of-scope models:
 
-`Model/model_params_by_name` should be prefilled with editable keys for all
-supported models, including optional-dependency GBM models.
+```text
+knn, svr, mlp, gaussian_process, tabpfn
+```
 
-Dependency-free supported models are:
+## Ensembles
 
-- `linear`
-- `ridge`
-- `lasso`
-- `elasticnet`
-- `random_forest`
-- `extra_trees`
-- `gradient_boosting`
+Supported methods:
 
-Optional-dependency supported models are:
+```text
+mean_topk, weighted, median
+```
 
-- `lightgbm`
-- `xgboost`
-- `catboost`
+One training run may build multiple ensemble methods. Each method must produce
+metrics, prediction tables, member/weight tables when applicable, and artifacts
+that can be compared in `evaluate_models`.
 
-Optional-dependency models are product-supported, but executable only when their
-dependency is installed in the local or Agent environment. If a dependency is
-missing, the selected optional model should fail with a clear installation error
-without breaking dependency-free model runs.
+## Evaluation Outputs
 
-GBDT-style sklearn boosting is exposed as `gradient_boosting`, not `gbdt`.
+`evaluate_models` is the comparison dashboard. It owns:
 
-Install optional model dependencies explicitly, for example
-`pip install -e "pkgs/tabular[gbm]"`. Do not add them to package required
-dependencies or `requirements.txt`. The standard ClearML Agent image may install
-`pkgs/tabular[gbm]` so the user-facing New Run default candidates can execute
-all 10 supported models.
+- `leaderboard.csv`
+- `leaderboard_topk.csv`
+- `leaderboard_decision_summary.csv`
+- `best_vs_ensemble_summary.csv`
+- `metrics_by_candidate.json` and `.csv`
+- `best_model.json`
+- `evaluation_report.json`
+- `evaluation_predictions.csv`
+- `candidate_predictions.csv`
+- `recommendation.json`
+- `decision_summary.md` / `decision_summary.json`
+- `manifest.json`
 
-Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
-
-Primary stages:
-
-- `preprocess_features`
-- `train_model`
-- `build_ensemble`
-- `evaluate_models`
-
-Future stages:
-
-- `search_trials`
-- `retrain_best`
-- `evaluate_best`
+ClearML PLOTS should focus on readable leaderboard views: table, top-k score
+bar, metric panel, Pareto scatter, top-k prediction-vs-actual, top-k residual
+histogram, and top-k residual-vs-predicted. Full candidate predictions stay as
+table/artifact evidence, not a noisy all-series plot.
 
 ## Inference
 
-Inference is separate from the training pipeline. The official inference
-entrypoint is `tabular_infer_template`.
+Official inference entrypoint: `tabular_infer_template`.
 
-Primary inference sources:
+Primary sources:
 
 - `source_task_id + model_selector`
 - `local_model_path`
 
-Future inference sources:
+Selectors:
 
-- `artifact_url`
-- `clearml_model_id`
+- `best`
+- supported model name, for example `ridge`
+- `ensemble`
+- `ensemble:<method>`, for example `ensemble:median`
 
-Inference flow:
+Inference outputs:
 
-```text
-source_task_id + model_selector
-or local_model_path
--> inference dataset
--> feature align
--> predict
--> predictions.csv
-```
+- `predictions.csv`
+- `prediction_summary.csv`
+- `prediction_preview.csv`
+- `source_summary.csv`
+- `prediction_distribution_histogram.png`
+- `manifest.json`
 
-`model_selector=best` resolves the selected best model from `evaluate_models`.
-`model_selector=ensemble` resolves the best ensemble artifact from a
-`build_ensemble_<method>` task that runs the internal `build_ensemble` stage.
-Supported model names such as `linear` or `ridge` resolve the matching
-`train_<model>` artifact.
-
-`source_task_id` may point to a training pipeline controller task or directly to
-an `evaluate_models`, `build_ensemble_<method>`, or `train_<model>` stage task. The
-selector decides which artifact is used.
-
-Feature alignment uses explicit `data.feature_columns` first, then model
-metadata from the referenced artifact, then `feature_spec.json` /
-`preprocess_bundle` metadata when available. Model artifacts remain
-self-contained for prediction.
-
-Do not add an inference pipeline unless a future product decision explicitly
-requires it.
-
-## Template Policy
+## ClearML Templates And Projects
 
 User-facing templates:
 
@@ -218,32 +116,13 @@ Internal template:
 
 - `tabular_stage_template`
 
-Default sync target:
-
-- `tabular_train_pipeline_template`
-- `tabular_infer_template`
-- `tabular_stage_template`
-
-Deprecated, deleted, or sync-excluded:
-
-- `tabular_train_full_pipeline_template`
-- `tabular_train_full_ensemble_pipeline_template`
-- legacy `tabular_pipeline_template`
-- optimize-specific templates
-- model-specific templates
-- one-template-per-ensemble-method variants
-- dataset-specific templates
-
-`tabular_stage_template` is for PipelineController steps. It is not the normal
-template that ClearML UI users clone directly.
-
-ClearML display names:
+Display names:
 
 - `template/tabular_train_pipeline`
 - `template/tabular_infer`
 - `internal/tabular_stage`
 
-Profile-managed ClearML projects:
+Project layout is profile-driven:
 
 | purpose | dev default |
 | --- | --- |
@@ -265,233 +144,21 @@ Runtime naming:
 - `stage/evaluate_models/<run_name>`
 - `task/tabular_infer/<run_name>`
 
-Canonical ClearML tags:
+Tags:
 
 - `domain:tabular`
-- `run_type:template`, `run_type:pipeline`, `run_type:stage`, or `run_type:task`
+- `run_type:template|pipeline|stage|task`
 - `user_facing:true` or `internal:true`
-- `stage:<stage_name>` for stage tasks
-- `model:<model_name>` for model training stages
+- `stage:<stage_name>`
+- `model:<model_name>`
+- `ensemble:<method>`
 
-## Config Policy
+## Architecture
 
-Config uses two axes:
+`pkgs/core` and `pkgs/tabular` are ClearML-free. ClearML SDK usage lives under
+`clearml/`. `scripts/` are wrappers. Config remains split between task YAML and
+profile YAML.
 
-```text
-config/tasks
-config/profiles
-```
-
-Primary task configs:
-
-- `config/tasks/tabular_pipeline.yaml`
-- `config/tasks/tabular_infer.yaml`
-- `config/tasks/tabular_stage.yaml`
-
-Deprecated or future configs must not be presented as the normal product entry.
-
-## ClearML UI Policy
-
-ClearML screen-level behavior is specified in `docs/CLEARML_UI_SPEC.md`.
-Keep this section as product policy and avoid duplicating long operation notes.
-
-Keep UI parameters compact by default. The current implementation may still use
-`Input`, `Run`, `Model`, and `Output`, but the product policy allows semantic
-groups when they make ClearML New Run forms easier to understand:
-
-- `Input`
-- `Split`
-- `Features`
-- `Models`
-- `Ensemble`
-- `Evaluation`
-- `Output`
-- `Run`
-
-Avoid template sprawl. Do not add model-specific or dataset-specific templates,
-and do not create one template per ensemble method. Use candidates, ensemble
-parameters, and stage overrides instead.
-
-Primary inference UI parameters:
-
-- `Model/source_type`
-- `Model/source_task_id`
-- `Model/model_selector`
-- `Model/local_model_path`
-
-Primary training UI parameters:
-
-| parameter | local | ClearML remote | note |
-| --- | --- | --- | --- |
-| `Input/local_path` | required | avoid | Use only when the Agent can see the same path. |
-| `Input/clearml_dataset_id` | optional | required | Preferred remote Dataset source. |
-| `Input/dataset_file` | optional | required when Dataset has multiple files | Example: `sample_train.csv`. |
-| `Input/target_column` | required | required | Scalar regression target. |
-| `Input/feature_columns` | optional | optional | Empty auto-selects non-target, non-id columns. |
-| `Input/id_columns` | optional | optional | Excluded from features. |
-| `Split/valid_size` | optional | optional | Validation split fraction. |
-| `Features/preset` | optional | optional | Feature transformer preset, for example `basic` or `numeric_only`. |
-| `Features/numeric_impute_strategy` | optional | optional | `median`, `mean`, or `zero`. |
-| `Features/categorical_impute_strategy` | optional | optional | `missing_token` or `mode`. |
-| `Features/categorical_encoder` | optional | optional | `onehot` or `drop`. |
-| `Features/scaling` | optional | optional | `standard` or `none`. |
-| `Features/drop_columns` | optional | optional | JSON array or comma list of selected columns to remove before fitting features. |
-| `Features/passthrough_columns` | optional | optional | Numeric raw feature columns appended without impute/encoding/scaling. |
-| `Model/candidates` | optional | optional | JSON array. ClearML New Run defaults should include all supported models; the standard Agent image includes GBM extras. Remove GBM names only for slim/custom Agents without those dependencies. |
-| `Model/model_params_by_name` | optional | optional | JSON object keyed by model name. New Run defaults should include dependency-free and optional GBM model keys for editing. |
-| `Model/ensemble_enabled` | optional | optional | Enables ensemble building. |
-| `Model/ensemble_methods` | optional | optional | JSON array or comma list, for example `["mean_topk","weighted","median"]`. |
-| `Model/ensemble_top_k` | optional | optional | Number of ranked base models for top-k ensemble methods. |
-| `Model/evaluation_metrics` | optional | optional | JSON array or comma-separated metric names. |
-| `Model/selection_metric` | optional | optional | `rmse`, `mae`, or `r2`; used for leaderboard selection. |
-| `Output/report_plots` | optional | optional | Set false to skip ClearML plot media reporting. |
-
-ClearML UI parameter groups may stay compact or become semantic when that makes
-the UI easier to use. The current training template uses `Input`, `Split`,
-`Features`, `Run`, `Model`, and `Output`. Future UI refinements may split model,
-ensemble, and evaluation controls into separate semantic groups when that improves
-operator clarity.
-
-Future feature inputs are `datetime_columns`, `text_columns`, and custom
-transformers. Keep them documented as future until implemented.
-
-`Model/ensemble_method` remains accepted as a compatibility/internal stage
-alias when `Model/ensemble_methods` is absent, but it is not part of the
-user-facing training Pipeline New Run parameter set.
-
-Future inference UI parameters, if still present in code, must be documented as
-future rather than primary:
-
-- `Model/model_artifact_url`
-- `Model/clearml_model_id`
-
-## Artifact Policy
-
-Training pipeline artifacts:
-
-- `preprocess_bundle`
-- `feature_spec.json`
-- `feature_summary.json`
-- `feature_summary_table.csv`
-- `missing_rate_by_column.csv`
-- `feature_type_counts.csv`
-- model artifacts
-- model feature importance table/plot when the estimator exposes importances or coefficients
-- `model_refs.json`
-- validation predictions
-- `metrics_by_model.json`
-- `metrics_by_candidate.json`
-- `leaderboard.csv`
-- `leaderboard_topk.csv`
-- `leaderboard_decision_summary.csv`
-- `best_vs_ensemble_summary.csv`
-- `best_model.json`
-- `ensemble_refs.json`
-- `ensemble_info_by_method.json`
-- `ensemble_members_<method>.csv`
-- `ensemble_weights_<method>.csv`
-- ensemble artifacts
-- `evaluation_report.json`
-- `evaluation_summary.csv`
-- `evaluation_predictions.csv`
-- `metrics.json`
-- `manifest.json`
-
-ClearML result display:
-
-- artifacts: model files, `feature_summary`, `leaderboard`, `best_model_json`,
-  `ensemble_info`, `evaluation_report`, `manifest`
-- tables: feature summary/missingness, leaderboard, leaderboard top-k,
-  decision summary, best-vs-ensemble summary, evaluation predictions, feature
-  importance, ensemble members/weights, and inference predictions/source
-  summary
-- scalars: feature counts, per-model `rmse`, `mae`, `r2`; ensemble and
-  best-model summaries
-- plots: feature missingness, feature importance where available,
-  per-task prediction-vs-actual and residual plots, Leaderboard top-k score /
-  metric / Pareto plots, prediction distribution for inference, plus
-  metrics-by-candidate/model artifacts
-
-Inference artifacts:
-
-- `predictions.csv`
-- `prediction_summary.csv`
-- `prediction_preview.csv`
-- `source_summary.csv`
-- `prediction_distribution_histogram.png`
-- `manifest.json`
-
-Artifacts should make the ClearML UI readable without requiring users to inspect
-source code.
-
-## Architecture Boundaries
-
-```text
-scripts/local_run.py      -> pkgs
-clearml/app.py           -> clearml/adapter.py -> pkgs
-clearml/pipelines.py     -> ClearML PipelineController
-pkgs/core                -> common ClearML-free utilities
-pkgs/tabular             -> ClearML-free tabular ML logic
-```
-
-Forbidden dependencies:
-
-```text
-pkgs/core    -> clearml
-pkgs/tabular -> clearml
-pkgs         -> deploy
-pkgs         -> scripts
-```
-
-`scripts/` are wrappers only. Business logic belongs in `pkgs` or `clearml/`
-according to the boundary above.
-
-## Extension Points
-
-- Add models in `pkgs/tabular/src/ml_platform_tabular/models.py`.
-- Add feature logic in `pkgs/tabular/src/ml_platform_tabular/features.py`.
-- Add metrics in `pkgs/tabular/src/ml_platform_tabular/metrics.py`.
-- Add ensemble behavior in `pkgs/tabular/src/ml_platform_tabular/ensemble.py`.
-- Change ClearML parameter mapping in `clearml/adapter.py`.
-- Change ClearML reporting in `clearml/reports.py`.
-- Change template sync in `clearml/templates.py`.
-
-Add abstractions only when they reduce real duplication inside the current
-product scope.
-
-
-## ClearML UI Product Contract
-
-ClearML UI behavior is specified in `docs/CLEARML_UI_SPEC.md`.
-
-The product is not complete if a run only succeeds technically but does not expose enough information for users to understand:
-
-- which dataset was used
-- which features were used
-- which models were trained
-- which model won
-- whether ensemble improved metrics
-- where predictions are stored
-- which artifacts should be reused for inference
-
-## Result Visibility
-
-Each product pipeline must provide user-visible artifacts and metrics.
-
-Training pipeline must expose:
-
-- feature summary
-- model metrics
-- leaderboard
-- best model metadata
-- ensemble metadata when enabled
-- evaluation report
-- prediction-vs-actual plot
-- residual histogram
-- manifest
-
-Inference must expose:
-
-- prediction table
-- model source metadata
-- manifest
+Do not add model-specific, dataset-specific, optimization-specific, or
+ensemble-specific templates. Add product behavior through model candidates,
+ensemble methods, stage overrides, and reporting.

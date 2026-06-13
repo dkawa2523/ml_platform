@@ -51,7 +51,7 @@ def _project_layout(profile: dict[str, Any]) -> dict[str, str]:
     return clearml_projects(clearml_cfg)
 
 
-def _pipeline_model_cfg(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] | None = None) -> dict[str, Any]:
+def _model_cfg_for_pipeline(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] | None = None) -> dict[str, Any]:
     model_cfg = deepcopy(pipeline_cfg.get("model", {}) or {})
     ui_params = ui_params or {}
     if "Model/candidates" in ui_params:
@@ -301,7 +301,7 @@ def _build_training_plan(
     default_params = _training_pipeline_ui_params(pipeline_cfg, profile)
     effective_params = {**default_params, **(ui_params or {})}
     run_name = str(effective_params.get("Run/name") or pipeline_cfg.get("run", {}).get("name") or "run")
-    model_cfg = _pipeline_model_cfg(pipeline_cfg, effective_params)
+    model_cfg = _model_cfg_for_pipeline(pipeline_cfg, effective_params)
     search_cfg = model_cfg.get("search", {}) or {}
     if not isinstance(search_cfg, dict):
         search_cfg = {}

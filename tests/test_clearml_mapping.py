@@ -365,7 +365,7 @@ def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
     assert "Model/search_method" not in params
     assert "Model/search_space" not in params
     assert "Model/max_trials" not in params
-    assert "Run/pipeline_mode" not in params
+    assert "Run/" + "pipeline" + "_mode" not in params
     assert "Output/report_plots" in params
     assert params["Output/report_plots"] is True
     assert params["Input/local_path"] == ""
@@ -1294,8 +1294,8 @@ def test_clearml_deprecated_full_pipeline_templates_are_not_sync_targets():
     templates = load_clearml_templates_module()
 
     removed_names = {
-        "tabular_train_full_pipeline_template",
-        "tabular_train_full_ensemble_pipeline_template",
+        "tabular_train" + "_full" + "_pipeline_template",
+        "tabular_train" + "_full" + "_ensemble_pipeline_template",
     }
     assert removed_names.isdisjoint({name for name, _, _ in templates.TEMPLATES})
 

@@ -1,40 +1,28 @@
 # clearml
 
-ClearML operational code lives here.
-
-Responsibilities:
-
-- task entrypoint
-- ClearML Task, Dataset, StorageManager, and Logger adapter
-- UI parameter mapping
-- RunResult reporting
-- template task sync
-- stage-based training PipelineController definition
-
-Do not put tabular training, evaluation, inference, or preprocessing logic here. That belongs in `pkgs/tabular`.
-Use `docs/SPEC.md` for product scope and `docs/CLEARML_UI_SPEC.md` for
-ClearML screen-level expectations.
+ClearML-specific code lives here. Training, preprocessing, evaluation, ensemble,
+and inference logic belongs in `pkgs/tabular`.
 
 Files:
 
 ```text
-app.py        ClearML task entrypoint
-adapter.py    Task, Dataset, parameter, artifact path wrapper
-reports.py    RunResult to ClearML reporting
-templates.py  template task and Pipeline-tab draft sync
-pipelines.py  stage-based training pipeline controller
+app.py        task entrypoint
+adapter.py    ClearML Task, Dataset, StorageManager, Logger wrapper
+reports.py    RunResult -> ClearML Scalars, Tables, Plots, Artifacts
+templates.py  template sync and Pipeline-tab draft sync
+pipelines.py  stage-based training PipelineController
 ```
 
-`tabular_stage_template` is an internal stage task for PipelineController graphs.
-The default sync targets are `tabular_train_pipeline_template`,
-`tabular_infer_template`, and `tabular_stage_template`. Deprecated
-`tabular_train_template`, `tabular_eval_template`, `tabular_pipeline_template`,
-and `tabular_train_full_*` entries are deprecated or sync-excluded; they are not
-current user-facing templates.
-ClearML display names are `template/tabular_train_pipeline`,
-`template/tabular_infer`, and `internal/tabular_stage`.
+Current sync targets:
 
-Profiles define the ClearML project layout:
+- `template/tabular_train_pipeline`
+- `template/tabular_infer`
+- `internal/tabular_stage`
+
+The stage template is internal and reused for every pipeline step. Do not create
+model-specific, ensemble-specific, or dataset-specific templates.
+
+Profile-managed project layout:
 
 ```text
 templates    MLPlatform/<Env>/Templates/Tabular
@@ -47,20 +35,10 @@ infer        MLPlatform/<Env>/Runs/Tabular/Infer
 experiments  MLPlatform/<Env>/Experiments/Tabular
 ```
 
-Synced templates and runs use tags such as `domain:tabular`,
-`run_type:template`, `run_type:pipeline`, `run_type:stage`, `run_type:task`,
-`user_facing:true`, `internal:true`, `stage:<stage_name>`, and
-`model:<model_name>`. Ensemble method stages also use `ensemble:<method>`.
+Tags include `domain:tabular`, `run_type:*`, `user_facing:true`,
+`internal:true`, `stage:<stage_name>`, `model:<model_name>`, and
+`ensemble:<method>`.
 
-Old ClearML tasks and runs may remain visible until manually archived on the
-server. Sync creates or updates only the current canonical entries.
-
-For remote training runs, open `template/tabular_train_pipeline` in the Pipeline
-tab and set `Input/clearml_dataset_id`, `Input/dataset_file`, and
-`Input/target_column`. `Input/local_path` is only valid when the Agent can see
-the same path inside its container or mounted volume.
-
-The training template pre-fills `Model/candidates` with all 10 supported models.
-The standard deploy Agent image installs `pkgs/tabular[gbm]` so LightGBM,
-XGBoost, and CatBoost can run with those defaults. Remove the GBM names only for
-slim/custom Agents that omit the extra.
+The training template pre-fills all 10 supported models. The standard Agent
+image installs `pkgs/tabular[gbm]`; remove GBM candidates only for slim/custom
+Agent images that omit those packages.
