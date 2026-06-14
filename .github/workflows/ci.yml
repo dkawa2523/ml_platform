@@ -22,6 +22,10 @@ jobs:
       - run: python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile config/profiles/local.yaml
       - run: python scripts/local_run.py --task config/tasks/tabular_eval.yaml --profile config/profiles/local.yaml
       - run: python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-      - run: python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
+      - run: >-
+          python scripts/local_run.py
+          --task config/tasks/tabular_pipeline.yaml
+          --profile config/profiles/local.yaml
+          --set 'model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]'
       - run: python scripts/local_run.py --task config/tasks/tabular_1d_output.yaml --profile config/profiles/local.yaml
       - run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q

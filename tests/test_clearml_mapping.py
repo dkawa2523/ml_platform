@@ -1031,6 +1031,32 @@ def test_clearml_apply_metadata_can_replace_stale_runtime_tags():
     assert task.tags == sorted({"domain:tabular", "run_type:stage", "stage:evaluate_models", "internal:true"})
 
 
+def test_clearml_pipeline_run_metadata_replaces_template_run_type_tag():
+    pipelines = load_clearml_pipelines_module()
+
+    class FakeTask:
+        def __init__(self):
+            self.name = None
+            self.tags = ["domain:tabular", "run_type:template", "user_facing:true"]
+
+        def set_name(self, name):
+            self.name = name
+
+        def get_tags(self):
+            return list(self.tags)
+
+        def set_tags(self, tags):
+            self.tags = list(tags)
+
+    task = FakeTask()
+    pipelines._apply_pipeline_run_metadata(task, task_name="pipeline/tabular_train_pipeline/run")
+
+    assert task.name == "pipeline/tabular_train_pipeline/run"
+    assert "run_type:pipeline" in task.tags
+    assert "run_type:template" not in task.tags
+    assert "user_facing:true" in task.tags
+
+
 class FakeArtifact:
     def __init__(self, url):
         self.url = url

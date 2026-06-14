@@ -661,17 +661,19 @@ def _apply_pipeline_run_metadata(task: Any, *, task_name: str | None = None) -> 
         set_name = getattr(task, "set_name", None)
         if callable(set_name):
             set_name(task_name)
-    add_tags = getattr(task, "add_tags", None)
     set_tags = getattr(task, "set_tags", None)
     tags = clearml_tags("pipeline", user_facing=True)
-    if callable(add_tags):
-        add_tags(tags)
-    elif callable(set_tags):
+    if callable(set_tags):
         current = []
         get_tags = getattr(task, "get_tags", None)
         if callable(get_tags):
             current = list(get_tags() or [])
-        set_tags(sorted(set(current) | set(tags)))
+        kept = [tag for tag in current if not tag.startswith("run_type:") and tag not in {"internal:true"}]
+        set_tags(sorted(set(kept) | set(tags)))
+    else:
+        add_tags = getattr(task, "add_tags", None)
+        if callable(add_tags):
+            add_tags(tags)
 
 
 def sync_pipeline_draft(
