@@ -449,6 +449,32 @@ def test_clearml_pipeline_new_run_args_are_mapped_to_ui_params():
     assert connected["Input/clearml_dataset_id"] == "dataset-id"
 
 
+def test_clearml_pipeline_old_run_clone_uses_current_model_defaults():
+    pipelines = load_clearml_pipelines_module()
+    defaults = pipelines.pipeline_ui_params("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    stale_task_params = {
+        "Args/Run/name": "stale_clone_run",
+        "Args/Model/candidates": '["linear","ridge","lasso","elasticnet","random_forest","extra_trees","gradient_boosting"]',
+    }
+
+    connected = pipelines.pipeline_params_from_task(defaults, stale_task_params)
+
+    assert connected["Run/name"] == "stale_clone_run"
+    assert json.loads(connected["Model/candidates"]) == [
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+        "lightgbm",
+        "xgboost",
+        "catboost",
+    ]
+    assert connected["Model/ensemble_methods"] == '["mean_topk", "weighted", "median"]'
+
+
 def test_clearml_pipeline_params_map_model_metrics_and_output_options():
     adapter = load_clearml_adapter_module()
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
