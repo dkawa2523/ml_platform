@@ -33,6 +33,7 @@ PIPELINE_TEMPLATES = [
 # Default sync targets: tabular_infer_template, tabular_stage_template, and
 # tabular_train_pipeline_template.
 TEMPLATES = TASK_TEMPLATES + PIPELINE_TEMPLATES
+REMOTE_GBM_PACKAGES = ["lightgbm>=4.0", "xgboost>=2.0", "catboost>=1.2"]
 
 
 def _task_type(Task: Any, name: str):
@@ -59,8 +60,8 @@ def _template_note(task_name: str, execution_image: str | None = None) -> str:
             "-> build_ensemble_<method>* -> evaluate_models. Set remote inputs with "
             "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; tune "
             "preprocessing under Features/* and ensembles with Model/ensemble_methods. "
-            "Model/candidates is prefilled with all 10 supported models; the configured "
-            "execution image must include pkgs/tabular[gbm] for GBM models."
+            "Model/candidates is prefilled with all 10 supported models; synced templates "
+            "install GBM packages into the remote execution venv."
             f"{image_note}"
         )
     return "Unsupported template name for the current product surface"
@@ -108,6 +109,9 @@ def _remote_packages() -> list[str]:
     packages = [line.strip() for line in requirements.read_text(encoding="utf-8").splitlines() if line.strip() and not line.strip().startswith("#")]
     if not any(line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0].strip().lower() == "clearml" for line in packages):
         packages.append("clearml==2.1.7")
+    for package in REMOTE_GBM_PACKAGES:
+        if package not in packages:
+            packages.append(package)
     return packages
 
 

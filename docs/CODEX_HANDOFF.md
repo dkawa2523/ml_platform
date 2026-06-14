@@ -25,8 +25,8 @@ Primary configs:
 Supported models are `linear`, `ridge`, `lasso`, `elasticnet`,
 `random_forest`, `extra_trees`, `gradient_boosting`, `lightgbm`, `xgboost`, and
 `catboost`. GBM models are supported optional-dependency models: local/package
-required dependencies stay light, while the profile execution image must include
-`pkgs/tabular[gbm]` for remote 10-model runs.
+required dependencies stay light, while synced ClearML templates add GBM
+packages to the remote execution venv for 10-model runs.
 
 Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 

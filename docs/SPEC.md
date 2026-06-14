@@ -35,9 +35,9 @@ lightgbm, xgboost, catboost
 ```
 
 `lightgbm`, `xgboost`, and `catboost` require optional dependencies. They stay
-out of package required dependencies and `requirements.txt`. Remote templates
-reference `clearml.execution.image` from the selected profile; that image must
-include `pkgs/tabular[gbm]` to run the product-facing 10-candidate default.
+out of package required dependencies and `requirements.txt`. ClearML templates
+install those GBM packages into the remote execution venv, and profiles still
+reference `clearml.execution.image` so workers use the intended base image.
 Local or slim-image runs may override `model.candidates` to the dependency-free
 subset.
 

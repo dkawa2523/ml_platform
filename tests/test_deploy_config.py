@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib.util
 
 
 def test_execution_image_installs_gbm_extras():
@@ -23,3 +24,16 @@ def test_gbm_packages_are_not_required_runtime_dependencies():
     assert "lightgbm" not in requirements
     assert "xgboost" not in requirements
     assert "catboost" not in requirements
+
+
+def test_clearml_remote_packages_install_gbm_into_execution_venv():
+    spec = importlib.util.spec_from_file_location("ml_platform_clearml_templates", Path("clearml/templates.py"))
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    packages = module._remote_packages()
+
+    assert "lightgbm>=4.0" in packages
+    assert "xgboost>=2.0" in packages
+    assert "catboost>=1.2" in packages

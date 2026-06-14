@@ -4,9 +4,10 @@ Keep this list short. Product scope is in `docs/SPEC.md`.
 
 ## Required Before Release
 
-1. Publish the profile execution image with `pkgs/tabular[gbm]`.
-   - Goal: default 10-model New Run executes on any worker that can pull the image.
-   - Evidence: Agent log shows LightGBM, XGBoost, and CatBoost imports work.
+1. Verify the profile execution image and synced template package list.
+   - Goal: default 10-model New Run executes on workers that can pull the image.
+   - Evidence: Agent log shows the remote venv installs or can import
+     LightGBM, XGBoost, and CatBoost.
 
 2. Remote training verification from `template/tabular_train_pipeline`.
    - Goal: graph shows `preprocess_features`, 10 `train_<model>` steps, three

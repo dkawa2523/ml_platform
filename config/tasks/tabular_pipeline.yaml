@@ -18,9 +18,9 @@ run:
 #   Model/ensemble_methods: ["mean_topk","weighted","median"]
 #   Features/drop_columns: ["unused_column"]
 #   Features/passthrough_columns: ["already_numeric_feature"]
-# Supported optional-dependency models lightgbm/xgboost/catboost require
-# pkgs/tabular[gbm] in the profile execution image. Remove GBM names from
-# Model/candidates only for slim/custom execution images without those extras.
+# Supported optional-dependency models lightgbm/xgboost/catboost require GBM
+# packages in the ClearML execution venv. Synced templates add them for remote
+# runs; remove GBM names from Model/candidates for slim/custom runs without them.
 
 data:
   local_path: data/sample_train.csv

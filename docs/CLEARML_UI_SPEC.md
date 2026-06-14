@@ -84,10 +84,10 @@ Default `Model/candidates` should show all supported models:
 ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting", "lightgbm", "xgboost", "catboost"]
 ```
 
-The selected profile sets `clearml.execution.image`. That execution image must
-include `pkgs/tabular[gbm]` to run GBM candidates. Slim/custom execution images
-that do not include GBM packages should remove `lightgbm`, `xgboost`, and
-`catboost` from `Model/candidates`.
+The selected profile sets `clearml.execution.image`. Synced templates also add
+GBM packages to the remote execution venv so the 10-model default can run on
+the standard Agent image. Slim/custom runs may remove `lightgbm`, `xgboost`,
+and `catboost` from `Model/candidates`.
 
 ## Expected Training UI
 
@@ -142,5 +142,6 @@ Inference tasks should not show candidate comparison plots.
   `template/tabular_train_pipeline` was synced and opened.
 - If `preprocess_features` remains queued, verify the pipeline controller was
   started on the controller queue, not on the stage queue.
-- If a GBM step fails with a missing dependency, update the profile execution
-  image or remove GBM names from candidates for slim/custom images.
+- If a GBM step fails with a missing dependency, re-sync the latest templates
+  so the remote package list is updated, or remove GBM names for slim/custom
+  runs.

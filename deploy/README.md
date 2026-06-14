@@ -29,8 +29,10 @@ Replace `registry.example.com/ml-platform/clearml-agent` in the profiles and ove
 This image installs `pkgs/tabular[gbm]` so ClearML New Run defaults can execute
 all 10 supported models, including LightGBM, XGBoost, and CatBoost. These
 packages remain out of `requirements.txt` and package required dependencies.
-Set `clearml.execution.image` in the selected profile to the pullable image URI
-used by the target workers.
+Synced templates also list the GBM packages for the Agent-created execution
+venv, because ClearML Agent may isolate that venv from image site-packages. Set
+`clearml.execution.image` in the selected profile to the pullable image URI used
+by the target workers.
 
 If you build a slim/custom execution image without `pkgs/tabular[gbm]`, remove
 `lightgbm`, `xgboost`, and `catboost` from `Model/candidates` before running the

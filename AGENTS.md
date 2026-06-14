@@ -50,9 +50,9 @@ Supported models:
 - `lightgbm`, `xgboost`, `catboost`
 
 The GBM packages are optional Python dependencies. Remote ClearML templates use
-the profile's `clearml.execution.image`; that image must include
-`pkgs/tabular[gbm]` when running the 10-model default. Slim/local environments
-may run the dependency-free subset by overriding `model.candidates`.
+the profile's `clearml.execution.image` and install GBM packages into the
+Agent-created execution venv when running the 10-model default. Slim/local
+environments may run the dependency-free subset by overriding `model.candidates`.
 
 Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 

@@ -34,9 +34,9 @@ Supported model names are `linear`, `ridge`, `lasso`, `elasticnet`,
 
 `lightgbm`, `xgboost`, and `catboost` are supported optional-dependency models.
 They are not required package dependencies. Remote ClearML templates reference
-the profile's `clearml.execution.image`; that image must include
-`pkgs/tabular[gbm]` to run the default 10 candidates. Slim local or custom
-execution images can remove the GBM names from `Model/candidates`.
+the profile's `clearml.execution.image` and install GBM packages into the
+Agent-created execution venv. Slim local or custom runs can remove the GBM names
+from `Model/candidates`.
 
 Out of scope: `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 

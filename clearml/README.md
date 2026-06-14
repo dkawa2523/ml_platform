@@ -40,9 +40,9 @@ Tags include `domain:tabular`, `run_type:*`, `user_facing:true`,
 `ensemble:<method>`.
 
 The training template pre-fills all 10 supported models. Templates reference
-`clearml.execution.image` from the selected profile. That execution image must
-include `pkgs/tabular[gbm]` to run GBM candidates; remove GBM names only for
-slim/custom images that omit those packages.
+`clearml.execution.image` from the selected profile and add GBM packages to the
+remote execution venv. Remove GBM names only for slim/custom runs that do not
+install those packages.
 
 For remote training, start the PipelineController on `clearml.controller_queue`
 and let stage tasks run on `clearml.stage_queue`. Using the same one-worker queue

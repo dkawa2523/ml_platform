@@ -644,8 +644,8 @@ def _apply_pipeline_template_metadata(
             "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
             "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
-            "Model/candidates is prefilled with all 10 supported models; the configured "
-            "execution image must include pkgs/tabular[gbm] for GBM models."
+            "Model/candidates is prefilled with all 10 supported models; synced templates "
+            "install GBM packages into the remote execution venv."
             f"{queue_note}"
             f"{image_note}"
         )
