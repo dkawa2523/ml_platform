@@ -539,11 +539,17 @@ def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
 
 
 def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
-    tasks = Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=False)
+    tasks = Task.get_tasks(task_name=task_name, allow_archived=False)
     for task in reversed(tasks):
         if getattr(task, "status", None) != "created":
             continue
-        if str(getattr(task, "task_type", "")) != str(Task.TaskTypes.controller):
+        get_project_name = getattr(task, "get_project_name", None)
+        if callable(get_project_name):
+            candidate_project = str(get_project_name())
+            if candidate_project != project_name and not candidate_project.startswith(f"{project_name}/.pipelines/"):
+                continue
+        task_type = getattr(task, "task_type", None) or getattr(task, "type", None) or getattr(getattr(task, "data", None), "type", None)
+        if str(task_type) != str(Task.TaskTypes.controller):
             continue
         if "pipeline" not in (task.get_system_tags() or []):
             continue
