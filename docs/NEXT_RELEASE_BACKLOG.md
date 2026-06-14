@@ -4,15 +4,7 @@ Keep this list short. Product scope is in `docs/SPEC.md`.
 
 ## Required Before Release
 
-1. Re-sync templates after the inference Dataset-default update.
-   - Goal: `template/tabular_infer` defaults to an Agent-reachable ClearML
-     Dataset instead of repo-local `data/sample_infer.csv`.
-
-2. Remote inference verification from `template/tabular_infer`.
-   - Goal: `model_selector=best` and `model_selector=ensemble` both produce
-     `predictions.csv`, prediction summary, and prediction distribution plots.
-
-3. Archive stale ClearML server tasks manually after the latest templates are
+1. Archive stale ClearML server tasks manually after the latest templates are
    confirmed.
 
 ## Current Evidence
@@ -23,6 +15,10 @@ Keep this list short. Product scope is in `docs/SPEC.md`.
 - The graph included 10 `train_<model>` steps, three
   `build_ensemble_<method>` steps, and `evaluate_models`.
 - The Agent venv included LightGBM, XGBoost, and CatBoost.
+- Remote inference from `template/tabular_infer` completed on task
+  `f47d25d6862f4949ba56825c0ae3b002`.
+- The inference run used commit `2d5e2f6b4950253c299500a3f667e78ecda85520`
+  and produced prediction tables, distribution plot, and artifacts.
 
 ## Later
 

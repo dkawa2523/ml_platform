@@ -1,7 +1,6 @@
 # ClearML Plots / Tables Reporting Verification
 
-Status: remote training verified; remote inference rerun pending after infer
-Dataset-default template update.
+Status: remote training and inference verified.
 
 ## Scope
 
@@ -64,8 +63,16 @@ Stage evidence:
   top-k prediction/residual plots, best-entry prediction/residual plots,
   candidate and ensemble scalar metrics.
 
-An inference template clone using `source_task_id=cf12d910fcbf44d8a94b5b1a6cfef4ff`
-failed before this update because the template still defaulted to
-`Input/local_path=data/sample_infer.csv`, which is not visible inside the Agent
-container. The template now fills `Input/clearml_dataset_id` and
-`Input/dataset_file` from the selected ClearML profile for remote inference.
+Latest inference template New Run:
+
+- Inference task: `f47d25d6862f4949ba56825c0ae3b002`
+- Run name: `infer_gate_latest_20260614_215444`
+- Source task: `cf12d910fcbf44d8a94b5b1a6cfef4ff`
+- Selector: `best`
+- Commit: `2d5e2f6b4950253c299500a3f667e78ecda85520`
+- Result: completed
+- PLOTS/TABLES: `prediction_distribution_histogram`, `prediction_preview_table`,
+  `prediction_summary_table`, `predictions_table`, `source_summary_table`.
+- Artifacts: `predictions`, `prediction_summary`, `prediction_preview`,
+  `prediction_distribution_histogram`, `source_summary`, `feature_spec`,
+  `preprocess_bundle`, `model_info`, `manifest`, `config`.
