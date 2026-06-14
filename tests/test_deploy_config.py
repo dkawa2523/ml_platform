@@ -5,14 +5,21 @@ import importlib.util
 def test_execution_image_installs_gbm_extras():
     dockerfile = Path("deploy/base/Dockerfile").read_text(encoding="utf-8")
 
+    assert "libgomp1" in dockerfile
     assert '-e "pkgs/tabular[gbm]"' in dockerfile
 
 
 def test_agent_config_exposes_execution_image_site_packages():
     configmap = Path("deploy/base/configmap.yaml").read_text(encoding="utf-8")
+    dockerfile = Path("deploy/base/Dockerfile").read_text(encoding="utf-8")
+    manifest = Path("deploy/base/clearml-agent.yaml").read_text(encoding="utf-8")
 
     assert "CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES" in configmap
     assert '"true"' in configmap
+    assert "agent.package_manager.system_site_packages: true" in dockerfile
+    assert "--config-file /tmp/clearml-agent.conf" in dockerfile
+    assert "agent.package_manager.system_site_packages: true" in manifest
+    assert "--config-file /tmp/clearml-agent.conf" in manifest
 
 
 def test_profiles_define_pullable_execution_image_reference():

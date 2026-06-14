@@ -23,7 +23,7 @@ spec:
                 name: ml-platform-clearml-agent-config
           command: ["sh", "-lc"]
           args:
-            - clearml-agent daemon --queue "${CLEARML_AGENT_QUEUE}"
+            - printf 'agent.package_manager.system_site_packages: true\n' > /tmp/clearml-agent.conf && clearml-agent --config-file /tmp/clearml-agent.conf daemon --queue "${CLEARML_AGENT_QUEUE}"
           volumeMounts:
             - name: outputs
               mountPath: /mnt/clearml/outputs
