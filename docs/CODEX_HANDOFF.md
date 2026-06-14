@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Use this file as the short operational handoff. The product contract lives in
+Use this file as the short operational handoff. The product spec lives in
 `docs/SPEC.md`; ClearML screen behavior lives in `docs/CLEARML_UI_SPEC.md`.
 
 ## Current Product
@@ -63,6 +63,11 @@ Real sync:
 ```powershell
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
+
+Template sync intentionally recreates the Pipeline draft. ClearML stores the
+graph separately from task parameters, so updating an existing draft can leave
+New Run inputs current while the graph stays old. Do not rely on old run clones
+when validating template changes.
 
 Before remote execution, verify the profile `repository`, `branch`,
 `working_dir`, `controller_queue`, `stage_queue`, and optional

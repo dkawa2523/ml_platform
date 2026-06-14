@@ -31,7 +31,7 @@ from adapter import (
     stage_task_label,
 )
 from ml_platform_core.config import apply_overrides, load_yaml
-from ml_platform_tabular.models import DEPENDENCY_FREE_MODELS, SUPPORTED_MODELS, candidate_params, model_candidates
+from ml_platform_tabular.models import SUPPORTED_MODELS, candidate_params, model_candidates
 
 
 PIPELINE_ARG_PREFIX = "Args/"
@@ -150,33 +150,10 @@ def pipeline_arg_params(params: dict[str, Any]) -> dict[str, Any]:
     return {f"{PIPELINE_ARG_PREFIX}{key}": value for key, value in params.items()}
 
 
-def _is_stale_pipeline_clone(defaults: dict[str, Any], task_params: dict[str, Any]) -> bool:
-    """Detect old pipeline runs cloned before ensemble_methods became primary UI."""
-    has_current_ensemble_methods = "Model/ensemble_methods" in task_params or "Args/Model/ensemble_methods" in task_params
-    candidate_value = task_params.get("Args/Model/candidates", task_params.get("Model/candidates"))
-    if candidate_value is None or has_current_ensemble_methods or "Model/ensemble_methods" not in defaults:
-        return False
-    try:
-        return as_candidates(candidate_value) == list(DEPENDENCY_FREE_MODELS)
-    except Exception:
-        return False
-
-
 def pipeline_params_from_task(defaults: dict[str, Any], task_params: dict[str, Any]) -> dict[str, Any]:
     """Read Pipeline New Run values, preferring Args/* over template defaults."""
     connected = dict(defaults)
-    stale_clone = _is_stale_pipeline_clone(defaults, task_params)
-    stale_model_keys = {
-        "Model/candidates",
-        "Model/model_params_by_name",
-        "Model/ensemble_enabled",
-        "Model/ensemble_methods",
-        "Model/ensemble_method",
-        "Model/ensemble_top_k",
-    }
     for key in defaults:
-        if stale_clone and key in stale_model_keys:
-            continue
         if key in task_params:
             connected[key] = task_params[key]
         args_key = f"{PIPELINE_ARG_PREFIX}{key}"

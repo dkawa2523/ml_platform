@@ -1,6 +1,6 @@
 # ClearML UI Specification
 
-This is the screen-level contract for the current tabular regression product.
+This is the screen-level guide for the current tabular regression product.
 Product scope lives in `docs/SPEC.md`.
 
 ## Entry Points
@@ -138,8 +138,10 @@ Inference tasks should not show candidate comparison plots.
 ## Operational Notes
 
 - Old ClearML tasks are not deleted by repo code; archive them manually.
-- If New Run does not show the 10 supported models, verify the latest
-  `template/tabular_train_pipeline` was synced and opened.
+- Template sync rebuilds the Pipeline draft because ClearML stores the step
+  graph separately from task parameters. If New Run does not show 10 supported
+  models and three ensemble methods, open the latest synced
+  `template/tabular_train_pipeline`, not an old run clone.
 - If `preprocess_features` remains queued, verify the pipeline controller was
   started on the controller queue, not on the stage queue.
 - If a GBM step fails with a missing dependency, re-sync the latest templates

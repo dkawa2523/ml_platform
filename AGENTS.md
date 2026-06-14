@@ -75,7 +75,7 @@ Avoid sprawl:
 - no model-specific templates
 - no dataset-specific templates
 - no one-template-per-ensemble-method variants
-- no broad diagnostics or contract framework
+- no broad diagnostics or validation framework
 - no bulk copy from reference repositories
 - no business logic in scripts
 
@@ -94,7 +94,7 @@ A successful run is not enough. ClearML UI must show:
 - inference source and predictions
 
 `docs/SPEC.md` is the product source of truth.
-`docs/CLEARML_UI_SPEC.md` is the screen-level UI contract.
+`docs/CLEARML_UI_SPEC.md` is the screen-level UI guide.
 
 ## Checks
 
