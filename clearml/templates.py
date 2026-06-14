@@ -145,13 +145,13 @@ def _find_editable_template(Task: Any, project_name: str, task_name: str):
     return editable[-1] if editable else None
 
 
-def _archive_stale_created_templates(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
-    for task in Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=False):
+def _delete_stale_created_templates(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
+    for task in Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=True):
         if task.id == keep_id or getattr(task, "status", None) != "created":
             continue
-        set_archived = getattr(task, "set_archived", None)
-        if callable(set_archived):
-            set_archived(True)
+        delete = getattr(task, "delete", None)
+        if callable(delete):
+            delete(delete_artifacts_and_models=False, raise_on_error=False)
 
 
 def _sync_template_task(
@@ -285,7 +285,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
         )
         apply_execution_image(task, execution_image)
         _apply_task_metadata(task, task_name, execution_image)
-        _archive_stale_created_templates(Task, project_name, display_name, task.id)
+        _delete_stale_created_templates(Task, project_name, display_name, task.id)
         print(f"Synced template: {project_name}/{display_name} id={task.id} image={execution_image or '-'} ({_template_note(task_name, execution_image)})")
 
     for task_name, task_config, _ in PIPELINE_TEMPLATES:

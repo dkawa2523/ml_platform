@@ -563,8 +563,8 @@ def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
     return None
 
 
-def _archive_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
-    for task in Task.get_tasks(task_name=task_name, allow_archived=False):
+def _delete_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
+    for task in Task.get_tasks(task_name=task_name, allow_archived=True):
         if task.id == keep_id or getattr(task, "status", None) != "created":
             continue
         get_project_name = getattr(task, "get_project_name", None)
@@ -575,9 +575,9 @@ def _archive_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str,
         task_type = getattr(task, "task_type", None) or getattr(task, "type", None) or getattr(getattr(task, "data", None), "type", None)
         if str(task_type) != str(Task.TaskTypes.controller):
             continue
-        set_archived = getattr(task, "set_archived", None)
-        if callable(set_archived):
-            set_archived(True)
+        delete = getattr(task, "delete", None)
+        if callable(delete):
+            delete(delete_artifacts_and_models=False, raise_on_error=False)
 
 
 def _apply_pipeline_template_metadata(task: Any, execution_image: str | None = None) -> None:
@@ -657,7 +657,7 @@ def sync_pipeline_draft(
             existing.set_packages(packages)
         apply_execution_image(existing, execution_image)
         _apply_pipeline_template_metadata(existing, execution_image)
-        _archive_stale_pipeline_drafts(Task, plan["project"], display_name, existing.id)
+        _delete_stale_pipeline_drafts(Task, plan["project"], display_name, existing.id)
         return existing
 
     automation = import_clearml_automation()
@@ -688,7 +688,7 @@ def sync_pipeline_draft(
     pipe.task.update_parameters(draft_params)
     apply_execution_image(pipe.task, execution_image)
     _apply_pipeline_template_metadata(pipe.task, execution_image)
-    _archive_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
+    _delete_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
     return pipe.task
 
 
