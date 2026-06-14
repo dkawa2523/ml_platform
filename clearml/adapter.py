@@ -41,6 +41,28 @@ def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
     return {key: str(configured.get(key) or value) for key, value in defaults.items()}
 
 
+def clearml_execution_image(clearml_cfg: dict[str, Any] | None) -> str | None:
+    clearml_cfg = clearml_cfg or {}
+    execution = clearml_cfg.get("execution") or {}
+    if not isinstance(execution, dict):
+        execution = {}
+    return execution.get("image") or clearml_cfg.get("execution_image")
+
+
+def apply_execution_image(task: Any, image: str | None) -> None:
+    if not image:
+        return
+    set_base_docker = getattr(task, "set_base_docker", None)
+    if callable(set_base_docker):
+        try:
+            set_base_docker(docker_image=image)
+        except TypeError:  # pragma: no cover - ClearML SDK version compatibility
+            set_base_docker(docker_cmd=image)
+    update_parameters = getattr(task, "update_parameters", None)
+    if callable(update_parameters):
+        update_parameters({"Execution/docker_image": image})
+
+
 def clearml_stage_project(projects: dict[str, str], stage: str) -> str:
     if stage == "preprocess_features":
         return projects["preprocess"]

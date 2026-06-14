@@ -39,6 +39,7 @@ Tags include `domain:tabular`, `run_type:*`, `user_facing:true`,
 `internal:true`, `stage:<stage_name>`, `model:<model_name>`, and
 `ensemble:<method>`.
 
-The training template pre-fills all 10 supported models. The standard Agent
-image installs `pkgs/tabular[gbm]`; remove GBM candidates only for slim/custom
-Agent images that omit those packages.
+The training template pre-fills all 10 supported models. Templates reference
+`clearml.execution.image` from the selected profile. That execution image must
+include `pkgs/tabular[gbm]` to run GBM candidates; remove GBM names only for
+slim/custom images that omit those packages.

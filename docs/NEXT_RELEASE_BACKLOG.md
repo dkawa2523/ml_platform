@@ -4,8 +4,8 @@ Keep this list short. Product scope is in `docs/SPEC.md`.
 
 ## Required Before Release
 
-1. Rebuild and push the standard ClearML Agent image with `pkgs/tabular[gbm]`.
-   - Goal: default 10-model New Run executes without removing GBM candidates.
+1. Publish the profile execution image with `pkgs/tabular[gbm]`.
+   - Goal: default 10-model New Run executes on any worker that can pull the image.
    - Evidence: Agent log shows LightGBM, XGBoost, and CatBoost imports work.
 
 2. Remote training verification from `template/tabular_train_pipeline`.

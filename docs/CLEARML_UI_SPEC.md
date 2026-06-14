@@ -80,9 +80,10 @@ Default `Model/candidates` should show all supported models:
 ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting", "lightgbm", "xgboost", "catboost"]
 ```
 
-The standard Agent image installs `pkgs/tabular[gbm]`. Slim/custom Agents that
-do not include GBM packages should remove `lightgbm`, `xgboost`, and `catboost`
-from `Model/candidates`.
+The selected profile sets `clearml.execution.image`. That execution image must
+include `pkgs/tabular[gbm]` to run GBM candidates. Slim/custom execution images
+that do not include GBM packages should remove `lightgbm`, `xgboost`, and
+`catboost` from `Model/candidates`.
 
 ## Expected Training UI
 
@@ -135,5 +136,5 @@ Inference tasks should not show candidate comparison plots.
 - Old ClearML tasks are not deleted by repo code; archive them manually.
 - If New Run does not show the 10 supported models, verify the latest
   `template/tabular_train_pipeline` was synced and opened.
-- If a GBM step fails with a missing dependency, rebuild the standard Agent
-  image or remove GBM names from candidates for slim/custom Agents.
+- If a GBM step fails with a missing dependency, update the profile execution
+  image or remove GBM names from candidates for slim/custom images.

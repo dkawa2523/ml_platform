@@ -19,6 +19,10 @@ clearml:
     tasks: MLPlatform/Dev/Runs/Tabular/Tasks
     experiments: MLPlatform/Dev/Experiments/Tabular
   queue: default
+  execution:
+    # Pullable execution image used by ClearML Agent for template runs.
+    # Replace with the dev registry/image tag available to the target workers.
+    image: registry.example.com/ml-platform/clearml-agent:dev
   dataset_project: datasets-dev
   # Dev template defaults for remote-safe Pipeline New Run.
   # ClearML Agent containers cannot see repo-local data/sample_train.csv unless mounted.

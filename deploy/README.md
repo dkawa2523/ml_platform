@@ -24,15 +24,15 @@ docker build -f deploy/base/Dockerfile -t registry.example.com/ml-platform/clear
 docker push registry.example.com/ml-platform/clearml-agent:prod
 ```
 
-Replace `registry.example.com/ml-platform/clearml-agent` in the overlays with the real image repository.
+Replace `registry.example.com/ml-platform/clearml-agent` in the profiles and overlays with the real image repository.
 
-The standard Agent image installs `pkgs/tabular[gbm]` so the ClearML New Run
-default candidates can execute all 10 supported models, including LightGBM,
-XGBoost, and CatBoost. These packages remain out of `requirements.txt` and the
-package required dependencies; they are Agent-runtime extras for the default
-ClearML template.
+This image installs `pkgs/tabular[gbm]` so ClearML New Run defaults can execute
+all 10 supported models, including LightGBM, XGBoost, and CatBoost. These
+packages remain out of `requirements.txt` and package required dependencies.
+Set `clearml.execution.image` in the selected profile to the pullable image URI
+used by the target workers.
 
-If you build a slim/custom Agent without `pkgs/tabular[gbm]`, remove
+If you build a slim/custom execution image without `pkgs/tabular[gbm]`, remove
 `lightgbm`, `xgboost`, and `catboost` from `Model/candidates` before running the
 training pipeline.
 
@@ -64,7 +64,8 @@ Before applying, align the matching profile:
 - `config/profiles/clearml-dev.yaml` for `deploy/overlays/dev`
 - `config/profiles/clearml-prod.yaml` for `deploy/overlays/prod`
 
-Check `repository`, `branch`, `working_dir`, `queue`, and `artifact_output_uri`.
+Check `repository`, `branch`, `working_dir`, `queue`, `execution.image`, and
+`artifact_output_uri`.
 The dev and prod overlays render the same Kubernetes resource names by design.
 Apply only the overlay for the target environment in a given namespace. If dev
 and prod must run in the same cluster, put them in separate namespaces or add an
@@ -91,7 +92,8 @@ Use `deploy/overlays/prod` instead when applying production.
 
 ## Human Checklist Before Cluster Apply
 
-- The image repository and tag exist and are pullable by the cluster.
+- The profile `clearml.execution.image` repository and tag exist and are
+  pullable by the workers.
 - `clearml-credentials` exists in the target namespace and contains no placeholder values.
 - The deploy queue matches the profile queue and the ClearML UI queue.
 - Remote pipeline runs have enough Agent capacity: one worker slot for the controller task and one for step tasks, or separate controller and step queues.

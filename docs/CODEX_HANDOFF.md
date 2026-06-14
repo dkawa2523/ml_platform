@@ -25,8 +25,8 @@ Primary configs:
 Supported models are `linear`, `ridge`, `lasso`, `elasticnet`,
 `random_forest`, `extra_trees`, `gradient_boosting`, `lightgbm`, `xgboost`, and
 `catboost`. GBM models are supported optional-dependency models: local/package
-required dependencies stay light, while the standard ClearML Agent image
-installs `pkgs/tabular[gbm]`.
+required dependencies stay light, while the profile execution image must include
+`pkgs/tabular[gbm]` for remote 10-model runs.
 
 Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 
@@ -83,7 +83,7 @@ Old ClearML tasks may remain on the server until manually archived.
 Current release evidence should show:
 
 - stage graph with 10 model candidates and three ensemble methods on the
-  standard Agent image
+  configured execution image
 - leaderboard tables and plots in `evaluate_models`
 - prediction summary and distribution plots in `tabular_infer`
 - no ClearML imports under `pkgs`

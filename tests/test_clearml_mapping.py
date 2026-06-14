@@ -68,6 +68,7 @@ def test_clearml_mapping_shape():
     assert cfg["task"] == "tabular_train"
     assert "clearml" in cfg
     assert cfg["clearml"]["project_root"] == "MLPlatform/Dev"
+    assert cfg["clearml"]["execution"]["image"] == "registry.example.com/ml-platform/clearml-agent:dev"
     assert cfg["clearml"]["projects"] == {
         "templates": "MLPlatform/Dev/Templates/Tabular",
         "pipelines": "MLPlatform/Dev/Pipelines/Tabular",
@@ -123,6 +124,35 @@ def test_clearml_project_layout_prefers_explicit_projects():
             },
         }
     )["infer"] == "Legacy/Tasks"
+
+
+def test_clearml_execution_image_is_profile_driven():
+    adapter = load_clearml_adapter_module()
+
+    assert adapter.clearml_execution_image({"execution": {"image": "registry/image:tag"}}) == "registry/image:tag"
+    assert adapter.clearml_execution_image({"execution_image": "legacy/image:tag"}) == "legacy/image:tag"
+    assert adapter.clearml_execution_image({}) is None
+
+
+def test_clearml_execution_image_is_applied_to_task():
+    adapter = load_clearml_adapter_module()
+
+    class FakeTask:
+        def __init__(self):
+            self.base_docker = None
+            self.params = {}
+
+        def set_base_docker(self, docker_image=None, **_kwargs):
+            self.base_docker = docker_image
+
+        def update_parameters(self, params):
+            self.params.update(params)
+
+    task = FakeTask()
+    adapter.apply_execution_image(task, "registry/image:tag")
+
+    assert task.base_docker == "registry/image:tag"
+    assert task.params["Execution/docker_image"] == "registry/image:tag"
 
 
 def test_clearml_app_routes_primary_tasks_to_named_projects():

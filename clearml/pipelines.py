@@ -14,10 +14,12 @@ for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "p
         sys.path.insert(0, p)
 
 from adapter import (
+    apply_execution_image,
     as_bool,
     as_candidates,
     as_dict,
     as_list,
+    clearml_execution_image,
     clearml_projects,
     clearml_stage_project,
     clearml_tags,
@@ -49,6 +51,10 @@ def _json(value: Any) -> str:
 def _project_layout(profile: dict[str, Any]) -> dict[str, str]:
     clearml_cfg = profile.get("clearml", {})
     return clearml_projects(clearml_cfg)
+
+
+def _execution_image(profile: dict[str, Any]) -> str | None:
+    return clearml_execution_image(profile.get("clearml", {}) or {})
 
 
 def _model_cfg_for_pipeline(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -557,7 +563,24 @@ def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
     return None
 
 
-def _apply_pipeline_template_metadata(task: Any) -> None:
+def _archive_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
+    for task in Task.get_tasks(task_name=task_name, allow_archived=False):
+        if task.id == keep_id or getattr(task, "status", None) != "created":
+            continue
+        get_project_name = getattr(task, "get_project_name", None)
+        if callable(get_project_name):
+            candidate_project = str(get_project_name())
+            if candidate_project != project_name and not candidate_project.startswith(f"{project_name}/.pipelines/"):
+                continue
+        task_type = getattr(task, "task_type", None) or getattr(task, "type", None) or getattr(getattr(task, "data", None), "type", None)
+        if str(task_type) != str(Task.TaskTypes.controller):
+            continue
+        set_archived = getattr(task, "set_archived", None)
+        if callable(set_archived):
+            set_archived(True)
+
+
+def _apply_pipeline_template_metadata(task: Any, execution_image: str | None = None) -> None:
     add_tags = getattr(task, "add_tags", None)
     set_tags = getattr(task, "set_tags", None)
     if callable(add_tags):
@@ -570,12 +593,14 @@ def _apply_pipeline_template_metadata(task: Any) -> None:
         set_tags(sorted(set(current) | set(PIPELINE_TEMPLATE_TAGS)))
     set_comment = getattr(task, "set_comment", None)
     if callable(set_comment):
+        image_note = f" Execution image: {execution_image}." if execution_image else ""
         set_comment(
             "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
             "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
-            "Model/candidates is prefilled with all 10 supported models; the standard "
-            "Agent image includes pkgs/tabular[gbm]. Remove GBM names only for slim/custom Agents."
+            "Model/candidates is prefilled with all 10 supported models; the configured "
+            "execution image must include pkgs/tabular[gbm] for GBM models."
+            f"{image_note}"
         )
 
 
@@ -606,6 +631,7 @@ def sync_pipeline_draft(
     branch: str | None = None,
     working_dir: str | None = None,
     packages: list[str] | None = None,
+    execution_image: str | None = None,
 ):
     """Create a Pipeline-tab draft for the stage-based training graph."""
     clearml_sdk = import_clearml_sdk()
@@ -613,6 +639,8 @@ def sync_pipeline_draft(
     display_name = clearml_template_name(template_name)
     params = pipeline_ui_params(task_path, profile_path)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=params)
+    if execution_image is None:
+        execution_image = _execution_image(load_yaml(profile_path))
     existing = _find_pipeline_draft(Task, plan["project"], display_name)
     draft_params = {**params, **pipeline_arg_params(params)}
     if existing is not None:
@@ -627,7 +655,9 @@ def sync_pipeline_draft(
         existing.update_parameters(draft_params)
         if packages:
             existing.set_packages(packages)
-        _apply_pipeline_template_metadata(existing)
+        apply_execution_image(existing, execution_image)
+        _apply_pipeline_template_metadata(existing, execution_image)
+        _archive_stale_pipeline_drafts(Task, plan["project"], display_name, existing.id)
         return existing
 
     automation = import_clearml_automation()
@@ -656,7 +686,9 @@ def sync_pipeline_draft(
     _add_plan_steps(pipe, plan)
     pipe.create_draft()
     pipe.task.update_parameters(draft_params)
-    _apply_pipeline_template_metadata(pipe.task)
+    apply_execution_image(pipe.task, execution_image)
+    _apply_pipeline_template_metadata(pipe.task, execution_image)
+    _archive_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
     return pipe.task
 
 

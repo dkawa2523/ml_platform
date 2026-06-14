@@ -35,10 +35,11 @@ lightgbm, xgboost, catboost
 ```
 
 `lightgbm`, `xgboost`, and `catboost` require optional dependencies. They stay
-out of package required dependencies and `requirements.txt`; the standard
-ClearML Agent image installs `pkgs/tabular[gbm]` so the product-facing default
-10-candidate run can execute. Local or slim-Agent runs may override
-`model.candidates` to the dependency-free subset.
+out of package required dependencies and `requirements.txt`. Remote templates
+reference `clearml.execution.image` from the selected profile; that image must
+include `pkgs/tabular[gbm]` to run the product-facing 10-candidate default.
+Local or slim-image runs may override `model.candidates` to the dependency-free
+subset.
 
 Out-of-scope models:
 
