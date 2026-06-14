@@ -617,6 +617,34 @@ def _delete_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, 
             delete(delete_artifacts_and_models=False, raise_on_error=False)
 
 
+def _delete_created_pipeline_draft(task: Any) -> None:
+    """Delete a created pipeline draft so sync can rebuild the stored graph."""
+    if task is None:
+        return
+    if getattr(task, "status", None) != "created":
+        return
+    delete = getattr(task, "delete", None)
+    if callable(delete):
+        delete(delete_artifacts_and_models=False, raise_on_error=False)
+
+
+def _delete_legacy_pipeline_templates(Task: Any, names: list[str]) -> None:
+    """Remove old created pipeline templates that can still appear as New Run entries."""
+    for task_name in names:
+        for task in Task.get_tasks(task_name=task_name, allow_archived=True):
+            if getattr(task, "status", None) != "created":
+                continue
+            project_name = ""
+            get_project_name = getattr(task, "get_project_name", None)
+            if callable(get_project_name):
+                project_name = str(get_project_name())
+            if ".pipelines/" not in project_name:
+                continue
+            delete = getattr(task, "delete", None)
+            if callable(delete):
+                delete(delete_artifacts_and_models=False, raise_on_error=False)
+
+
 def _apply_pipeline_template_metadata(
     task: Any,
     execution_image: str | None = None,
@@ -689,33 +717,17 @@ def sync_pipeline_draft(
     if execution_image is None:
         execution_image = _execution_image(load_yaml(profile_path))
     existing = _find_pipeline_draft(Task, plan["project"], display_name)
+    # ClearML pipeline drafts persist their step graph separately from normal
+    # task parameters. Updating an existing draft can leave New Run parameters
+    # current while executing an old graph, so template sync rebuilds the draft.
+    if existing is not None:
+        _delete_created_pipeline_draft(existing)
     draft_params = {
         **params,
         **pipeline_arg_params(params),
         "pipeline/controller_queue": plan["controller_queue"],
         "pipeline/default_queue": plan["stage_queue"],
     }
-    if existing is not None:
-        _set_pipeline_script_with_compat(
-            existing,
-            repository=repository or ".",
-            branch=branch or "main",
-            working_dir=working_dir or ".",
-            task_config=task_path,
-            profile_path=profile_path,
-        )
-        existing.update_parameters(draft_params)
-        if packages:
-            existing.set_packages(packages)
-        apply_execution_image(existing, execution_image)
-        _apply_pipeline_template_metadata(
-            existing,
-            execution_image,
-            controller_queue=plan["controller_queue"],
-            stage_queue=plan["stage_queue"],
-        )
-        _delete_stale_pipeline_drafts(Task, plan["project"], display_name, existing.id)
-        return existing
 
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
@@ -751,6 +763,7 @@ def sync_pipeline_draft(
         stage_queue=plan["stage_queue"],
     )
     _delete_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
+    _delete_legacy_pipeline_templates(Task, ["tabular_train_pipeline_template"])
     return pipe.task
 
 
