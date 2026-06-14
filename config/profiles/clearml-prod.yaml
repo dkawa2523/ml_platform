@@ -18,6 +18,9 @@ clearml:
     stages: MLPlatform/Prod/Runs/Tabular/Stages
     tasks: MLPlatform/Prod/Runs/Tabular/Tasks
     experiments: MLPlatform/Prod/Experiments/Tabular
+  controller_queue: controller
+  stage_queue: cpu
+  # Backward-compatible alias for older code paths; same meaning as stage_queue.
   queue: cpu
   execution:
     # Pullable execution image used by ClearML Agent for template runs.

@@ -13,6 +13,10 @@ Users should start from the Pipeline tab for training and from
 `template/tabular_infer` for inference. `internal/tabular_stage` is for
 PipelineController steps.
 
+Run the training PipelineController on the profile `controller_queue`; stage
+steps are queued to `stage_queue`. In dev this means controller queue
+`controller` and stage queue `default`.
+
 ## Projects
 
 | object | dev project |
@@ -136,5 +140,7 @@ Inference tasks should not show candidate comparison plots.
 - Old ClearML tasks are not deleted by repo code; archive them manually.
 - If New Run does not show the 10 supported models, verify the latest
   `template/tabular_train_pipeline` was synced and opened.
+- If `preprocess_features` remains queued, verify the pipeline controller was
+  started on the controller queue, not on the stage queue.
 - If a GBM step fails with a missing dependency, update the profile execution
   image or remove GBM names from candidates for slim/custom images.

@@ -284,6 +284,7 @@ def _stage_step(
     templates_project: str,
     projects: dict[str, str],
     run_name: str,
+    execution_queue: str,
     model_name: str | None = None,
     ensemble_method: str | None = None,
     parents: list[str] | None = None,
@@ -303,6 +304,7 @@ def _stage_step(
         "base_task_name": clearml_template_name(STAGE_TEMPLATE),
         "task_config": STAGE_TASK_CONFIG,
         "target_project": clearml_stage_project(projects, stage),
+        "execution_queue": execution_queue,
         "pipeline_stage_group": label,
         "parameter_override": parameter_override,
         "tags": clearml_tags(
@@ -327,6 +329,8 @@ def _build_training_plan(
     pipelines_project = projects["pipelines"]
     stages_project = projects["stages"]
     clearml_cfg = profile.get("clearml", {})
+    stage_queue = str(clearml_cfg.get("stage_queue") or clearml_cfg.get("queue") or "default")
+    controller_queue = str(clearml_cfg.get("controller_queue") or clearml_cfg.get("pipeline_queue") or stage_queue)
     default_params = _training_pipeline_ui_params(pipeline_cfg, profile)
     effective_params = {**default_params, **(ui_params or {})}
     run_name = str(effective_params.get("Run/name") or pipeline_cfg.get("run", {}).get("name") or "run")
@@ -365,6 +369,7 @@ def _build_training_plan(
             templates_project=templates_project,
             projects=projects,
             run_name=run_name,
+            execution_queue=stage_queue,
             overrides={
                 **data_overrides,
                 **split_overrides,
@@ -389,6 +394,7 @@ def _build_training_plan(
                 templates_project=templates_project,
                 projects=projects,
                 run_name=run_name,
+                execution_queue=stage_queue,
                 model_name=model_name,
                 parents=["preprocess_features"],
                 overrides={
@@ -416,6 +422,7 @@ def _build_training_plan(
                     templates_project=templates_project,
                     projects=projects,
                     run_name=run_name,
+                    execution_queue=stage_queue,
                     ensemble_method=method,
                     parents=train_steps,
                     overrides={
@@ -439,6 +446,7 @@ def _build_training_plan(
             templates_project=templates_project,
             projects=projects,
             run_name=run_name,
+            execution_queue=stage_queue,
             parents=parents_for_evaluate,
             overrides={
                 **stage_common_overrides,
@@ -463,7 +471,9 @@ def _build_training_plan(
         "name": prefixed_task_name("pipeline", "tabular_train_pipeline", run_name),
         "version": "0.2.0",
         "training_flow": "preprocess_train_ensemble_evaluate" if ensemble_enabled else "preprocess_train_evaluate",
-        "queue": clearml_cfg.get("queue", "default"),
+        "queue": stage_queue,
+        "stage_queue": stage_queue,
+        "controller_queue": controller_queue,
         "candidate_models": [candidate["name"] for candidate in candidates],
         "ensemble_enabled": ensemble_enabled,
         "steps": steps,
@@ -499,7 +509,8 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         f"name={plan['name']} "
         f"version={plan['version']} "
         f"training_flow={plan['training_flow']} "
-        f"queue={plan['queue']}"
+        f"controller_queue={plan.get('controller_queue')} "
+        f"stage_queue={plan.get('stage_queue')}"
     )
     for step in plan["steps"]:
         parents = ",".join(step["parents"]) if step["parents"] else "-"
@@ -509,6 +520,7 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
             f"name={step['name']} "
             f"parents={parents} "
             f"target_project={step.get('target_project')} "
+            f"execution_queue={step.get('execution_queue')} "
             f"template={step['base_task_project']}/{step['base_task_name']} "
             f"task_config={step['task_config']} "
             f"parameter_override=[{overrides}] "
@@ -562,6 +574,8 @@ def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
             kwargs["parents"] = step["parents"]
         if step["parameter_override"]:
             kwargs["parameter_override"] = step["parameter_override"]
+        if step.get("execution_queue"):
+            kwargs["execution_queue"] = step["execution_queue"]
         if step.get("pipeline_stage_group"):
             kwargs["stage"] = step["pipeline_stage_group"]
         pipe.add_step(**kwargs)
@@ -603,7 +617,13 @@ def _delete_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, 
             delete(delete_artifacts_and_models=False, raise_on_error=False)
 
 
-def _apply_pipeline_template_metadata(task: Any, execution_image: str | None = None) -> None:
+def _apply_pipeline_template_metadata(
+    task: Any,
+    execution_image: str | None = None,
+    *,
+    controller_queue: str | None = None,
+    stage_queue: str | None = None,
+) -> None:
     add_tags = getattr(task, "add_tags", None)
     set_tags = getattr(task, "set_tags", None)
     if callable(add_tags):
@@ -617,12 +637,16 @@ def _apply_pipeline_template_metadata(task: Any, execution_image: str | None = N
     set_comment = getattr(task, "set_comment", None)
     if callable(set_comment):
         image_note = f" Execution image: {execution_image}." if execution_image else ""
+        queue_note = ""
+        if controller_queue or stage_queue:
+            queue_note = f" Run the PipelineController on queue {controller_queue or '-'}; stages run on queue {stage_queue or '-'}."
         set_comment(
             "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
             "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
             "Model/candidates is prefilled with all 10 supported models; the configured "
             "execution image must include pkgs/tabular[gbm] for GBM models."
+            f"{queue_note}"
             f"{image_note}"
         )
 
@@ -665,7 +689,12 @@ def sync_pipeline_draft(
     if execution_image is None:
         execution_image = _execution_image(load_yaml(profile_path))
     existing = _find_pipeline_draft(Task, plan["project"], display_name)
-    draft_params = {**params, **pipeline_arg_params(params)}
+    draft_params = {
+        **params,
+        **pipeline_arg_params(params),
+        "pipeline/controller_queue": plan["controller_queue"],
+        "pipeline/default_queue": plan["stage_queue"],
+    }
     if existing is not None:
         _set_pipeline_script_with_compat(
             existing,
@@ -679,7 +708,12 @@ def sync_pipeline_draft(
         if packages:
             existing.set_packages(packages)
         apply_execution_image(existing, execution_image)
-        _apply_pipeline_template_metadata(existing, execution_image)
+        _apply_pipeline_template_metadata(
+            existing,
+            execution_image,
+            controller_queue=plan["controller_queue"],
+            stage_queue=plan["stage_queue"],
+        )
         _delete_stale_pipeline_drafts(Task, plan["project"], display_name, existing.id)
         return existing
 
@@ -710,7 +744,12 @@ def sync_pipeline_draft(
     pipe.create_draft()
     pipe.task.update_parameters(draft_params)
     apply_execution_image(pipe.task, execution_image)
-    _apply_pipeline_template_metadata(pipe.task, execution_image)
+    _apply_pipeline_template_metadata(
+        pipe.task,
+        execution_image,
+        controller_queue=plan["controller_queue"],
+        stage_queue=plan["stage_queue"],
+    )
     _delete_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
     return pipe.task
 

@@ -1265,6 +1265,9 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
     assert plan["kind"] == "training"
     assert plan["project"] == "MLPlatform/Dev/Pipelines/Tabular"
     assert plan["stage_project"] == "MLPlatform/Dev/Runs/Tabular/Stages"
+    assert plan["controller_queue"] == "controller"
+    assert plan["stage_queue"] == "default"
+    assert plan["queue"] == "default"
     assert plan["stage_projects"] == {
         "preprocess": "MLPlatform/Dev/Runs/Tabular/Preprocess",
         "train": "MLPlatform/Dev/Runs/Tabular/Train",
@@ -1309,7 +1312,9 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
         "build_ensemble_median",
     ]
     assert plan["steps"][0]["target_project"] == "MLPlatform/Dev/Runs/Tabular/Preprocess"
+    assert plan["steps"][0]["execution_queue"] == "default"
     assert plan["steps"][1]["target_project"] == "MLPlatform/Dev/Runs/Tabular/Train"
+    assert plan["steps"][1]["execution_queue"] == "default"
     assert plan["steps"][1]["parameter_override"]["Run/stage"] == "train_model"
     assert plan["steps"][1]["parameter_override"]["Run/name"] == "stage/train_linear/tabular_training_pipeline"
     assert plan["steps"][1]["parameter_override"]["Model/evaluation_metrics"] == '["mae", "rmse", "r2"]'

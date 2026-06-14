@@ -65,10 +65,11 @@ python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.y
 ```
 
 Before remote execution, verify the profile `repository`, `branch`,
-`working_dir`, `queue`, and optional `artifact_output_uri`. Remote runs should
-use `Input/clearml_dataset_id`, `Input/dataset_file`, and
-`Input/target_column`; `Input/local_path` works only when the Agent can see that
-path.
+`working_dir`, `controller_queue`, `stage_queue`, and optional
+`artifact_output_uri`. Run the PipelineController on `controller_queue`; stages
+run on `stage_queue`. Remote runs should use `Input/clearml_dataset_id`,
+`Input/dataset_file`, and `Input/target_column`; `Input/local_path` works only
+when the Agent can see that path.
 
 Current display names:
 
