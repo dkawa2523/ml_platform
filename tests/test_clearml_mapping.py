@@ -1258,6 +1258,51 @@ def test_clearml_launch_targets_use_infer_stage_and_training_pipeline_drafts():
     ]
 
 
+def test_clearml_infer_template_uses_remote_dataset_defaults():
+    templates = load_clearml_templates_module()
+    cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml")
+
+    params = templates._task_ui_params("tabular_infer_template", cfg)
+
+    assert params["Input/local_path"] == ""
+    assert params["Input/clearml_dataset_id"] == "b7afaea9d7aa42f084fb4fc06b0d4d41"
+    assert params["Input/dataset_file"] == "sample_train.csv"
+
+
+def test_clearml_template_metadata_replaces_stale_role_tags():
+    templates = load_clearml_templates_module()
+    pipelines = load_clearml_pipelines_module()
+
+    class FakeTask:
+        def __init__(self):
+            self.tags = ["domain:tabular", "run_type:task", "internal:true", "old:keep"]
+            self.comment = None
+
+        def get_tags(self):
+            return list(self.tags)
+
+        def set_tags(self, tags):
+            self.tags = list(tags)
+
+        def set_comment(self, comment):
+            self.comment = comment
+
+    infer = FakeTask()
+    templates._apply_task_metadata(infer, "tabular_infer_template", "image:tag")
+    assert "run_type:template" in infer.tags
+    assert "user_facing:true" in infer.tags
+    assert "run_type:task" not in infer.tags
+    assert "internal:true" not in infer.tags
+    assert "old:keep" in infer.tags
+
+    pipeline = FakeTask()
+    pipelines._apply_pipeline_template_metadata(pipeline, "image:tag")
+    assert "run_type:template" in pipeline.tags
+    assert "user_facing:true" in pipeline.tags
+    assert "run_type:task" not in pipeline.tags
+    assert "internal:true" not in pipeline.tags
+
+
 def test_clearml_training_pipeline_plan_is_stage_graph():
     pipelines = load_clearml_pipelines_module()
     plan = pipelines.build_pipeline_plan("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")

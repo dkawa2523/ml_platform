@@ -641,7 +641,7 @@ class ClearMLAdapter:
         if output_uri:
             kwargs["output_uri"] = output_uri
         task = Task.init(**kwargs)
-        _apply_clearml_metadata(task, tags=tags, comment=comment)
+        _apply_clearml_metadata(task, tags=tags, comment=comment, replace_tags=True)
         return cls(task)
 
     def apply_metadata(

@@ -1,6 +1,7 @@
 # ClearML Plots / Tables Reporting Verification
 
-Status: repo-side verified; remote UI verification pending.
+Status: remote training verified; remote inference rerun pending after infer
+Dataset-default template update.
 
 ## Scope
 
@@ -39,7 +40,32 @@ with metrics, artifacts, tables, and plots.
 
 ## Remote Verification
 
-Pending. Run `template/tabular_train_pipeline` and `template/tabular_infer` on the
-dev ClearML server, then confirm each stage task shows its own Scalars, Tables,
-and Plots/Images. If PNG images appear outside the Plotly-style PLOTS panel, use
-the native CSV-derived scatter/histogram plots as the PLOTS gate evidence.
+Latest training template New Run:
+
+- Pipeline task: `cf12d910fcbf44d8a94b5b1a6cfef4ff`
+- Run name: `gate_latest_20260614_214421`
+- Commit: `647bcdfb53283b0fd37ab81535117661c5edfe7a`
+- Result: completed
+- Graph: 10 `train_<model>` tasks plus `build_ensemble_mean_topk`,
+  `build_ensemble_weighted`, `build_ensemble_median`, and `evaluate_models`.
+- GBM packages in task venv: `lightgbm==4.6.0`, `xgboost==3.2.0`,
+  `catboost==1.2.10`.
+
+Stage evidence:
+
+- `stage/preprocess_features`: `feature_summary_table`,
+  `missing_rate_by_column`, `feature_type_counts`.
+- `stage/train_lightgbm` and `stage/train_xgboost`: metrics scalars,
+  validation prediction/residual plots, feature importance table.
+- `stage/build_ensemble_mean_topk`: ensemble metrics scalars,
+  ensemble member/weight/prediction tables, prediction/residual plots.
+- `stage/evaluate_models`: `leaderboard/table`, `leaderboard/top_k_scores`,
+  `leaderboard/metric_panel`, `leaderboard/pareto_rmse_r2`,
+  top-k prediction/residual plots, best-entry prediction/residual plots,
+  candidate and ensemble scalar metrics.
+
+An inference template clone using `source_task_id=cf12d910fcbf44d8a94b5b1a6cfef4ff`
+failed before this update because the template still defaulted to
+`Input/local_path=data/sample_infer.csv`, which is not visible inside the Agent
+container. The template now fills `Input/clearml_dataset_id` and
+`Input/dataset_file` from the selected ClearML profile for remote inference.

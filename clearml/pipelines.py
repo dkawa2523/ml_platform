@@ -629,16 +629,22 @@ def _apply_pipeline_template_metadata(
     controller_queue: str | None = None,
     stage_queue: str | None = None,
 ) -> None:
-    add_tags = getattr(task, "add_tags", None)
     set_tags = getattr(task, "set_tags", None)
-    if callable(add_tags):
-        add_tags(PIPELINE_TEMPLATE_TAGS)
-    elif callable(set_tags):
+    if callable(set_tags):
         current = []
         get_tags = getattr(task, "get_tags", None)
         if callable(get_tags):
             current = list(get_tags() or [])
-        set_tags(sorted(set(current) | set(PIPELINE_TEMPLATE_TAGS)))
+        kept = [
+            tag
+            for tag in current
+            if not tag.startswith("run_type:") and tag not in {"internal:true", "user_facing:true"}
+        ]
+        set_tags(sorted(set(kept) | set(PIPELINE_TEMPLATE_TAGS)))
+    else:
+        add_tags = getattr(task, "add_tags", None)
+        if callable(add_tags):
+            add_tags(PIPELINE_TEMPLATE_TAGS)
     set_comment = getattr(task, "set_comment", None)
     if callable(set_comment):
         image_note = f" Execution image: {execution_image}." if execution_image else ""

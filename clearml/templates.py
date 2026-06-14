@@ -79,16 +79,22 @@ def _template_tags(task_name: str) -> list[str]:
 
 def _apply_task_metadata(task: Any, task_name: str, execution_image: str | None = None) -> None:
     tags = _template_tags(task_name)
-    add_tags = getattr(task, "add_tags", None)
     set_tags = getattr(task, "set_tags", None)
-    if callable(add_tags):
-        add_tags(tags)
-    elif callable(set_tags):
+    if callable(set_tags):
         current = []
         get_tags = getattr(task, "get_tags", None)
         if callable(get_tags):
             current = list(get_tags() or [])
-        set_tags(sorted(set(current) | set(tags)))
+        kept = [
+            tag
+            for tag in current
+            if not tag.startswith("run_type:") and tag not in {"internal:true", "user_facing:true"}
+        ]
+        set_tags(sorted(set(kept) | set(tags)))
+    else:
+        add_tags = getattr(task, "add_tags", None)
+        if callable(add_tags):
+            add_tags(tags)
     set_comment = getattr(task, "set_comment", None)
     if callable(set_comment):
         set_comment(_template_note(task_name, execution_image))
@@ -113,6 +119,19 @@ def _remote_packages() -> list[str]:
         if package not in packages:
             packages.append(package)
     return packages
+
+
+def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    params = default_ui_params(cfg)
+    clearml_cfg = cfg.get("clearml", {}) or {}
+    if task_name == "tabular_infer_template" and cfg.get("runtime", {}).get("use_clearml"):
+        dataset_id = clearml_cfg.get("default_infer_dataset_id") or clearml_cfg.get("default_dataset_id")
+        dataset_file = clearml_cfg.get("default_infer_dataset_file") or clearml_cfg.get("default_dataset_file")
+        if dataset_id and not params.get("Input/clearml_dataset_id"):
+            params["Input/local_path"] = ""
+            params["Input/clearml_dataset_id"] = dataset_id
+            params["Input/dataset_file"] = params.get("Input/dataset_file") or dataset_file
+    return params
 
 
 def _set_script_with_compat(
@@ -223,7 +242,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     if dry_run:
         for task_name, task_config, task_type_name in TASK_TEMPLATES:
             cfg = load_run_config(task_config, profile_path)
-            ui_params = default_ui_params(cfg)
+            ui_params = _task_ui_params(task_name, cfg)
             params = ", ".join(ui_params)
             entry_point = _entry_point(task_name)
             display_name = clearml_template_name(task_name)
@@ -272,7 +291,7 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     for task_name, task_config, task_type_name in TASK_TEMPLATES:
         cfg = load_run_config(task_config, profile_path)
         entry_point = _entry_point(task_name)
-        params = default_ui_params(cfg)
+        params = _task_ui_params(task_name, cfg)
         display_name = clearml_template_name(task_name)
         task = _sync_template_task(
             Task,

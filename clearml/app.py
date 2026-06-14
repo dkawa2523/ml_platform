@@ -137,6 +137,15 @@ def main() -> None:
     )
     try:
         connected = adapter.connect_params(default_ui_params(cfg))
+        metadata_cfg = apply_ui_params(cfg, connected)
+        runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(metadata_cfg)
+        adapter.apply_metadata(
+            project_name=runtime_project,
+            task_name=runtime_name,
+            tags=runtime_tags,
+            comment=runtime_comment,
+            replace_tags=True,
+        )
         resolved_local_path = None
         stage = connected.get("Run/stage") or cfg.get("run", {}).get("stage")
         needs_dataset = "data" in cfg and not (cfg.get("task") == "tabular_stage" and stage != "preprocess_features")
@@ -151,14 +160,6 @@ def main() -> None:
         task_id = getattr(adapter.task, "id", None)
         if task_id:
             cfg.setdefault("runtime", {})["clearml_task_id"] = task_id
-        runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(cfg)
-        adapter.apply_metadata(
-            project_name=runtime_project,
-            task_name=runtime_name,
-            tags=runtime_tags,
-            comment=runtime_comment,
-            replace_tags=True,
-        )
         if cfg.get("task") == "tabular_infer":
             cfg = adapter.resolve_infer_model_source(cfg)
         else:
