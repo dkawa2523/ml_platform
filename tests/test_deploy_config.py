@@ -8,6 +8,13 @@ def test_execution_image_installs_gbm_extras():
     assert '-e "pkgs/tabular[gbm]"' in dockerfile
 
 
+def test_agent_config_exposes_execution_image_site_packages():
+    configmap = Path("deploy/base/configmap.yaml").read_text(encoding="utf-8")
+
+    assert "CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES" in configmap
+    assert '"true"' in configmap
+
+
 def test_profiles_define_pullable_execution_image_reference():
     dev_profile = Path("config/profiles/clearml-dev.yaml").read_text(encoding="utf-8")
     prod_profile = Path("config/profiles/clearml-prod.yaml").read_text(encoding="utf-8")

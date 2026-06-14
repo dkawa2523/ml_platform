@@ -4,3 +4,7 @@ metadata:
   name: ml-platform-clearml-agent-config
 data:
   CLEARML_AGENT_QUEUE: default
+  # ClearML Agent creates a task venv inside the execution image. Keep image
+  # site-packages visible so supported optional GBM packages baked into the
+  # image are importable by remote tasks.
+  CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES: "true"

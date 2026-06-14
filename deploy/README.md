@@ -33,6 +33,8 @@ Synced templates also list the GBM packages for the Agent-created execution
 venv, because ClearML Agent may isolate that venv from image site-packages. Set
 `clearml.execution.image` in the selected profile to the pullable image URI used
 by the target workers.
+The base ConfigMap sets `CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES=true` so the
+task venv can import packages installed in that execution image.
 
 If you build a slim/custom execution image without `pkgs/tabular[gbm]`, remove
 `lightgbm`, `xgboost`, and `catboost` from `Model/candidates` before running the
