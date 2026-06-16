@@ -1,0 +1,9 @@
+.md-typeset { font-size: 0.78rem; line-height: 1.75; }
+.md-typeset h1, .md-typeset h2, .md-typeset h3 { font-weight: 700; }
+.md-typeset__table { display: block; width: 100%; overflow-x: auto; }
+.md-typeset table:not([class]) { min-width: 720px; }
+.md-typeset td, .md-typeset th { vertical-align: top; }
+.md-typeset code { word-break: break-word; }
+.md-typeset pre > code { white-space: pre-wrap; }
+.mermaid { text-align: center; overflow-x: auto; }
+.caption { color: var(--md-default-fg-color--light); font-size: 0.85em; text-align: center; }

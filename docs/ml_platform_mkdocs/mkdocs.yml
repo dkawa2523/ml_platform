@@ -1,0 +1,119 @@
+site_name: ml_platform ドキュメント
+site_description: ClearML ベースのテーブル回帰学習・評価・推論基盤の利用・設計・運用ドキュメント
+site_url: https://example.local/ml_platform/
+repo_url: https://github.com/dkawa2523/ml_platform
+repo_name: dkawa2523/ml_platform
+edit_uri: edit/main/docs/
+
+nav:
+  - ホーム: index.md
+  - 導入:
+      - 全体像: setup/index.md
+      - 環境構築: setup/environment.md
+      - Local 実行: setup/local-run.md
+      - ClearML 準備: setup/clearml-preparation.md
+  - 利用ガイド:
+      - Local 学習: usage/local-training.md
+      - ClearML 学習: usage/clearml-training.md
+      - 推論: usage/inference.md
+      - 結果の読み方: usage/result-reading.md
+  - ClearML UI:
+      - 画面の入口とプロジェクト: clearml/entrypoints.md
+      - 学習 Pipeline UI: clearml/training-ui.md
+      - 推論 Task UI: clearml/inference-ui.md
+      - タスク結果と成果物: clearml/results.md
+  - 仕様リファレンス:
+      - 設定項目: reference/configuration.md
+      - 成果物一覧: reference/artifacts.md
+      - モデルとアンサンブル: reference/models.md
+      - メトリクスと数式: reference/metrics.md
+  - アーキテクチャ:
+      - 設計概要: architecture/overview.md
+      - リポジトリ構成: architecture/repository-structure.md
+      - Pipeline と Stage: architecture/pipeline-design.md
+      - ClearML 境界: architecture/clearml-boundary.md
+      - レポート設計: architecture/reporting.md
+  - データサイエンス:
+      - 処理ワークフロー: data-science/workflow.md
+      - 前処理と特徴量: data-science/features.md
+      - 評価とモデル選択: data-science/evaluation.md
+      - 推論の実務利用: data-science/inference-practice.md
+  - 改良・保守:
+      - 開発ガイドライン: development/guidelines.md
+      - モデル追加: development/add-model.md
+      - 特徴量・メトリクス追加: development/add-feature-or-metric.md
+      - 新しいタスク/解析への拡張: development/add-task.md
+      - テストと検証: development/testing.md
+  - 運用:
+      - トラブルシューティング: operations/troubleshooting.md
+      - 運用チェックリスト: operations/checklist.md
+  - ロードマップ: roadmap.md
+  - 用語集: glossary.md
+
+site_author: ml_platform developers
+copyright: Copyright © ml_platform developers
+
+theme:
+  name: material
+  language: ja
+  font: false
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: ダークモードに切り替え
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: ライトモードに切り替え
+
+plugins:
+  - search:
+      lang: ja
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
