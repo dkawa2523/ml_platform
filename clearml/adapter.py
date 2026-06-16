@@ -285,8 +285,13 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
         params["Run/stage"] = run.get("stage")
     if "split" in cfg:
         split = cfg.get("split", {}) or {}
+        if "method" in split:
+            params["Split/method"] = split.get("method")
         if "valid_size" in split:
             params["Split/valid_size"] = split.get("valid_size")
+        for key in ("group_column", "time_column", "valid_filter_column", "valid_filter_value"):
+            if key in split:
+                params[f"Split/{key}"] = split.get(key)
     if "data" in cfg:
         data = cfg.get("data", {})
         params.update(
@@ -322,8 +327,6 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             "source_type",
             "source_task_id",
             "model_selector",
-            "model_artifact_url",
-            "clearml_model_id",
             "local_model_path",
             "feature_spec_path",
             "preprocess_bundle_path",
@@ -397,7 +400,7 @@ def apply_ui_params(
         cfg.setdefault("model", {})
     if "Model/evaluation_metrics" in connected:
         cfg.setdefault("metrics", {})
-    if any(key.startswith("Features/") for key in connected) or "Model/feature_preset" in connected:
+    if any(key.startswith("Features/") for key in connected):
         cfg.setdefault("features", {})
     if any(key.startswith("Output/") for key in connected):
         cfg.setdefault("output", {})
@@ -410,9 +413,20 @@ def apply_ui_params(
         cfg["run"]["seed"] = int(connected["Run/seed"])
     if connected.get("Run/stage"):
         cfg["run"]["stage"] = connected["Run/stage"]
-    if "Split/valid_size" in connected and connected.get("Split/valid_size") not in {None, ""}:
+    split_keys = {
+        "Split/method": "method",
+        "Split/group_column": "group_column",
+        "Split/time_column": "time_column",
+        "Split/valid_filter_column": "valid_filter_column",
+        "Split/valid_filter_value": "valid_filter_value",
+    }
+    if any(key in connected for key in [*split_keys, "Split/valid_size"]):
         cfg.setdefault("split", {})
+    if "Split/valid_size" in connected and connected.get("Split/valid_size") not in {None, ""}:
         cfg["split"]["valid_size"] = float(connected["Split/valid_size"])
+    for ui_key, config_key in split_keys.items():
+        if ui_key in connected and connected.get(ui_key) not in {None, ""}:
+            cfg["split"][config_key] = connected[ui_key]
 
     if "data" in cfg:
         if resolved_local_path is not None:
@@ -460,8 +474,6 @@ def apply_ui_params(
         ("Model/source_type", "source_type"),
         ("Model/source_task_id", "source_task_id"),
         ("Model/model_selector", "model_selector"),
-        ("Model/model_artifact_url", "model_artifact_url"),
-        ("Model/clearml_model_id", "clearml_model_id"),
         ("Model/local_model_path", "local_model_path"),
         ("Model/feature_spec_path", "feature_spec_path"),
         ("Model/preprocess_bundle_path", "preprocess_bundle_path"),
@@ -471,8 +483,6 @@ def apply_ui_params(
             cfg["model"][config_key] = connected[ui_key]
     if connected.get("Model/artifact_path"):
         cfg["model"]["artifact_path"] = connected["Model/artifact_path"]
-    if connected.get("Model/feature_preset"):
-        cfg["features"]["preset"] = connected["Model/feature_preset"]
     for ui_key, config_key in (
         ("Features/preset", "preset"),
         ("Features/numeric_impute_strategy", "numeric_impute_strategy"),
@@ -815,30 +825,13 @@ class ClearMLAdapter:
         source_type = str(model_cfg.get("source_type") or "local_path").strip()
         if source_type == "task_id":
             return self._resolve_task_model_source(cfg)
-        if source_type == "artifact_url":
-            value = model_cfg.get("model_artifact_url")
-            if not value:
-                raise ValueError("model.model_artifact_url is required when model.source_type=artifact_url.")
-            model_cfg["artifact_path"] = self.resolve_artifact_path(value)
-            return cfg
-        if source_type == "clearml_model_id":
-            model_id = model_cfg.get("clearml_model_id")
-            if not model_id:
-                raise ValueError("model.clearml_model_id is required when model.source_type=clearml_model_id.")
-            Model = import_clearml_symbol("Model")
-            model = Model(str(model_id))
-            local_copy = model.get_local_copy()
-            if not local_copy:
-                raise ValueError(f"ClearML model id has no local copy: {model_id}")
-            model_cfg["artifact_path"] = str(local_copy)
-            return cfg
         if source_type == "local_path":
-            for key in ("artifact_path", "local_model_path", "model_artifact_url", "info_path", "feature_spec_path", "preprocess_bundle_path"):
+            for key in ("artifact_path", "local_model_path", "info_path", "feature_spec_path", "preprocess_bundle_path"):
                 value = model_cfg.get(key)
                 if isinstance(value, str) and "://" in value:
                     model_cfg[key] = self.resolve_artifact_path(value)
             return cfg
-        raise ValueError("model.source_type must be one of: task_id, artifact_url, clearml_model_id, local_path.")
+        raise ValueError("model.source_type must be one of: task_id, local_path.")
 
     def upload_artifact(self, name: str, path: str | Path) -> None:
         path = Path(path)

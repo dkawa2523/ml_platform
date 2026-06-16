@@ -30,12 +30,15 @@ TABLE_REPORTS = {
     "leaderboard_decision_summary",
     "best_vs_ensemble_summary",
     "predictions",
+    "schema_check_summary",
     "prediction_summary",
     "prediction_preview",
     "source_summary",
     "feature_summary_table",
     "missing_rate_by_column",
     "feature_type_counts",
+    "data_quality_summary_table",
+    "data_quality_warnings",
     "metrics_table",
     "metrics_by_candidate",
     "ensemble_metrics_table",
@@ -48,9 +51,12 @@ TABLE_SERIES_ALIASES = {
     "leaderboard_decision_summary": "leaderboard_decision_summary_table",
     "best_vs_ensemble_summary": "best_vs_ensemble_summary_table",
     "predictions": "predictions_table",
+    "schema_check_summary": "schema_check_summary_table",
     "prediction_summary": "prediction_summary_table",
     "prediction_preview": "prediction_preview_table",
     "source_summary": "source_summary_table",
+    "data_quality_summary_table": "data_quality_summary_table",
+    "data_quality_warnings": "data_quality_warnings_table",
 }
 TABLE_REPORT_PREFIXES = (
     "feature_importance",
@@ -122,9 +128,6 @@ def _report_best_model_metrics(adapter, metrics_payload: dict[str, Any]) -> None
     series = str(best_model.get("model_name") or best_model.get("ensemble_method") or "best")
     for metric_name, value in _numeric_metrics(best_model).items():
         adapter.report_scalar(f"best_model/{metric_name}", series, value, iteration=0)
-        # Compatibility for older ClearML views/tests that grouped best metrics
-        # under one title with metric names as series.
-        adapter.report_scalar("best_model", metric_name, value, iteration=0)
 
 
 def _report_feature_summary_metrics(adapter, path: str | Path) -> None:

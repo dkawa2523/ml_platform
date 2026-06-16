@@ -1,6 +1,6 @@
 # Inference Task Reference Verification
 
-Date: 2026-06-08
+Date: 2026-06-16
 
 ## Scope
 
@@ -12,21 +12,14 @@ Primary source paths:
 - `source_type=task_id` with `source_task_id` and `model_selector`
 - `source_type=local_path` with `local_model_path`
 
-Future / experimental source paths:
-
-- `artifact_url`
-- `clearml_model_id`
-
-These future paths can remain in code for explicit compatibility checks, but
-they are not primary ClearML UI template parameters.
-
 Selectors:
 
 - `best`
 - `ensemble`
 - `ensemble:<method>` such as `ensemble:median`
 - supported model names such as `linear`, `ridge`, `lasso`, `elasticnet`,
-  `random_forest`, `extra_trees`, and `gradient_boosting`
+  `random_forest`, `extra_trees`, `gradient_boosting`, `lightgbm`, `xgboost`,
+  and `catboost`
 
 ## Local Verification
 
@@ -57,7 +50,7 @@ Expected behavior:
 
 Observed local result:
 
-- run dir: `outputs\tabular_infer_20260608T080026Z`
+- run alias: `outputs\latest_infer`
 - resolved model:
   `outputs\latest_training_pipeline\evaluate_models\best_model.joblib`
 - resolved metadata:
@@ -67,7 +60,11 @@ Observed local result:
 - resolved preprocess bundle:
   `outputs\latest_training_pipeline\preprocess_features\preprocess_bundle.joblib`
 - predictions:
-  `outputs\tabular_infer_20260608T080026Z\predictions.csv`
+  `outputs\latest_infer\predictions.csv`
+- current local contract writes `schema_check_summary.json` and
+  `schema_check_summary.csv`; `predictions.csv` is slim and contains
+  `row_index`, available ID columns, `prediction`, and lightweight model
+  metadata instead of all input features
 - pytest coverage confirms `model_selector=ensemble` and
   `model_selector=ensemble:<method>` resolve ensemble artifacts with artifact
   kind `ensemble`.
@@ -91,13 +88,6 @@ Expected primary UI parameters on `tabular_infer_template`:
 - `Output/prediction_name`
 - `Output/chunk_size`
 
-Expected absent primary UI parameters:
-
-- `Model/model_artifact_url`
-- `Model/clearml_model_id`
-- `Model/artifact_path`
-- `Model/info_path`
-
 Result: pass
 
 Observed:
@@ -105,9 +95,9 @@ Observed:
 - `tabular_infer_template` exposes only primary source fields:
   `Model/source_type`, `Model/source_task_id`, `Model/model_selector`, and
   `Model/local_model_path`
-- `Model/model_artifact_url`, `Model/clearml_model_id`,
-  `Model/artifact_path`, and `Model/info_path` are absent from the primary
-  template UI
+- under ClearML profiles, `Model/source_type` defaults to `task_id` so New Run
+  starts on the recommended `source_task_id + model_selector` path; the local
+  YAML default remains `local_path`
 
 ## Tests
 
@@ -117,7 +107,7 @@ Command:
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Result: `54 passed`
+Result: `89 passed`
 
 ## Remote Verification
 
@@ -128,5 +118,5 @@ Remote dev server execution still needs to be performed for:
 - `source_type=task_id`, `model_selector=best`
 - `source_type=task_id`, `model_selector=ensemble`
 
-Do not promote this remote inference source path to supported until that
-evidence is recorded.
+Remote execution evidence remains the release gate for ClearML server behavior;
+the template contract and local behavior are covered by dry-run and tests.

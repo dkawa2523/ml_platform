@@ -65,9 +65,6 @@ def regression_prediction_frame(base_frame, y_true, y_pred, *, model_name: str |
     frame["prediction"] = prediction
     frame["residual"] = residual
     frame["abs_error"] = np.abs(residual)
-    # Deprecated compatibility columns kept for older notebooks/artifacts.
-    frame["_target"] = actual
-    frame["_prediction"] = prediction
     if model_name:
         frame["model_name"] = model_name
     return frame

@@ -12,9 +12,14 @@ run:
 # Required ClearML remote inputs: Input/clearml_dataset_id, Input/dataset_file,
 # and Input/target_column. clearml-dev profile provides dev Dataset defaults.
 # ClearML UI examples:
+#   Basic/model_suite: default | fast | interpretable | tree | gbm | custom
+#   Basic/quality_mode: fast | standard | quality
+#     fast uses smaller tree/GBM estimator counts; standard matches this file;
+#     quality modestly increases estimator counts without HPO.
 #   Model/candidates in ClearML New Run is prefilled with all supported models.
 #   GBDT is represented by the internal model name "gradient_boosting".
 #   Model/model_params_by_name: prefilled with dependency-free and optional GBM model keys.
+#     Explicit Model/model_params_by_name values take precedence over Basic/quality_mode.
 #   Model/ensemble_methods: ["mean_topk","weighted","median"]
 #   Features/drop_columns: ["unused_column"]
 #   Features/passthrough_columns: ["already_numeric_feature"]
@@ -33,6 +38,10 @@ data:
 split:
   method: random
   valid_size: 0.2
+  group_column: null
+  time_column: null
+  valid_filter_column: null
+  valid_filter_value: null
 
 metrics:
   names: [mae, rmse, r2]

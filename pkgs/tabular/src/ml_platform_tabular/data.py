@@ -107,19 +107,136 @@ def split_xy(df: pd.DataFrame, cfg: dict[str, Any]):
     return X, y, features
 
 
-def train_valid_split(X: pd.DataFrame, y, cfg: dict[str, Any]):
-    """Small deterministic split to avoid pulling sklearn into the MVP data layer."""
+def _valid_size(cfg: dict[str, Any]) -> float:
     split_cfg = cfg.get("split", {})
     valid_size = float(split_cfg.get("valid_size", 0.2))
     if not 0 < valid_size < 1:
         raise ValueError("split.valid_size must be between 0 and 1.")
+    return valid_size
+
+
+def _require_split_column(df: pd.DataFrame | None, column: Any, *, setting: str) -> str:
+    if df is None:
+        raise ValueError(f"{setting} requires the original dataframe for splitting.")
+    if column is None or str(column).strip() == "":
+        raise ValueError(f"{setting} is required for this split method.")
+    name = str(column)
+    if name not in df.columns:
+        raise ValueError(f"{setting} not found: {name}")
+    return name
+
+
+def _check_non_empty_split(train_idx, valid_idx, *, method: str) -> None:
+    if len(train_idx) == 0:
+        raise ValueError(f"split.method={method} produced an empty training split.")
+    if len(valid_idx) == 0:
+        raise ValueError(f"split.method={method} produced an empty validation split.")
+
+
+def _random_split_indices(row_count: int, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    valid_size = _valid_size(cfg)
     seed = int(cfg.get("run", {}).get("seed", 42))
     rng = np.random.default_rng(seed)
-    indices = np.arange(len(X))
+    indices = np.arange(row_count)
     rng.shuffle(indices)
     valid_count = max(1, int(round(len(indices) * valid_size)))
     valid_idx = indices[:valid_count]
     train_idx = indices[valid_count:]
     if len(train_idx) == 0:
         raise ValueError("Training split is empty. Provide more rows or reduce split.valid_size.")
+    return train_idx, valid_idx
+
+
+def _group_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    split_cfg = cfg.get("split", {}) or {}
+    group_column = _require_split_column(df, split_cfg.get("group_column"), setting="split.group_column")
+    assert df is not None
+    groups = df[group_column].astype("object").where(df[group_column].notna(), "<MISSING>")
+    unique_groups = np.array(sorted(groups.unique(), key=lambda value: str(value)), dtype=object)
+    if len(unique_groups) < 2:
+        raise ValueError("split.method=group requires at least two distinct groups.")
+    valid_size = _valid_size(cfg)
+    seed = int(cfg.get("run", {}).get("seed", 42))
+    rng = np.random.default_rng(seed)
+    shuffled = unique_groups.copy()
+    rng.shuffle(shuffled)
+    valid_group_count = max(1, int(round(len(shuffled) * valid_size)))
+    if valid_group_count >= len(shuffled):
+        valid_group_count = len(shuffled) - 1
+    valid_groups = set(shuffled[:valid_group_count])
+    valid_mask = groups.isin(valid_groups).to_numpy()
+    indices = np.arange(len(df))
+    valid_idx = indices[valid_mask]
+    train_idx = indices[~valid_mask]
+    _check_non_empty_split(train_idx, valid_idx, method="group")
+    return train_idx, valid_idx
+
+
+def _time_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    split_cfg = cfg.get("split", {}) or {}
+    time_column = _require_split_column(df, split_cfg.get("time_column"), setting="split.time_column")
+    assert df is not None
+    values = pd.to_datetime(df[time_column], errors="coerce")
+    invalid_count = int(values.isna().sum())
+    if invalid_count:
+        raise ValueError(f"split.time_column contains {invalid_count} values that cannot be parsed as datetimes.")
+    order = np.argsort(values.to_numpy(), kind="stable")
+    valid_size = _valid_size(cfg)
+    valid_count = max(1, int(round(len(order) * valid_size)))
+    if valid_count >= len(order):
+        valid_count = len(order) - 1
+    train_idx = order[:-valid_count]
+    valid_idx = order[-valid_count:]
+    _check_non_empty_split(train_idx, valid_idx, method="time")
+    return train_idx, valid_idx
+
+
+def _fixed_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    split_cfg = cfg.get("split", {}) or {}
+    filter_column = _require_split_column(
+        df,
+        split_cfg.get("valid_filter_column"),
+        setting="split.valid_filter_column",
+    )
+    filter_value = split_cfg.get("valid_filter_value")
+    if filter_value is None or str(filter_value) == "":
+        raise ValueError("split.valid_filter_value is required for split.method=fixed.")
+    assert df is not None
+    valid_mask = df[filter_column].astype(str).eq(str(filter_value)).to_numpy()
+    indices = np.arange(len(df))
+    valid_idx = indices[valid_mask]
+    train_idx = indices[~valid_mask]
+    _check_non_empty_split(train_idx, valid_idx, method="fixed")
+    return train_idx, valid_idx
+
+
+def split_metadata(cfg: dict[str, Any], *, train_rows: int, valid_rows: int) -> dict[str, Any]:
+    split_cfg = cfg.get("split", {}) or {}
+    method = str(split_cfg.get("method") or "random").strip().lower()
+    return {
+        "method": method,
+        "train_rows": int(train_rows),
+        "valid_rows": int(valid_rows),
+        "valid_size": float(split_cfg.get("valid_size", 0.2)),
+        "group_column": split_cfg.get("group_column"),
+        "time_column": split_cfg.get("time_column"),
+        "valid_filter_column": split_cfg.get("valid_filter_column"),
+        "valid_filter_value": split_cfg.get("valid_filter_value"),
+    }
+
+
+def train_valid_split(X: pd.DataFrame, y, cfg: dict[str, Any], df: pd.DataFrame | None = None):
+    """Small deterministic holdout split without pulling sklearn into the data layer."""
+    split_cfg = cfg.get("split", {}) or {}
+    method = str(split_cfg.get("method") or "random").strip().lower()
+    if method == "random":
+        train_idx, valid_idx = _random_split_indices(len(X), cfg)
+    elif method == "group":
+        train_idx, valid_idx = _group_split_indices(df, cfg)
+    elif method == "time":
+        train_idx, valid_idx = _time_split_indices(df, cfg)
+    elif method == "fixed":
+        train_idx, valid_idx = _fixed_split_indices(df, cfg)
+    else:
+        raise ValueError("split.method must be one of: random, group, time, fixed.")
     return X.iloc[train_idx], X.iloc[valid_idx], y.iloc[train_idx], y.iloc[valid_idx]

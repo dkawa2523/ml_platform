@@ -1,7 +1,8 @@
 # Codex Handoff
 
 Use this file as the short operational handoff. The product spec lives in
-`docs/SPEC.md`; ClearML screen behavior lives in `docs/CLEARML_UI_SPEC.md`.
+`docs/SPEC.md`; ClearML screen behavior lives in `docs/CLEARML_UI_SPEC.md`;
+future/P2 scope lives in `docs/ROADMAP.md`.
 
 ## Current Product
 
@@ -35,8 +36,13 @@ Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 - `pkgs/core` and `pkgs/tabular` remain ClearML-free.
 - ClearML SDK usage stays under `clearml/`.
 - `scripts/` stay wrapper-only.
+- Local operator commands should prefer `scripts/` wrappers. Remote ClearML
+  templates still point at `clearml/app.py` and `clearml/pipelines.py`.
 - Do not add model-specific, ensemble-specific, or dataset-specific templates.
 - Do not copy legacy repo code or directory layouts.
+- Do not implement HPO, Model Registry, drift/monitoring, Task Registry,
+  external validation files, k-fold, nested CV, or group-k-fold in this release.
+  Keep them in `docs/ROADMAP.md` until explicitly promoted.
 
 ## Local Checks
 
@@ -55,7 +61,7 @@ Dry-run:
 
 ```powershell
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-python clearml/pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 Real sync:
@@ -83,6 +89,20 @@ Current display names:
 - `internal/tabular_stage`
 
 Old ClearML tasks may remain on the server until manually archived.
+
+## Import Safety Notes
+
+The repository keeps a top-level `clearml/` operations directory for now because
+synced templates execute `clearml/app.py` and `clearml/pipelines.py` directly.
+Those entrypoints use `clearml/_entrypoint_bootstrap.py` only to locate sibling
+operations modules and editable package source roots. Official SDK imports must
+continue to go through `adapter.import_clearml_sdk()`, which temporarily removes
+the repo root from `sys.path` to avoid local-directory shadowing.
+
+Do not rename `clearml/` in a small maintenance change. A safe future migration
+should add new script/module entrypoints first, sync templates to the new
+entrypoints, verify remote Pipeline and inference runs, then remove the old
+entrypoints after existing ClearML drafts are archived or recreated.
 
 ## Release Focus
 

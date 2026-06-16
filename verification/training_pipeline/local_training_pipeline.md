@@ -1,6 +1,6 @@
 # Local Training Pipeline Verification
 
-Date: 2026-06-09
+Date: 2026-06-16
 
 Scope: current local training pipeline. Inference remains a separate task, and
 optimization is future scope rather than part of the primary training pipeline.
@@ -9,13 +9,13 @@ optimization is future scope rather than part of the primary training pipeline.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\make_sample_data.py
-.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
+.\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
 ```
 
 Run directory:
 
 ```text
-outputs\tabular_training_pipeline_20260609T003910Z
+outputs\latest_training_pipeline
 ```
 
 ## Stage Summary
@@ -33,9 +33,11 @@ preprocess_features
   -> evaluate_models
 ```
 
-The latest run reported `pipeline_kind=training`, `selection_metric=rmse`, and
-seven supported candidate models: `linear`, `ridge`, `lasso`, `elasticnet`,
-`random_forest`, `extra_trees`, and `gradient_boosting`.
+The latest local run reported `pipeline_kind=training`, `selection_metric=rmse`,
+and the dependency-free candidate subset: `linear`, `ridge`, `lasso`,
+`elasticnet`, `random_forest`, `extra_trees`, and `gradient_boosting`. The
+ClearML template default remains all 10 supported models, including optional
+GBM candidates when their packages are installed.
 
 ## Artifact Checklist
 
@@ -43,6 +45,9 @@ seven supported candidate models: `linear`, `ridge`, `lasso`, `elasticnet`,
 | --- | --- |
 | `preprocess_features/preprocess_bundle.joblib` | present |
 | `preprocess_features/feature_spec.json` | present |
+| `preprocess_features/data_quality_summary.json` | present |
+| `preprocess_features/data_quality_summary_table.csv` | present |
+| `preprocess_features/data_quality_warnings.csv` | present |
 | `preprocess_features/train_features.csv` | present |
 | `preprocess_features/valid_features.csv` | present |
 | `preprocess_features/processed_train.csv` | present |
@@ -78,8 +83,9 @@ seven supported candidate models: `linear`, `ridge`, `lasso`, `elasticnet`,
 
 Pass. The local training pipeline runs the intended training stages and does not
 produce inference outputs. Validation prediction tables include `actual`,
-`prediction`, `residual`, and `abs_error`. `tabular_infer_template` remains the
-separate inference path.
+`prediction`, `residual`, and `abs_error`. `feature_spec.json` and
+`data_quality_summary.json` include holdout split metadata. `tabular_infer_template`
+remains the separate inference path.
 
 `model.search.enabled=true` is rejected by the primary local training pipeline.
-Optimization remains future scope.
+Optimization remains P2 roadmap scope.

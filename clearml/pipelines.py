@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
-import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CLEARML_DIR = Path(__file__).resolve().parent
-for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "pkgs/tabular/src")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+
+def _load_entrypoint_bootstrap():
+    module_path = Path(__file__).resolve().parent / "_entrypoint_bootstrap.py"
+    spec = importlib.util.spec_from_file_location("ml_platform_clearml_entrypoint_bootstrap", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load ClearML entrypoint bootstrap: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
 
 from adapter import (
     apply_execution_image,
@@ -31,13 +38,83 @@ from adapter import (
     stage_task_label,
 )
 from ml_platform_core.config import apply_overrides, load_yaml
-from ml_platform_tabular.models import SUPPORTED_MODELS, candidate_params, model_candidates
+from ml_platform_tabular.models import (
+    DEPENDENCY_FREE_MODELS,
+    OPTIONAL_DEPENDENCY_MODELS,
+    SUPPORTED_MODELS,
+    candidate_params,
+    model_candidates,
+)
 
 
 PIPELINE_ARG_PREFIX = "Args/"
 STAGE_TASK_CONFIG = "config/tasks/tabular_stage.yaml"
 STAGE_TEMPLATE = "tabular_stage_template"
 PIPELINE_TEMPLATE_TAGS = clearml_tags("template", user_facing=True)
+BASIC_MODEL_SUITES = {
+    "default": list(SUPPORTED_MODELS),
+    "fast": list(DEPENDENCY_FREE_MODELS),
+    "interpretable": ["linear", "ridge", "lasso", "elasticnet"],
+    "tree": ["random_forest", "extra_trees", "gradient_boosting"],
+    "gbm": list(OPTIONAL_DEPENDENCY_MODELS),
+}
+BASIC_QUALITY_MODES = {"fast", "standard", "quality"}
+BASIC_QUALITY_MODEL_PARAMS = {
+    "fast": {
+        "linear": {},
+        "ridge": {"alpha": 1.0},
+        "lasso": {"alpha": 0.01, "max_iter": 3000},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 3000, "random_state": 42},
+        "random_forest": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 10, "random_state": 42},
+        "lightgbm": {"n_estimators": 30, "random_state": 42, "n_jobs": 1},
+        "xgboost": {
+            "n_estimators": 30,
+            "random_state": 42,
+            "n_jobs": 1,
+            "objective": "reg:squarederror",
+            "verbosity": 0,
+        },
+        "catboost": {"iterations": 30, "random_seed": 42, "verbose": False},
+    },
+    "standard": {
+        "linear": {},
+        "ridge": {"alpha": 1.0},
+        "lasso": {"alpha": 0.01, "max_iter": 5000},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42},
+        "random_forest": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 20, "random_state": 42},
+        "lightgbm": {"n_estimators": 100, "random_state": 42, "n_jobs": 1},
+        "xgboost": {
+            "n_estimators": 100,
+            "random_state": 42,
+            "n_jobs": 1,
+            "objective": "reg:squarederror",
+            "verbosity": 0,
+        },
+        "catboost": {"iterations": 100, "random_seed": 42, "verbose": False},
+    },
+    "quality": {
+        "linear": {},
+        "ridge": {"alpha": 1.0},
+        "lasso": {"alpha": 0.01, "max_iter": 8000},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 8000, "random_state": 42},
+        "random_forest": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 60, "random_state": 42},
+        "lightgbm": {"n_estimators": 200, "random_state": 42, "n_jobs": 1},
+        "xgboost": {
+            "n_estimators": 200,
+            "random_state": 42,
+            "n_jobs": 1,
+            "objective": "reg:squarederror",
+            "verbosity": 0,
+        },
+        "catboost": {"iterations": 200, "random_seed": 42, "verbose": False},
+    },
+}
 
 
 def _artifact_ref(step_name: str, artifact_name: str) -> str:
@@ -57,18 +134,82 @@ def _execution_image(profile: dict[str, Any]) -> str | None:
     return clearml_execution_image(profile.get("clearml", {}) or {})
 
 
-def _model_cfg_for_pipeline(pipeline_cfg: dict[str, Any], ui_params: dict[str, Any] | None = None) -> dict[str, Any]:
+def _has_ui_value(value: Any) -> bool:
+    return value is not None and not (isinstance(value, str) and value.strip() == "")
+
+
+def _basic_config(pipeline_cfg: dict[str, Any]) -> dict[str, Any]:
+    raw = pipeline_cfg.get("basic") or pipeline_cfg.get("Basic") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _basic_text(ui_params: dict[str, Any], key: str, default: str) -> str:
+    value = ui_params.get(key)
+    if not _has_ui_value(value):
+        return default
+    return str(value).strip().lower()
+
+
+def _basic_model_suite(ui_params: dict[str, Any]) -> str:
+    suite = _basic_text(ui_params, "Basic/model_suite", "default")
+    if suite not in {*BASIC_MODEL_SUITES, "custom"}:
+        choices = ", ".join([*BASIC_MODEL_SUITES, "custom"])
+        raise ValueError(f"Basic/model_suite must be one of: {choices}.")
+    return suite
+
+
+def _basic_quality_mode(ui_params: dict[str, Any]) -> str:
+    mode = _basic_text(ui_params, "Basic/quality_mode", "standard")
+    if mode not in BASIC_QUALITY_MODES:
+        choices = ", ".join(sorted(BASIC_QUALITY_MODES))
+        raise ValueError(f"Basic/quality_mode must be one of: {choices}.")
+    return mode
+
+
+def _apply_basic_model_suite(model_cfg: dict[str, Any], ui_params: dict[str, Any]) -> None:
+    suite = _basic_model_suite(ui_params)
+    if suite in {"default", "custom"}:
+        return
+    model_cfg["candidates"] = list(BASIC_MODEL_SUITES[suite])
+
+
+def _basic_quality_model_params(mode: str) -> dict[str, Any]:
+    return deepcopy(BASIC_QUALITY_MODEL_PARAMS[mode])
+
+
+def _apply_basic_quality_mode(
+    model_cfg: dict[str, Any],
+    ui_params: dict[str, Any],
+    explicit_ui_params: dict[str, Any],
+) -> None:
+    if "Model/model_params_by_name" in explicit_ui_params or "Model/params" in explicit_ui_params:
+        return
+    if _basic_model_suite(ui_params) == "custom":
+        return
+    model_cfg["params"] = _basic_quality_model_params(_basic_quality_mode(ui_params))
+
+
+def _model_cfg_for_pipeline(
+    pipeline_cfg: dict[str, Any],
+    ui_params: dict[str, Any] | None = None,
+    explicit_ui_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     model_cfg = deepcopy(pipeline_cfg.get("model", {}) or {})
     ui_params = ui_params or {}
+    explicit_ui_params = explicit_ui_params or {}
     if "Model/candidates" in ui_params:
         model_cfg["candidates"] = as_candidates(ui_params.get("Model/candidates"))
-    if "Model/model_params_by_name" in ui_params:
+    if "Model/model_params_by_name" in explicit_ui_params:
         model_cfg["params"] = as_dict(ui_params.get("Model/model_params_by_name"))
-    elif "Model/params" in ui_params:
+    elif "Model/params" in explicit_ui_params:
         model_cfg["params"] = as_dict(ui_params.get("Model/params"))
     if "Model/selection_metric" in ui_params and ui_params.get("Model/selection_metric"):
         model_cfg["selection_metric"] = ui_params["Model/selection_metric"]
-    if "Model/ensemble_enabled" in ui_params:
+    _apply_basic_model_suite(model_cfg, ui_params)
+    _apply_basic_quality_mode(model_cfg, ui_params, explicit_ui_params)
+    if _has_ui_value(ui_params.get("Basic/use_ensemble")):
+        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(ui_params.get("Basic/use_ensemble"))
+    if _has_ui_value(ui_params.get("Model/ensemble_enabled")):
         model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(ui_params.get("Model/ensemble_enabled"))
     if "Model/ensemble_methods" in ui_params:
         model_cfg.setdefault("ensemble", {})["methods"] = as_list(ui_params.get("Model/ensemble_methods")) or []
@@ -88,6 +229,7 @@ def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str |
 
 def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     run = pipeline_cfg.get("run", {})
+    basic = _basic_config(pipeline_cfg)
     data = pipeline_cfg.get("data", {})
     split = pipeline_cfg.get("split", {}) or {}
     features = pipeline_cfg.get("features", {}) or {}
@@ -108,9 +250,18 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
         dataset_file = dataset_file or remote_default_dataset_file
         local_path = ""
     return {
+        "Basic/model_suite": basic.get("model_suite", "default"),
+        "Basic/quality_mode": basic.get("quality_mode", "standard"),
+        "Basic/use_ensemble": basic.get("use_ensemble", as_bool(ensemble.get("enabled"), default=True)),
+        "Basic/notes": basic.get("notes") or run.get("description", ""),
         "Run/name": run.get("name"),
         "Run/seed": run.get("seed"),
+        "Split/method": split.get("method", "random"),
         "Split/valid_size": split.get("valid_size", 0.2),
+        "Split/group_column": split.get("group_column"),
+        "Split/time_column": split.get("time_column"),
+        "Split/valid_filter_column": split.get("valid_filter_column"),
+        "Split/valid_filter_value": split.get("valid_filter_value"),
         "Input/local_path": local_path,
         "Input/clearml_dataset_id": clearml_dataset_id,
         "Input/dataset_file": dataset_file,
@@ -128,7 +279,7 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
         "Model/model_params_by_name": _json(model.get("params", {}) or {}),
         "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
         "Model/selection_metric": model.get("selection_metric", "rmse"),
-        "Model/ensemble_enabled": as_bool(ensemble.get("enabled")),
+        "Model/ensemble_enabled": "",
         "Model/ensemble_methods": _json(ensemble.get("methods", [ensemble.get("method", "mean_topk")]) or []),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
         "Output/report_plots": as_bool(output.get("report_plots"), default=True),
@@ -187,6 +338,15 @@ def _data_overrides(params: dict[str, Any]) -> dict[str, Any]:
 
 def _split_overrides(params: dict[str, Any]) -> dict[str, Any]:
     overrides: dict[str, Any] = {}
+    for key in (
+        "Split/method",
+        "Split/group_column",
+        "Split/time_column",
+        "Split/valid_filter_column",
+        "Split/valid_filter_value",
+    ):
+        if key in params and params.get(key) not in {None, ""}:
+            overrides[key] = params[key]
     if "Split/valid_size" in params and params.get("Split/valid_size") not in {None, ""}:
         overrides["Split/valid_size"] = float(params["Split/valid_size"])
     return overrides
@@ -309,9 +469,17 @@ def _build_training_plan(
     stage_queue = str(clearml_cfg.get("stage_queue") or clearml_cfg.get("queue") or "default")
     controller_queue = str(clearml_cfg.get("controller_queue") or clearml_cfg.get("pipeline_queue") or stage_queue)
     default_params = _training_pipeline_ui_params(pipeline_cfg, profile)
+    raw_ui_params = ui_params or {}
+    explicit_params = {
+        key: value
+        for key, value in raw_ui_params.items()
+        if key not in default_params or value != default_params.get(key)
+    }
     effective_params = {**default_params, **(ui_params or {})}
     run_name = str(effective_params.get("Run/name") or pipeline_cfg.get("run", {}).get("name") or "run")
-    model_cfg = _model_cfg_for_pipeline(pipeline_cfg, effective_params)
+    model_suite = _basic_model_suite(effective_params)
+    quality_mode = _basic_quality_mode(effective_params)
+    model_cfg = _model_cfg_for_pipeline(pipeline_cfg, effective_params, explicit_params)
     search_cfg = model_cfg.get("search", {}) or {}
     if not isinstance(search_cfg, dict):
         search_cfg = {}
@@ -452,6 +620,8 @@ def _build_training_plan(
         "stage_queue": stage_queue,
         "controller_queue": controller_queue,
         "candidate_models": [candidate["name"] for candidate in candidates],
+        "model_suite": model_suite,
+        "quality_mode": quality_mode,
         "ensemble_enabled": ensemble_enabled,
         "steps": steps,
         "task_config": str(task_path),
@@ -469,10 +639,7 @@ def build_pipeline_plan(
     pipeline_cfg = apply_overrides(load_yaml(task_path), overrides)
     profile = load_yaml(profile_path)
     if "data" not in pipeline_cfg:
-        raise ValueError(
-            "ClearML pipeline planning supports only the official stage-based training pipeline. "
-            "The legacy train/eval/infer full-run flow is sync-excluded."
-        )
+        raise ValueError("ClearML pipeline planning requires a stage-based tabular_pipeline config with a data section.")
     return _build_training_plan(pipeline_cfg, profile, task_path, profile_path, ui_params)
 
 
@@ -486,6 +653,10 @@ def print_pipeline_plan(plan: dict[str, Any]) -> None:
         f"name={plan['name']} "
         f"version={plan['version']} "
         f"training_flow={plan['training_flow']} "
+        f"model_suite={plan.get('model_suite')} "
+        f"quality_mode={plan.get('quality_mode')} "
+        f"candidate_models={plan.get('candidate_models', [])} "
+        f"ensemble_enabled={plan.get('ensemble_enabled')} "
         f"controller_queue={plan.get('controller_queue')} "
         f"stage_queue={plan.get('stage_queue')}"
     )
@@ -654,9 +825,10 @@ def _apply_pipeline_template_metadata(
         set_comment(
             "USER-FACING training pipeline template. Remote runs should use "
             "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
-            "Tune preprocessing with Features/* and ensembles with Model/ensemble_methods. "
-            "Model/candidates is prefilled with all 10 supported models; synced templates "
-            "install GBM packages into the remote execution venv."
+            "Start with Basic/model_suite and Basic/use_ensemble; tune preprocessing "
+            "with Features/*. Advanced users can still edit Model/candidates and "
+            "Model/ensemble_methods. Synced templates install GBM packages into the "
+            "remote execution venv."
             f"{queue_note}"
             f"{image_note}"
         )

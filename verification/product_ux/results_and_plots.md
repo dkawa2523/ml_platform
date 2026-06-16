@@ -1,6 +1,6 @@
 # Results And Plots Verification
 
-Date: 2026-06-08
+Date: 2026-06-16
 
 Scope: Phase 4 product UX cleanup for training results, metrics, tables, and
 minimal plots.
@@ -9,6 +9,9 @@ minimal plots.
 
 Training pipeline artifacts and tables:
 
+- `data_quality_summary.json`
+- `data_quality_summary_table.csv`
+- `data_quality_warnings.csv`
 - `feature_summary.json`
 - `model_refs.json`
 - `metrics_by_model.json`
@@ -33,13 +36,16 @@ ClearML display:
   `metrics_by_candidate/r2` series by candidate
 - `best_model` scalar summary
 - `ensemble` scalar summary for each ensemble method
-- table reports for `leaderboard`, train-stage `validation_predictions`,
-  `evaluation_predictions`, per-method `ensemble_predictions_<method>`, and
-  `predictions`
-- native ClearML plot reports for prediction-vs-actual and residual histogram
-  from prediction tables when `Output/report_plots=true`
-- plot artifacts/media for `metrics_by_candidate_bar`, compatibility
-  `metrics_by_model_bar`, `prediction_vs_actual`, and `residual_histogram`
+- training table reports for `data_quality_summary_table`,
+  `data_quality_warnings`, `leaderboard`, train-stage
+  `validation_predictions`, `evaluation_predictions`, and per-method
+  `ensemble_predictions_<method>`
+- inference table reports for `predictions`, `schema_check_summary`,
+  `prediction_summary`, `prediction_preview`, and `source_summary`
+- native ClearML plots focus on leaderboard/top-k views for training and
+  prediction distribution for inference when `Output/report_plots=true`
+- plot artifacts/media for `metrics_by_candidate_bar`, leaderboard plots, best
+  prediction plots, and top-k candidate plots
 
 ## Commands
 
@@ -48,7 +54,7 @@ ClearML display:
 .\.venv\Scripts\python.exe scripts\local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts\sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-.\.venv\Scripts\python.exe clearml\pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+.\.venv\Scripts\python.exe scripts\clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 git diff --check
 rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular
 ```
@@ -61,9 +67,10 @@ rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core 
   `metrics_by_candidate`, `leaderboard`, `best_model_json`, `ensemble_refs`,
   `ensemble_info_by_method`, `evaluation_report`, `evaluation_predictions`,
   `metrics`, and `manifest`.
-- Local plots include `metrics_by_candidate_bar`, compatibility
-  `metrics_by_model_bar`, `prediction_vs_actual`, and `residual_histogram`.
-- Tests: `52 passed`.
+- Local plots include `metrics_by_candidate_bar`, leaderboard plots, best
+  prediction plots, and top-k candidate plots. Generic alias plots such as
+  `prediction_vs_actual` remain suppressed to avoid duplicate ClearML panels.
+- Tests: `89 passed`.
 - Exact `validation_predictions` tables are reported on individual train stages;
   aggregate parent keys such as `validation_predictions_linear` remain uploaded
   artifacts/tables only, avoiding noisy ClearML table spam.

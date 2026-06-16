@@ -6,14 +6,21 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import argparse
-import sys
+import importlib.util
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CLEARML_DIR = Path(__file__).resolve().parent
-for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "pkgs/tabular/src"), str(REPO_ROOT)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+
+def _load_entrypoint_bootstrap():
+    module_path = Path(__file__).resolve().parent / "_entrypoint_bootstrap.py"
+    spec = importlib.util.spec_from_file_location("ml_platform_clearml_entrypoint_bootstrap", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load ClearML entrypoint bootstrap: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
 
 from ml_platform_core.config import apply_overrides, load_run_config
 from ml_platform_tabular import run_task

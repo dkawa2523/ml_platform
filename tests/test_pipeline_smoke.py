@@ -26,29 +26,6 @@ def _write_training_data(tmp_path, *, rows=80):
     return train_path, infer_path
 
 
-def _old_style_pipeline_cfg(tmp_path, train_path, infer_path):
-    # Deprecated compatibility config only. This is not the product training pipeline.
-    cfg = {
-        "task": "tabular_pipeline",
-        "runtime": {"output_dir": str(tmp_path / "outputs_compat"), "use_clearml": False},
-        "run": {"name": "compat_pipeline", "seed": 42, "pipeline" + "_mode": "single"},
-        "train": {
-            "task_config": "config/tasks/tabular_train.yaml",
-            "data": {"local_path": str(train_path), "target_column": "target", "feature_columns": None, "id_columns": ["id"]},
-            "model": {"name": "ridge", "params": {"alpha": 1.0}},
-        },
-        "eval": {
-            "task_config": "config/tasks/tabular_eval.yaml",
-            "data": {"local_path": str(train_path), "target_column": "target", "feature_columns": None, "id_columns": ["id"]},
-        },
-        "infer": {
-            "task_config": "config/tasks/tabular_infer.yaml",
-            "data": {"local_path": str(infer_path), "target_column": None, "feature_columns": None, "id_columns": ["id"]},
-        },
-    }
-    return cfg
-
-
 def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     train_path, _ = _write_training_data(tmp_path)
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
@@ -77,6 +54,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "preprocess_bundle",
         "feature_spec",
         "feature_summary",
+        "data_quality_summary",
         "model_refs",
         "metrics_by_model",
         "metrics_by_candidate",
@@ -103,6 +81,8 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
         "missing_rate_by_column",
         "feature_missingness",
         "feature_type_counts",
+        "data_quality_summary_table",
+        "data_quality_warnings",
         "processed_train",
         "processed_valid",
         "train_features",
@@ -152,13 +132,10 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert "ensemble:median" in set(leaderboard["infer_target"])
     assert list(leaderboard["rank"]) == list(range(1, len(leaderboard) + 1))
     validation_predictions = pd.read_csv(result.tables["validation_predictions_linear"])
-    assert {"actual", "prediction", "residual", "abs_error", "_target", "_prediction", "model_name"} <= set(
-        validation_predictions.columns
-    )
-    assert "prediction_vs_actual_linear" in result.plots
-    assert "residual_histogram_linear" in result.plots
-    assert "residual_vs_predicted_linear" in result.plots
-    assert "metrics_by_model_bar" in result.plots
+    assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(validation_predictions.columns)
+    assert "validation_prediction_vs_actual_linear" in result.plots
+    assert "validation_residual_histogram_linear" in result.plots
+    assert "validation_residual_vs_predicted_linear" in result.plots
     assert "metrics_by_candidate_bar" in result.plots
     assert result.plots["metrics_by_candidate_bar"].suffix == ".png"
     assert "leaderboard_topk_score_bar" in result.plots
@@ -205,6 +182,27 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert recommendation["report_schema_version"] == "leaderboard_dashboard_v2"
     assert recommendation["recommended_infer_key"] == "Input/source_task_id + Model/model_selector"
     assert recommendation["recommended_assignment"]["Model/model_selector"]
+    decision_summary_json = read_json(result.artifacts["decision_summary_json"])
+    assert decision_summary_json["recommended_model_selector"] == "best"
+    assert decision_summary_json["recommended_candidate_selector"] == decision_summary_json["leaderboard_top5"][0]["infer_target"]
+    assert decision_summary_json["recommended_inference_settings"] == {
+        "Model/source_type": "task_id",
+        "Model/source_task_id": "<training_or_evaluate_task_id>",
+        "Model/model_selector": "best",
+    }
+    assert decision_summary_json["best_model_name"]
+    assert decision_summary_json["best_artifact_kind"] in {"model", "ensemble"}
+    assert decision_summary_json["selection_metric"] == "rmse"
+    assert {"rmse", "mae", "r2"} <= set(decision_summary_json["best_metrics"])
+    assert len(decision_summary_json["leaderboard_top5"]) <= 5
+    assert decision_summary_json["best_single_model"]["artifact_kind"] == "model"
+    assert decision_summary_json["best_ensemble"]["artifact_kind"] == "ensemble"
+    assert decision_summary_json["ensemble_improved_over_best_single"] is not None
+    assert len(decision_summary_json["best_vs_ensemble_summary"]) == 3
+    decision_summary_md = result.artifacts["decision_summary"].read_text(encoding="utf-8")
+    assert "## Use These Inference Settings" in decision_summary_md
+    assert "- Model/source_type: task_id" in decision_summary_md
+    assert "- Model/model_selector: best" in decision_summary_md
     assert "predictions" not in result.tables
 
     best_model = read_json(result.artifacts["best_model_json"])
@@ -244,14 +242,23 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     assert feature_spec["feature_config"]["numeric_impute_strategy"] == "median"
     assert feature_spec["drop_columns"] == []
     assert feature_spec["passthrough_columns"] == []
+    assert feature_spec["split"]["method"] == "random"
+    assert feature_spec["split"]["train_rows"] + feature_spec["split"]["valid_rows"] == 80
     feature_summary = read_json(result.artifacts["feature_summary"])
     assert feature_summary["feature_config"]["categorical_encoder"] == "onehot"
     assert feature_summary["passthrough_feature_count"] == 0
+    data_quality_summary = read_json(result.artifacts["data_quality_summary"])
+    assert data_quality_summary["row_count"] == 80
+    assert data_quality_summary["target_column"] == "target"
+    assert data_quality_summary["target_is_numeric"] is True
+    assert data_quality_summary["split"]["method"] == "random"
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
     assert manifest["extra"]["report_schema_version"] == "leaderboard_dashboard_v2"
     assert "infer_predictions" not in manifest["tables"]
+    assert "data_quality_summary_table" in manifest["tables"]
+    assert "data_quality_warnings" in manifest["tables"]
     assert "leaderboard_topk_score_bar" in manifest["plots"]
     assert "best_prediction_vs_actual" in manifest["plots"]
     assert (tmp_path / "outputs" / "latest_training_pipeline" / "manifest.json").exists()
@@ -322,9 +329,16 @@ def test_training_pipeline_feature_drop_passthrough_and_infer_alignment(tmp_path
 
     infer_result = run_infer(infer_cfg)
     assert infer_result.tables["predictions"].exists()
+    assert infer_result.tables["schema_check_summary"].exists()
     assert infer_result.tables["prediction_summary"].exists()
     assert infer_result.tables["prediction_preview"].exists()
     assert infer_result.tables["source_summary"].exists()
+    predictions = pd.read_csv(infer_result.tables["predictions"])
+    assert {"row_index", "prediction", "model_name", "artifact_kind"} <= set(predictions.columns)
+    assert "unused" not in predictions.columns
+    assert "raw_numeric" not in predictions.columns
+    schema_check = read_json(infer_result.artifacts["schema_check_summary"])
+    assert schema_check["status"] == "ok"
     assert "prediction_distribution" in infer_result.plots
     assert "prediction_distribution_histogram" in infer_result.plots
 
@@ -344,6 +358,13 @@ def test_local_training_pipeline_without_ensemble(tmp_path):
     assert "ensemble" not in result.artifacts
     leaderboard = pd.read_csv(result.tables["leaderboard"])
     assert set(leaderboard["model_name"]) == {"linear", "ridge"}
+    decision_summary_json = read_json(result.artifacts["decision_summary_json"])
+    assert decision_summary_json["best_artifact_kind"] == "model"
+    assert decision_summary_json["best_ensemble"] is None
+    assert decision_summary_json["ensemble_improved_over_best_single"] is None
+    assert decision_summary_json["recommended_model_selector"] == "best"
+    assert decision_summary_json["recommended_candidate_selector"] in {"linear", "ridge"}
+    assert decision_summary_json["recommended_inference_settings"]["Model/model_selector"] == "best"
 
 
 def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path):
@@ -371,9 +392,15 @@ def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path)
         "resolved_model_path"
     ].endswith("evaluate_models/best_model.joblib")
     assert best_result.tables["predictions"].exists()
+    assert best_result.tables["schema_check_summary"].exists()
     assert best_result.tables["prediction_summary"].exists()
     assert best_result.tables["prediction_preview"].exists()
     assert best_result.tables["source_summary"].exists()
+    best_predictions = pd.read_csv(best_result.tables["predictions"])
+    assert {"row_index", "id", "prediction"} <= set(best_predictions.columns)
+    assert "x1" not in best_predictions.columns
+    best_schema_check = read_json(best_result.artifacts["schema_check_summary"])
+    assert best_schema_check["status"] == "ok"
     assert "prediction_distribution" in best_result.plots
     assert "prediction_distribution_histogram" in best_result.plots
 
@@ -412,11 +439,3 @@ def test_infer_rejects_unknown_local_training_pipeline_selector(tmp_path):
 
     with pytest.raises(ValueError, match="Could not resolve model_selector"):
         run_infer(infer_cfg)
-
-
-def test_deprecated_train_eval_infer_fallback_is_not_product_pipeline(tmp_path):
-    train_path, infer_path = _write_training_data(tmp_path, rows=50)
-    cfg = _old_style_pipeline_cfg(tmp_path, train_path, infer_path)
-
-    with pytest.raises(ValueError, match="official training graph"):
-        run_pipeline(cfg)

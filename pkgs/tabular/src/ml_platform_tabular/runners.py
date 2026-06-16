@@ -11,12 +11,9 @@ Runner = Callable[[dict[str, Any]], RunResult]
 # Keep this registry as strings so importing ml_platform_tabular does not import
 # sklearn-heavy modules until a task is actually executed.
 RUNNER_PATHS: dict[str, str] = {
-    "tabular_train": "ml_platform_tabular.train:run_train",
-    "tabular_eval": "ml_platform_tabular.evaluate:run_evaluate",
     "tabular_infer": "ml_platform_tabular.infer:run_infer",
     "tabular_pipeline": "ml_platform_tabular.pipeline:run_pipeline",
     "tabular_stage": "ml_platform_tabular.stage:run_stage",
-    "tabular_1d_output": "ml_platform_tabular.output_1d:run_output_1d",
 }
 
 

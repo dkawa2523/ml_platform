@@ -355,12 +355,7 @@ def run_stage(cfg: dict[str, Any]) -> RunResult:
         return _run_build_ensemble(cfg)
     if stage == "evaluate_models":
         return _run_evaluate_models(cfg)
-    if stage in {"search_trials", "retrain_best", "evaluate_best"}:
-        raise ValueError(
-            f"{stage} is future/experimental and is not part of the primary tabular_stage_template flow."
-        )
     raise ValueError(
         "Unsupported tabular stage: "
-        f"{stage}. Available: preprocess_features, train_model, build_ensemble, "
-        "evaluate_models. Future: search_trials, retrain_best, evaluate_best."
+        f"{stage}. Available: preprocess_features, train_model, build_ensemble, evaluate_models."
     )

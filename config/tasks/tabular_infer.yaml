@@ -26,9 +26,6 @@ model:
   source_task_id: null
   model_selector: best
   local_model_path: null
-  # Future / experimental sources are supported only when passed explicitly.
-  # They are intentionally not part of the primary ClearML UI template:
-  # model_artifact_url, clearml_model_id.
 
 output:
   prediction_name: predictions.csv

@@ -20,7 +20,8 @@ from ml_platform_core.artifacts import prepare_run_dir, update_latest, utc_times
 from ml_platform_core.io import dump_joblib, write_json, write_table
 from ml_platform_core.result import RunResult
 
-from .data import load_dataset, split_xy, train_valid_split
+from .data import load_dataset, split_metadata, split_xy, train_valid_split
+from .data_quality import build_data_quality_report
 from .ensemble import as_bool, ensemble_config, ensemble_weights, metric_value
 from .features import build_feature_pipeline, normalize_feature_config
 from .metrics import (
@@ -166,7 +167,8 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
 
     df = load_dataset(cfg)
     X, y, feature_columns = split_xy(df, cfg)
-    X_train, X_valid, y_train, y_valid = train_valid_split(X, y, cfg)
+    X_train, X_valid, y_train, y_valid = train_valid_split(X, y, cfg, df=df)
+    split_summary = split_metadata(cfg, train_rows=len(X_train), valid_rows=len(X_valid))
 
     feature_cfg = cfg.get("features", {})
     feature_config = normalize_feature_config(feature_cfg)
@@ -217,6 +219,7 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
             "input_rows": len(df),
             "train_rows": len(X_train),
             "valid_rows": len(X_valid),
+            "split": split_summary,
             "target_column": target_column,
             "feature_columns": feature_columns,
             "id_columns": cfg.get("data", {}).get("id_columns", []),
@@ -240,6 +243,7 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
             "input_rows": int(len(df)),
             "train_rows": int(len(X_train)),
             "valid_rows": int(len(X_valid)),
+            "split": split_summary,
             "target_column": target_column,
             "feature_count": int(len(feature_columns)),
             "numeric_feature_count": int(len(getattr(transformer, "numeric_cols", []))),
@@ -260,6 +264,24 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
         },
         stage_dir / "feature_summary.json",
     )
+    data_quality_summary, data_quality_summary_table, data_quality_warnings = build_data_quality_report(
+        df,
+        target_column=target_column,
+        feature_columns=feature_columns,
+        id_columns=cfg.get("data", {}).get("id_columns", []),
+    )
+    data_quality_summary_path = write_json(
+        {"stage": "preprocess_features", "split": split_summary, **data_quality_summary},
+        stage_dir / "data_quality_summary.json",
+    )
+    data_quality_summary_table_path = write_table(
+        data_quality_summary_table,
+        stage_dir / "data_quality_summary_table.csv",
+    )
+    data_quality_warnings_path = write_table(
+        data_quality_warnings,
+        stage_dir / "data_quality_warnings.csv",
+    )
 
     return {
         "stage": "preprocess_features",
@@ -277,6 +299,7 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
             "preprocess_bundle": preprocess_bundle_path,
             "feature_spec": feature_spec_path,
             "feature_summary": feature_summary_path,
+            "data_quality_summary": data_quality_summary_path,
         },
         "tables": {
             "feature_summary_table": feature_summary_table_path,
@@ -284,6 +307,8 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
             "missing_rate_by_column": missing_rate_by_column_path,
             "feature_missingness": missing_rate_by_column_path,
             "feature_type_counts": feature_type_counts_path,
+            "data_quality_summary_table": data_quality_summary_table_path,
+            "data_quality_warnings": data_quality_warnings_path,
             "train_features": train_features_path,
             "valid_features": valid_features_path,
             "processed_train": processed_train_path,
@@ -529,7 +554,7 @@ def _build_ensemble(
         )
         ensemble_predictions_path = write_table(predictions_frame, stage_dir / f"ensemble_predictions_{method}.csv")
         method_plots = write_regression_plot_artifacts(preprocess["y_valid"], y_pred, stage_dir, prefix=f"ensemble_{method}")
-        plots.update({f"{plot_name}_ensemble_{method}": plot_path for plot_name, plot_path in method_plots.items()})
+        plots.update(method_plots)
         model_path = dump_joblib(estimator, stage_dir / f"model_{method}.joblib")
         model_info_path = write_model_info(
             stage_dir / f"model_info_{method}.json",
@@ -870,6 +895,30 @@ def _best_vs_ensemble_rows(
     return rows
 
 
+def _summary_or_none(summary: str, item: dict[str, Any] | None, selection_metric: str) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    return _summary_row(summary, item, selection_metric)
+
+
+def _metrics_for_summary(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    metrics = item.get("metrics", {})
+    return {name: metrics.get(name) for name in LEADERBOARD_METRICS}
+
+
+def _summary_source_task_id(task_id: str | None) -> str:
+    return task_id or "<training_or_evaluate_task_id>"
+
+
+def _selection_metric_improved(best_vs_rows: list[dict[str, Any]], selection_metric: str) -> bool | None:
+    for row in best_vs_rows:
+        if row.get("metric") == selection_metric:
+            return row.get("ensemble_improved")
+    return None
+
+
 def _recommendation_payload(
     *,
     best: dict[str, Any],
@@ -881,6 +930,7 @@ def _recommendation_payload(
 ) -> dict[str, Any]:
     selector = _selector_for_item(best)
     recommended = _summary_row("recommended", best, selection_metric)
+    source_task_id = _summary_source_task_id(task_id)
     return {
         "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
         "created_at": utc_timestamp(),
@@ -894,6 +944,13 @@ def _recommendation_payload(
             "Input/source_task_id": task_id or "<this evaluate_models task id>",
             "Model/model_selector": selector,
         },
+        "recommended_model_selector": "best",
+        "recommended_candidate_selector": selector,
+        "recommended_inference_settings": {
+            "Model/source_type": "task_id",
+            "Model/source_task_id": source_task_id,
+            "Model/model_selector": "best",
+        },
         "recommended": recommended,
         "best_overall": _summary_row("best_overall", best, selection_metric),
         "best_single_model": _summary_row("best_single_model", best_single, selection_metric),
@@ -902,35 +959,79 @@ def _recommendation_payload(
     }
 
 
-def _decision_summary_markdown(recommendation: dict[str, Any], leaderboard_rows: list[dict[str, Any]]) -> str:
-    assignment = recommendation.get("recommended_assignment") or {}
-    top_rows = leaderboard_rows[:LEADERBOARD_TOP_K]
+def _decision_summary_payload(
+    *,
+    best: dict[str, Any],
+    best_single: dict[str, Any] | None,
+    best_ensemble: dict[str, Any] | None,
+    selection_metric: str,
+    leaderboard_rows: list[dict[str, Any]],
+    best_vs_ensemble_rows: list[dict[str, Any]],
+    recommendation: dict[str, Any],
+    task_id: str | None,
+    code_version: str,
+) -> dict[str, Any]:
+    return {
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "created_at": recommendation["created_at"],
+        "code_version": code_version,
+        "source_task_id": task_id,
+        "best_model_name": best["model_name"],
+        "best_artifact_kind": best["artifact_kind"],
+        "best_ensemble_method": best.get("ensemble_method"),
+        "selection_metric": selection_metric,
+        "best_metrics": _metrics_for_summary(best),
+        "leaderboard_top5": leaderboard_rows[:LEADERBOARD_TOP_K],
+        "best_single_model": _summary_or_none("best_single_model", best_single, selection_metric),
+        "best_ensemble": _summary_or_none("best_ensemble", best_ensemble, selection_metric),
+        "best_vs_ensemble_summary": best_vs_ensemble_rows,
+        "ensemble_improved_over_best_single": _selection_metric_improved(best_vs_ensemble_rows, selection_metric),
+        "recommended_model_selector": "best",
+        "recommended_candidate_selector": _selector_for_item(best),
+        "recommended_inference_settings": {
+            "Model/source_type": "task_id",
+            "Model/source_task_id": _summary_source_task_id(task_id),
+            "Model/model_selector": "best",
+        },
+        "recommendation": recommendation,
+    }
+
+
+def _decision_summary_markdown(summary: dict[str, Any]) -> str:
+    settings = summary.get("recommended_inference_settings") or {}
+    top_rows = summary.get("leaderboard_top5") or []
+    best_single = summary.get("best_single_model") or {}
+    best_ensemble = summary.get("best_ensemble") or {}
+    best_metrics = summary.get("best_metrics") or {}
     lines = [
         "# Leaderboard Decision Summary",
         "",
-        "## Infer Run Input",
-        f"- Input/source_task_id: {assignment.get('Input/source_task_id')}",
-        f"- Model/model_selector: {assignment.get('Model/model_selector')}",
-        f"- ref_kind: {recommendation.get('recommended_ref_kind')}",
-        f"- report_schema_version: {recommendation.get('report_schema_version')}",
-        f"- code_version: {recommendation.get('code_version')}",
+        "## Use These Inference Settings",
+        f"- Model/source_type: {settings.get('Model/source_type')}",
+        f"- Model/source_task_id: {settings.get('Model/source_task_id')}",
+        f"- Model/model_selector: {settings.get('Model/model_selector')}",
+        f"- explicit candidate selector: {summary.get('recommended_candidate_selector')}",
         "",
-        "## Recommendation",
+        "## Best Overall",
+        f"- best_model_name: {summary.get('best_model_name')}",
+        f"- best_artifact_kind: {summary.get('best_artifact_kind')}",
+        f"- best_ensemble_method: {summary.get('best_ensemble_method')}",
+        f"- selection_metric: {summary.get('selection_metric')}",
+        f"- rmse: {best_metrics.get('rmse')}",
+        f"- mae: {best_metrics.get('mae')}",
+        f"- r2: {best_metrics.get('r2')}",
+        "",
+        "## Best Single vs Ensemble",
+        f"- best_single_model: {best_single.get('model_name')}",
+        f"- best_single_selector: {best_single.get('model_selector')}",
+        f"- best_ensemble: {best_ensemble.get('model_name')}",
+        f"- best_ensemble_selector: {best_ensemble.get('model_selector')}",
+        f"- ensemble_improved_over_best_single: {summary.get('ensemble_improved_over_best_single')}",
+        "",
+        "## Top 5 Leaderboard",
+        "| rank | model_name | artifact_kind | ensemble_method | rmse | mae | r2 | model_selector |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    recommended = recommendation.get("recommended") or {}
-    lines.extend(
-        [
-            f"- model_name: {recommended.get('model_name')}",
-            f"- artifact_kind: {recommended.get('artifact_kind')}",
-            f"- ensemble_method: {recommended.get('ensemble_method')}",
-            f"- selection_metric: {recommended.get('selection_metric')}",
-            f"- selection_value: {recommended.get('selection_value')}",
-            "",
-            "## Top Candidates",
-            "| rank | model_name | artifact_kind | ensemble_method | rmse | mae | r2 | model_selector |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
-        ]
-    )
     for row in top_rows:
         lines.append(
             "| {rank} | {model_name} | {artifact_kind} | {ensemble_method} | {rmse} | {mae} | {r2} | {infer_target} |".format(
@@ -1016,13 +1117,6 @@ def _evaluate_models(
         metrics = payload.get("metrics", {})
         if isinstance(metrics, dict) and isinstance(metrics.get(selection_metric), (int, float)):
             bar_items.append((candidate_name, float(metrics[selection_metric])))
-    metrics_by_model_bar_path = write_metrics_bar_plot(
-        bar_items,
-        stage_dir / "metrics_by_model_bar.png",
-        title=f"Metrics by candidate ({selection_metric})",
-        value_label=selection_metric,
-        sort="value_desc" if selection_metric == "r2" else "value_asc",
-    )
     metrics_by_candidate_bar_path = write_metrics_bar_plot(
         bar_items,
         stage_dir / "metrics_by_candidate_bar.png",
@@ -1086,8 +1180,9 @@ def _evaluate_models(
         pd.DataFrame(summary_rows),
         stage_dir / "leaderboard_decision_summary.csv",
     )
+    best_vs_ensemble_rows = _best_vs_ensemble_rows(best_single, best_ensemble)
     best_vs_ensemble_summary_path = write_table(
-        pd.DataFrame(_best_vs_ensemble_rows(best_single, best_ensemble)),
+        pd.DataFrame(best_vs_ensemble_rows),
         stage_dir / "best_vs_ensemble_summary.csv",
     )
     recommendation = _recommendation_payload(
@@ -1099,19 +1194,20 @@ def _evaluate_models(
         task_id=task_id,
     )
     recommendation_path = write_json(recommendation, stage_dir / "recommendation.json")
-    decision_summary_md_path = stage_dir / "decision_summary.md"
-    decision_summary_md_path.write_text(_decision_summary_markdown(recommendation, leaderboard_rows), encoding="utf-8")
-    decision_summary_json_path = write_json(
-        {
-            "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
-            "created_at": recommendation["created_at"],
-            "code_version": code_version,
-            "recommendation": recommendation,
-            "leaderboard_topk": leaderboard_rows[:LEADERBOARD_TOP_K],
-            "best_vs_ensemble_summary": _best_vs_ensemble_rows(best_single, best_ensemble),
-        },
-        stage_dir / "decision_summary.json",
+    decision_summary = _decision_summary_payload(
+        best=best,
+        best_single=best_single,
+        best_ensemble=best_ensemble,
+        selection_metric=selection_metric,
+        leaderboard_rows=leaderboard_rows,
+        best_vs_ensemble_rows=best_vs_ensemble_rows,
+        recommendation=recommendation,
+        task_id=task_id,
+        code_version=code_version,
     )
+    decision_summary_md_path = stage_dir / "decision_summary.md"
+    decision_summary_md_path.write_text(_decision_summary_markdown(decision_summary), encoding="utf-8")
+    decision_summary_json_path = write_json(decision_summary, stage_dir / "decision_summary.json")
     report = {
         "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
         "created_at": recommendation["created_at"],
@@ -1191,7 +1287,6 @@ def _evaluate_models(
             **({"candidate_predictions": candidate_predictions_path} if candidate_predictions_path else {}),
         },
         "plots": {
-            "metrics_by_model_bar": metrics_by_model_bar_path,
             "metrics_by_candidate_bar": metrics_by_candidate_bar_path,
             "leaderboard_topk_score_bar": leaderboard_topk_score_bar_path,
             "leaderboard_metric_panel": leaderboard_metric_panel_path,
@@ -1322,9 +1417,5 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
 
 def run_pipeline(cfg: dict[str, Any]) -> RunResult:
     if "data" not in cfg:
-        raise ValueError(
-            "tabular_pipeline now runs only the official training graph: "
-            "preprocess_features -> train_<model>* -> build_ensemble -> evaluate_models. "
-            "The old train/eval/infer full-run flow is not a product pipeline entrypoint."
-        )
+        raise ValueError("tabular_pipeline requires a stage-based training config with a data section.")
     return _run_training_pipeline(cfg)

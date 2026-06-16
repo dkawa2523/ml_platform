@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-import sys
+import importlib.util
 from pathlib import Path
 from typing import Any
 
+
+def _load_entrypoint_bootstrap():
+    module_path = Path(__file__).resolve().parent / "_entrypoint_bootstrap.py"
+    spec = importlib.util.spec_from_file_location("ml_platform_clearml_entrypoint_bootstrap", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load ClearML entrypoint bootstrap: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLEARML_DIR = Path(__file__).resolve().parent
-for p in (str(CLEARML_DIR), str(REPO_ROOT / "pkgs/core/src"), str(REPO_ROOT / "pkgs/tabular/src")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 from adapter import (
     apply_execution_image,
@@ -58,9 +67,9 @@ def _template_note(task_name: str, execution_image: str | None = None) -> str:
         return (
             "USER-FACING training Pipeline-tab draft: preprocess_features -> train_<model>* "
             "-> build_ensemble_<method>* -> evaluate_models. Set remote inputs with "
-            "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; tune "
-            "preprocessing under Features/* and ensembles with Model/ensemble_methods. "
-            "Model/candidates is prefilled with all 10 supported models; synced templates "
+            "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; "
+            "start with Basic/model_suite and Basic/use_ensemble. Advanced users can "
+            "still edit Model/candidates and Model/ensemble_methods. Synced templates "
             "install GBM packages into the remote execution venv."
             f"{image_note}"
         )
@@ -125,6 +134,7 @@ def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
     params = default_ui_params(cfg)
     clearml_cfg = cfg.get("clearml", {}) or {}
     if task_name == "tabular_infer_template" and cfg.get("runtime", {}).get("use_clearml"):
+        params["Model/source_type"] = "task_id"
         dataset_id = clearml_cfg.get("default_infer_dataset_id") or clearml_cfg.get("default_dataset_id")
         dataset_file = clearml_cfg.get("default_infer_dataset_file") or clearml_cfg.get("default_dataset_file")
         if dataset_id and not params.get("Input/clearml_dataset_id"):

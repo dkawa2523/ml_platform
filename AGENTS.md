@@ -57,7 +57,8 @@ environments may run the dependency-free subset by overriding `model.candidates`
 Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 
 Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
-`stacking` and optimization are future work.
+Optimization, stacking, task registries, and non-scalar outputs are P2 roadmap
+items. Do not implement them in the current product flow.
 
 ## Extension Rules
 
@@ -95,6 +96,7 @@ A successful run is not enough. ClearML UI must show:
 
 `docs/SPEC.md` is the product source of truth.
 `docs/CLEARML_UI_SPEC.md` is the screen-level UI guide.
+`docs/ROADMAP.md` is the current-vs-future boundary.
 
 ## Checks
 

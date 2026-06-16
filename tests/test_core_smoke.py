@@ -3,7 +3,7 @@ from ml_platform_core.config import apply_overrides, load_run_config
 
 
 def test_core_smoke(tmp_path):
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+    cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path)
     run_dir = prepare_run_dir(tmp_path, "smoke")
     config_path = write_config_snapshot(cfg, run_dir)

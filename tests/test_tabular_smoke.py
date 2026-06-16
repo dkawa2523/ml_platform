@@ -3,13 +3,11 @@ import pandas as pd
 import pytest
 
 from ml_platform_core.config import load_run_config
-from ml_platform_core.io import load_joblib, read_json
-from ml_platform_tabular import TASK_NAMES, run_task
-from ml_platform_tabular.evaluate import run_evaluate
+from ml_platform_core.io import read_json
+from ml_platform_tabular import models as model_module
 from ml_platform_tabular.features import build_feature_pipeline
 from ml_platform_tabular.infer import run_infer
 from ml_platform_tabular.metrics import regression_metrics
-from ml_platform_tabular import models as model_module
 from ml_platform_tabular.models import (
     AVAILABLE_MODELS,
     DEPENDENCY_FREE_MODELS,
@@ -17,19 +15,22 @@ from ml_platform_tabular.models import (
     SUPPORTED_MODELS,
     build_model,
 )
-from ml_platform_tabular.train import run_train
+from ml_platform_tabular.pipeline import run_pipeline
 
 
-def _assert_prediction_output(path, *, input_columns, model_name, artifact_kind):
+def _assert_prediction_output(path, *, id_columns, model_name, artifact_kind):
     predictions = pd.read_csv(path)
     assert list(predictions.columns) == [
-        *input_columns,
+        "row_index",
+        *id_columns,
         "prediction",
         "model_name",
         "artifact_kind",
         "model_artifact_id",
         "prediction_run_id",
     ]
+    assert "x1" not in predictions.columns
+    assert "x2" not in predictions.columns
     assert set(predictions["model_name"]) == {model_name}
     assert set(predictions["artifact_kind"]) == {artifact_kind}
     assert predictions["model_artifact_id"].str.len().min() > 0
@@ -38,115 +39,33 @@ def _assert_prediction_output(path, *, input_columns, model_name, artifact_kind)
     return predictions
 
 
-def test_compat_tabular_train_eval_and_infer_smoke(tmp_path):
+def _write_training_frame(tmp_path, *, rows=40, categorical=False):
     rng = np.random.default_rng(1)
     df = pd.DataFrame(
         {
-            "id": range(50),
-            "x1": rng.normal(size=50),
-            "x2": rng.normal(size=50),
+            "id": range(rows),
+            "x1": rng.normal(size=rows),
+            "x2": rng.normal(size=rows),
         }
     )
-    df["target"] = 2.0 * df["x1"] - df["x2"] + rng.normal(scale=0.1, size=50)
+    if categorical:
+        df["segment"] = ["a" if index % 2 == 0 else "b" for index in range(rows)]
+    df["target"] = 2.0 * df["x1"] - df["x2"] + rng.normal(scale=0.1, size=rows)
     train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
     df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(10).to_csv(infer_path, index=False)
+    return df, train_path
 
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
+
+def _run_small_pipeline(tmp_path, train_path, *, id_columns=None, candidates=None, params=None):
+    cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/local.yaml")
     cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
     cfg["data"]["local_path"] = str(train_path)
     cfg["data"]["target_column"] = "target"
-    cfg["data"]["id_columns"] = ["id"]
-    cfg["model"]["name"] = "ridge"
-    cfg["model"]["params"] = {"alpha": 1.0}
-
-    train_result = run_train(cfg)
-    assert train_result.artifacts["model"].exists()
-    assert train_result.artifacts["model_info"].exists()
-    assert "rmse" in train_result.metrics
-    assert "mse" not in train_result.metrics
-    assert (tmp_path / "outputs" / "latest_train" / "model.joblib").exists()
-    model_info = read_json(train_result.artifacts["model_info"])
-    assert model_info["feature_columns"] == ["x1", "x2"]
-    assert model_info["model_name"] == "ridge"
-    assert model_info["model_params"] == {"alpha": 1.0}
-
-    eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
-    eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    eval_cfg["data"]["local_path"] = str(train_path)
-    eval_cfg["data"]["target_column"] = "target"
-    cfg["data"]["id_columns"] = ["id"]
-    eval_cfg["data"]["id_columns"] = ["id"]
-    # Do not pass model.artifact_path to verify default latest_train lookup.
-    eval_result = run_evaluate(eval_cfg)
-    assert eval_result.tables["evaluation_predictions"].exists()
-    assert (tmp_path / "outputs" / "latest_eval" / "metrics.json").exists()
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_cfg["data"]["id_columns"] = ["id"]
-    # Do not pass model.artifact_path or feature_columns to verify model_info lookup.
-    infer_result = run_infer(infer_cfg)
-    assert infer_result.tables["predictions"].exists()
-    assert (tmp_path / "outputs" / "latest_infer" / "predictions.csv").exists()
-    _assert_prediction_output(
-        infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
-        model_name="ridge",
-        artifact_kind="model",
-    )
-    assert infer_result.artifacts["model_info"].exists()
-    manifest = read_json(infer_result.artifacts["manifest"])
-    assert manifest["extra"]["prediction_rows"] == 10
-    assert manifest["extra"]["prediction_file"] == "predictions.csv"
-    assert manifest["extra"]["model_name"] == "ridge"
-    assert manifest["extra"]["artifact_kind"] == "model"
-    assert manifest["extra"]["prediction_schema_version"] == "v2.2"
-    assert manifest["extra"]["model_artifact_id"]
-    assert manifest["extra"]["id_columns"] == ["id"]
-    assert manifest["extra"]["target_column"] is None
-    assert manifest["extra"]["chunk_size"] is None
-
-
-@pytest.mark.parametrize(
-    ("model_name", "params"),
-    [
-        ("random_forest", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
-        ("gradient_boosting", {"n_estimators": 5, "random_state": 42}),
-        ("lasso", {"alpha": 0.01, "max_iter": 5000}),
-        ("elasticnet", {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42}),
-        ("extra_trees", {"n_estimators": 5, "random_state": 42, "n_jobs": 1}),
-    ],
-)
-def test_sklearn_backed_models_train_smoke(tmp_path, model_name, params):
-    rng = np.random.default_rng(2)
-    df = pd.DataFrame(
-        {
-            "id": range(40),
-            "x1": rng.normal(size=40),
-            "x2": rng.normal(size=40),
-        }
-    )
-    df["target"] = 1.5 * df["x1"] + 0.5 * df["x2"] + rng.normal(scale=0.05, size=40)
-    train_path = tmp_path / "train.csv"
-    df.to_csv(train_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["name"] = model_name
-    cfg["model"]["params"] = params
-
-    result = run_train(cfg)
-    model_info = read_json(result.artifacts["model_info"])
-
-    assert result.artifacts["model"].exists()
-    assert result.artifacts["model_info"].exists()
-    assert model_info["model_name"] == model_name
-    assert model_info["model_params"] == params
-    assert "rmse" in result.metrics
+    cfg["data"]["id_columns"] = list(id_columns or [])
+    cfg["model"]["candidates"] = list(candidates or ["linear"])
+    cfg["model"]["params"] = params or {}
+    cfg["model"]["ensemble"]["enabled"] = False
+    return run_pipeline(cfg)
 
 
 def test_model_policy_excludes_out_of_scope_models():
@@ -234,204 +153,14 @@ def test_optional_dependency_models_fail_cleanly_when_dependency_missing(monkeyp
             build_model(name)
 
 
-def test_train_candidates_write_leaderboard_and_best_model(tmp_path):
-    rng = np.random.default_rng(3)
-    df = pd.DataFrame(
-        {
-            "id": range(50),
-            "x1": rng.normal(size=50),
-            "x2": rng.normal(size=50),
-        }
-    )
-    df["target"] = 1.2 * df["x1"] - 0.8 * df["x2"] + rng.normal(scale=0.05, size=50)
-    train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
-    df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(6).to_csv(infer_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["model"]["candidates"] = ["linear", "ridge"]
-    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
-    cfg["model"]["selection_metric"] = "rmse"
-
-    result = run_train(cfg)
-
-    assert result.artifacts["model"].exists()
-    assert result.tables["leaderboard"].exists()
-    leaderboard = pd.read_csv(result.tables["leaderboard"])
-    assert list(leaderboard["rank"]) == [1, 2]
-    assert set(leaderboard["model_name"]) == {"linear", "ridge"}
-    assert {"rank", "model_name", "selection_metric", "rmse", "mae", "r2", "model_params", "artifact_name"} <= set(
-        leaderboard.columns
-    )
-    assert leaderboard.loc[0, "artifact_name"] == "model"
-    model_info = read_json(result.artifacts["model_info"])
-    assert model_info["model_name"] == leaderboard.loc[0, "model_name"]
-    assert model_info["best_model_name"] == leaderboard.loc[0, "model_name"]
-    expected_params = {} if leaderboard.loc[0, "model_params"] == "{}" else {"alpha": 1.0}
-    assert model_info["model_params"] == expected_params
-    metrics_json = read_json(result.artifacts["metrics"])
-    assert metrics_json["comparison"]["enabled"] is True
-    assert metrics_json["comparison"]["best_model_name"] == model_info["model_name"]
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_result = run_infer(infer_cfg)
-    _assert_prediction_output(
-        infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
-        model_name=model_info["model_name"],
-        artifact_kind="model",
-    )
-
-
-def test_train_mean_topk_ensemble_artifact_eval_and_infer(tmp_path):
-    rng = np.random.default_rng(4)
-    df = pd.DataFrame(
-        {
-            "id": range(60),
-            "x1": rng.normal(size=60),
-            "x2": rng.normal(size=60),
-        }
-    )
-    df["target"] = 1.0 * df["x1"] - 0.4 * df["x2"] + rng.normal(scale=0.05, size=60)
-    train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
-    df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(8).to_csv(infer_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["data"]["id_columns"] = ["id"]
-    cfg["model"]["candidates"] = ["linear", "ridge"]
-    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
-    cfg["model"]["ensemble"] = {"enabled": True, "method": "mean_topk", "top_k": 2}
-
-    train_result = run_train(cfg)
-    model = load_joblib(train_result.artifacts["model"])
-    model_info = read_json(train_result.artifacts["model_info"])
-
-    assert model_info["artifact_kind"] == "ensemble"
-    assert model_info["ensemble_method"] == "mean_topk"
-    assert len(model_info["selected_base_models"]) == 2
-    assert train_result.tables["leaderboard"].exists()
-    leaderboard = pd.read_csv(train_result.tables["leaderboard"])
-    assert "mean_topk" in set(leaderboard["model_name"])
-    assert leaderboard.loc[leaderboard["model_name"] == "mean_topk", "artifact_name"].iloc[0] == "model"
-    assert train_result.tables["ensemble_predictions"].exists()
-    assert len(list((train_result.run_dir / "base_models").glob("*.joblib"))) == 2
-    assert len(model.predict(df.drop(columns=["target"]).head(3))) == 3
-
-    eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
-    eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    eval_cfg["data"]["local_path"] = str(train_path)
-    eval_cfg["data"]["target_column"] = "target"
-    eval_result = run_evaluate(eval_cfg)
-    assert eval_result.tables["evaluation_predictions"].exists()
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_result = run_infer(infer_cfg)
-    assert infer_result.tables["predictions"].exists()
-    _assert_prediction_output(
-        infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
-        model_name="mean_topk",
-        artifact_kind="ensemble",
-    )
-
-
-def test_train_weighted_ensemble_artifact_eval_and_infer(tmp_path):
-    rng = np.random.default_rng(5)
-    df = pd.DataFrame(
-        {
-            "id": range(60),
-            "x1": rng.normal(size=60),
-            "x2": rng.normal(size=60),
-        }
-    )
-    df["target"] = 0.8 * df["x1"] + 0.7 * df["x2"] + rng.normal(scale=0.05, size=60)
-    train_path = tmp_path / "train.csv"
-    infer_path = tmp_path / "infer.csv"
-    df.to_csv(train_path, index=False)
-    df.drop(columns=["target"]).head(8).to_csv(infer_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["data"]["id_columns"] = ["id"]
-    cfg["model"]["candidates"] = ["linear", "ridge"]
-    cfg["model"]["params"] = {"ridge": {"alpha": 1.0}}
-    cfg["model"]["ensemble"] = {"enabled": True, "method": "weighted", "top_k": 2}
-
-    train_result = run_train(cfg)
-    model = load_joblib(train_result.artifacts["model"])
-    model_info = read_json(train_result.artifacts["model_info"])
-
-    assert model_info["artifact_kind"] == "ensemble"
-    assert model_info["model_name"] == "weighted"
-    assert model_info["ensemble_method"] == "weighted"
-    assert len(model_info["selected_base_models"]) == 2
-    assert len(model_info["weights"]) == 2
-    assert sum(model_info["weights"]) == pytest.approx(1.0)
-    assert train_result.tables["ensemble_predictions"].exists()
-    assert len(list((train_result.run_dir / "base_models").glob("*.joblib"))) == 2
-    assert len(model.predict(df.drop(columns=["target"]).head(3))) == 3
-
-    leaderboard = pd.read_csv(train_result.tables["leaderboard"])
-    assert "weighted" in set(leaderboard["model_name"])
-    assert leaderboard.loc[leaderboard["model_name"] == "weighted", "artifact_name"].iloc[0] == "model"
-
-    eval_cfg = load_run_config("config/tasks/tabular_eval.yaml", "config/profiles/local.yaml")
-    eval_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    eval_cfg["data"]["local_path"] = str(train_path)
-    eval_cfg["data"]["target_column"] = "target"
-    eval_result = run_evaluate(eval_cfg)
-    assert eval_result.tables["evaluation_predictions"].exists()
-
-    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
-    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    infer_cfg["data"]["local_path"] = str(infer_path)
-    infer_result = run_infer(infer_cfg)
-    assert infer_result.tables["predictions"].exists()
-    _assert_prediction_output(
-        infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
-        model_name="weighted",
-        artifact_kind="ensemble",
-    )
-
-
 def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
-    rng = np.random.default_rng(6)
-    df = pd.DataFrame(
-        {
-            "id": range(30),
-            "x1": rng.normal(size=30),
-            "x2": rng.normal(size=30),
-        }
-    )
-    df["target"] = df["x1"] + df["x2"]
-    train_path = tmp_path / "train.csv"
+    df, train_path = _write_training_frame(tmp_path, rows=30)
     infer_path = tmp_path / "infer.csv"
     conflict_path = tmp_path / "infer_conflict.csv"
-    df.to_csv(train_path, index=False)
     df.drop(columns=["target"]).head(4).to_csv(infer_path, index=False)
     df.drop(columns=["target"]).head(4).assign(model_artifact_id="existing").to_csv(conflict_path, index=False)
 
-    cfg = load_run_config("config/tasks/tabular_train.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(train_path)
-    cfg["data"]["target_column"] = "target"
-    cfg["data"]["id_columns"] = ["id"]
-    cfg["model"]["name"] = "linear"
-    cfg["model"]["params"] = {}
-    run_train(cfg)
+    _run_small_pipeline(tmp_path, train_path, id_columns=["id"], candidates=["linear"])
 
     infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
     infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
@@ -444,7 +173,7 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     assert (tmp_path / "outputs" / "latest_infer" / "scored.csv").exists()
     predictions = _assert_prediction_output(
         infer_result.tables["predictions"],
-        input_columns=["id", "x1", "x2"],
+        id_columns=["id"],
         model_name="linear",
         artifact_kind="model",
     )
@@ -455,6 +184,75 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     infer_cfg["data"]["local_path"] = str(conflict_path)
     with pytest.raises(ValueError, match="reserved prediction output columns"):
         run_infer(infer_cfg)
+
+
+def test_infer_schema_check_warns_for_extra_and_unseen_category(tmp_path):
+    df, train_path = _write_training_frame(tmp_path, rows=24, categorical=True)
+    infer_path = tmp_path / "infer.csv"
+    pd.DataFrame(
+        {
+            "id": [10, 11],
+            "x1": [0.7, 0.8],
+            "x2": [0.1, 0.2],
+            "segment": ["new_segment", "a"],
+            "extra_note": ["keep out", "keep out"],
+        }
+    ).to_csv(infer_path, index=False)
+
+    _run_small_pipeline(
+        tmp_path,
+        train_path,
+        id_columns=["id"],
+        candidates=["ridge"],
+        params={"ridge": {"alpha": 1.0}},
+    )
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_cfg["data"]["id_columns"] = ["id"]
+    infer_result = run_infer(infer_cfg)
+
+    schema_check = read_json(infer_result.artifacts["schema_check_summary"])
+    assert schema_check["status"] == "warning"
+    assert schema_check["extra_columns"] == ["extra_note"]
+    assert schema_check["unknown_or_unseen_category_warning"] is True
+    assert schema_check["unseen_category_columns"] == ["segment"]
+    predictions = pd.read_csv(infer_result.tables["predictions"])
+    assert list(predictions.columns) == [
+        "row_index",
+        "id",
+        "prediction",
+        "model_name",
+        "artifact_kind",
+        "model_artifact_id",
+        "prediction_run_id",
+    ]
+    assert "extra_note" not in predictions.columns
+    assert "segment" not in predictions.columns
+
+
+def test_infer_schema_check_errors_for_missing_required_feature(tmp_path):
+    df, train_path = _write_training_frame(tmp_path, rows=24)
+    infer_path = tmp_path / "infer_missing.csv"
+    df.drop(columns=["target", "x2"]).head(2).to_csv(infer_path, index=False)
+
+    _run_small_pipeline(tmp_path, train_path, id_columns=["id"], candidates=["linear"])
+
+    infer_cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/local.yaml")
+    infer_cfg["run"]["name"] = "missing_feature_infer"
+    infer_cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
+    infer_cfg["data"]["local_path"] = str(infer_path)
+    infer_cfg["data"]["id_columns"] = ["id"]
+
+    with pytest.raises(ValueError, match="Missing required inference features"):
+        run_infer(infer_cfg)
+
+    run_dirs = sorted((tmp_path / "outputs").glob("missing_feature_infer_*"))
+    assert run_dirs
+    schema_check = read_json(run_dirs[-1] / "schema_check_summary.json")
+    assert schema_check["status"] == "error"
+    assert schema_check["missing_features"] == ["x2"]
 
 
 def test_regression_metrics_can_select_mse():
@@ -478,29 +276,3 @@ def test_regression_metrics_rejects_invalid_inputs():
 
     with pytest.raises(ValueError, match="Unsupported regression metric"):
         regression_metrics([1.0, 2.0], [1.0, 2.0], metrics=["median-error"])
-
-
-def test_future_tabular_1d_output_smoke(tmp_path):
-    df = pd.DataFrame(
-        {
-            "id": [1, 2, 3],
-            "x1": [3.0, 1.0, 2.0],
-            "target": [30.0, 10.0, 20.0],
-        }
-    )
-    input_path = tmp_path / "input.csv"
-    df.to_csv(input_path, index=False)
-
-    cfg = load_run_config("config/tasks/tabular_1d_output.yaml", "config/profiles/local.yaml")
-    cfg["runtime"]["output_dir"] = str(tmp_path / "outputs")
-    cfg["data"]["local_path"] = str(input_path)
-
-    result = run_task(cfg)
-
-    assert "tabular_1d_output" in TASK_NAMES
-    assert result.tables["output_1d"].exists()
-    output_df = pd.read_csv(result.tables["output_1d"])
-    assert list(output_df.columns) == ["id", "x", "value"]
-    assert output_df["x"].tolist() == [1.0, 2.0, 3.0]
-    assert result.artifacts["summary"].exists()
-    assert (tmp_path / "outputs" / "latest_1d_output" / "tabular_1d_output.csv").exists()

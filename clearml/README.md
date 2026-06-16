@@ -8,6 +8,8 @@ Files:
 ```text
 app.py        task entrypoint
 adapter.py    ClearML Task, Dataset, StorageManager, Logger wrapper
+_entrypoint_bootstrap.py
+              local/remote entrypoint import bootstrap
 reports.py    RunResult -> ClearML Scalars, Tables, Plots, Artifacts
 templates.py  template sync and Pipeline-tab draft sync
 pipelines.py  stage-based training PipelineController
@@ -48,3 +50,8 @@ For remote training, start the PipelineController on `clearml.controller_queue`
 and let stage tasks run on `clearml.stage_queue`. Using the same one-worker queue
 for both can leave `preprocess_features` queued while the controller occupies
 the only worker slot.
+
+Because this operations directory is named `clearml`, code here must import the
+official SDK through `adapter.import_clearml_sdk()` or
+`adapter.import_clearml_symbol()`. Those helpers temporarily remove the repo root
+from `sys.path` before importing the external package.

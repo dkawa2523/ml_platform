@@ -13,7 +13,7 @@ from ml_platform_core.artifacts import (
     write_config_snapshot,
     write_manifest,
 )
-from ml_platform_core.io import load_joblib, read_json, read_table, write_table
+from ml_platform_core.io import load_joblib, read_json, write_json, write_table
 from ml_platform_core.result import RunResult
 
 from .data import load_dataset, select_features
@@ -21,8 +21,15 @@ from .model_artifact import default_model_path
 from .plots import write_prediction_summary_tables
 
 
-PREDICTION_SCHEMA_VERSION = "v2.2"
-RESERVED_PREDICTION_COLUMNS = {"prediction", "model_name", "artifact_kind", "model_artifact_id", "prediction_run_id"}
+PREDICTION_SCHEMA_VERSION = "v2.3"
+RESERVED_PREDICTION_COLUMNS = {
+    "row_index",
+    "prediction",
+    "model_name",
+    "artifact_kind",
+    "model_artifact_id",
+    "prediction_run_id",
+}
 
 
 def _safe_name(value: str) -> str:
@@ -157,7 +164,7 @@ def _latest_training_pipeline_model(output_dir: Path, selector: str) -> Path | N
 def _model_artifact_path(cfg: dict[str, Any], output_dir: Path) -> Path:
     model_cfg = cfg.get("model", {})
     selector = _model_selector(cfg)
-    for key in ("artifact_path", "local_model_path", "model_artifact_url"):
+    for key in ("artifact_path", "local_model_path"):
         path = _path_from_value(model_cfg.get(key), selector)
         if path is not None:
             return path
@@ -245,45 +252,53 @@ def _estimator_feature_columns(estimator: Any) -> list[str] | None:
     return None
 
 
-def _features_for_inference(
-    df,
+def _required_feature_columns(
     cfg: dict[str, Any],
     *,
-    model_path: Path,
     estimator: Any,
     model_info: dict[str, Any],
     feature_spec: dict[str, Any],
     preprocess_bundle: dict[str, Any],
-) -> list[str]:
+) -> list[str] | None:
     data_cfg = cfg.get("data", {})
     explicit = data_cfg.get("feature_columns")
     if explicit:
-        return select_features(
-            df,
-            target_column=data_cfg.get("target_column"),
-            feature_columns=explicit,
-            id_columns=data_cfg.get("id_columns"),
-        )
+        return _as_list(explicit)
 
     for feature_columns in (
+        feature_spec.get("feature_columns"),
         model_info.get("feature_columns"),
         _estimator_feature_columns(estimator),
-        feature_spec.get("feature_columns"),
         preprocess_bundle.get("feature_columns"),
     ):
         if feature_columns:
-            return select_features(
-                df,
-                target_column=data_cfg.get("target_column"),
-                feature_columns=feature_columns,
-                id_columns=data_cfg.get("id_columns"),
-            )
+            return _as_list(feature_columns)
+    return None
+
+
+def _effective_id_columns(cfg: dict[str, Any], feature_spec: dict[str, Any]) -> list[str]:
+    configured = _as_list(cfg.get("data", {}).get("id_columns"))
+    if configured:
+        return configured
+    return _as_list(feature_spec.get("id_columns"))
+
+
+def _features_for_inference(
+    df,
+    cfg: dict[str, Any],
+    *,
+    required_features: list[str] | None,
+    id_columns: list[str],
+) -> list[str]:
+    data_cfg = cfg.get("data", {})
+    if required_features is not None:
+        return list(required_features)
 
     return select_features(
         df,
         target_column=data_cfg.get("target_column"),
         feature_columns=None,
-        id_columns=data_cfg.get("id_columns"),
+        id_columns=id_columns,
     )
 
 
@@ -307,6 +322,78 @@ def _chunk_size(cfg: dict[str, Any]) -> int | None:
     return chunk_size
 
 
+def _json_value(value: Any) -> str:
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, sort_keys=True, default=str)
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _schema_check_table(summary: dict[str, Any]) -> pd.DataFrame:
+    return pd.DataFrame([{"metric": key, "value": _json_value(value)} for key, value in summary.items()])
+
+
+def _unseen_category_columns(df, preprocess_bundle: dict[str, Any]) -> list[str]:
+    transformer = preprocess_bundle.get("transformer")
+    category_levels = getattr(transformer, "category_levels", None)
+    if not isinstance(category_levels, dict):
+        return []
+    fill_values = getattr(transformer, "categorical_fill_values", {})
+    unseen: list[str] = []
+    for column, levels in category_levels.items():
+        if column not in df.columns:
+            continue
+        known = {str(value) for value in levels}
+        fill_value = str(fill_values.get(column, "__missing__")) if isinstance(fill_values, dict) else "__missing__"
+        values = df[column].fillna(fill_value).astype(str)
+        if any(value not in known for value in values.unique().tolist()):
+            unseen.append(str(column))
+    return unseen
+
+
+def _schema_check_summary(
+    df,
+    *,
+    feature_columns: list[str],
+    id_columns: list[str],
+    target_column: str | None,
+    preprocess_bundle: dict[str, Any],
+) -> dict[str, Any]:
+    existing_id_columns = [column for column in id_columns if column in df.columns]
+    missing_id_columns = [column for column in id_columns if column not in df.columns]
+    missing_features = [column for column in feature_columns if column not in df.columns]
+    allowed = set(feature_columns)
+    allowed.update(existing_id_columns)
+    if target_column:
+        allowed.add(target_column)
+    extra_columns = [column for column in df.columns if column not in allowed]
+    unseen_columns = _unseen_category_columns(df, preprocess_bundle)
+    status = "ok"
+    if missing_features:
+        status = "error"
+    elif extra_columns or missing_id_columns or unseen_columns:
+        status = "warning"
+    return {
+        "required_feature_count": len(feature_columns),
+        "provided_feature_count": len([column for column in feature_columns if column in df.columns]),
+        "missing_features": missing_features,
+        "extra_columns": extra_columns,
+        "id_columns": existing_id_columns,
+        "missing_id_columns": missing_id_columns,
+        "row_count": int(len(df)),
+        "unknown_or_unseen_category_warning": bool(unseen_columns),
+        "unseen_category_columns": unseen_columns,
+        "status": status,
+    }
+
+
+def _write_schema_check(summary: dict[str, Any], run_dir: Path) -> tuple[Path, Path]:
+    summary_json = write_json(summary, run_dir / "schema_check_summary.json")
+    summary_csv = write_table(_schema_check_table(summary), run_dir / "schema_check_summary.csv")
+    return summary_json, summary_csv
+
+
 def _model_artifact_id(model_info: dict[str, Any], model_path: Path) -> str:
     if model_info:
         payload = {
@@ -323,13 +410,24 @@ def _model_artifact_id(model_info: dict[str, Any], model_path: Path) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _prediction_frame(df, y_pred, *, model_info: dict[str, Any], run_id: str, model_artifact_id: str):
+def _prediction_frame(
+    df,
+    y_pred,
+    *,
+    id_columns: list[str],
+    model_info: dict[str, Any],
+    run_id: str,
+    model_artifact_id: str,
+):
     conflicts = [column for column in RESERVED_PREDICTION_COLUMNS if column in df.columns]
     if conflicts:
         raise ValueError(f"Input table contains reserved prediction output columns: {conflicts}")
     model_name = str(model_info.get("model_name") or model_info.get("best_model_name") or "unknown")
     artifact_kind = str(model_info.get("artifact_kind") or "model")
-    out = df.copy()
+    out = pd.DataFrame({"row_index": df.index.to_list()})
+    for column in id_columns:
+        if column in df.columns and column not in out.columns:
+            out[column] = df[column].to_list()
     out["prediction"] = y_pred
     out["model_name"] = model_name
     out["artifact_kind"] = artifact_kind
@@ -338,19 +436,76 @@ def _prediction_frame(df, y_pred, *, model_info: dict[str, Any], run_id: str, mo
     return out
 
 
-def _write_chunked_predictions(path: Path, df, estimator, features: list[str], chunk_size: int, *, model_info: dict[str, Any], run_id: str, model_artifact_id: str) -> Path:
+def _write_chunked_predictions(
+    path: Path,
+    df,
+    estimator,
+    features: list[str],
+    chunk_size: int,
+    *,
+    id_columns: list[str],
+    model_info: dict[str, Any],
+    run_id: str,
+    model_artifact_id: str,
+) -> Path:
     if path.suffix.lower() != ".csv":
         raise ValueError("output.chunk_size currently supports CSV prediction output only.")
     path.parent.mkdir(parents=True, exist_ok=True)
     for start in range(0, len(df), chunk_size):
         chunk = df.iloc[start : start + chunk_size]
         y_pred = estimator.predict(chunk[features])
-        frame = _prediction_frame(chunk, y_pred, model_info=model_info, run_id=run_id, model_artifact_id=model_artifact_id)
+        frame = _prediction_frame(
+            chunk,
+            y_pred,
+            id_columns=id_columns,
+            model_info=model_info,
+            run_id=run_id,
+            model_artifact_id=model_artifact_id,
+        )
         frame.to_csv(path, index=False, mode="w" if start == 0 else "a", header=start == 0)
     if len(df) == 0:
-        frame = _prediction_frame(df, [], model_info=model_info, run_id=run_id, model_artifact_id=model_artifact_id)
+        frame = _prediction_frame(
+            df,
+            [],
+            id_columns=id_columns,
+            model_info=model_info,
+            run_id=run_id,
+            model_artifact_id=model_artifact_id,
+        )
         frame.to_csv(path, index=False)
     return path
+
+
+def _known_target_column(
+    cfg: dict[str, Any],
+    feature_spec: dict[str, Any],
+    model_info: dict[str, Any],
+    preprocess_bundle: dict[str, Any],
+) -> str | None:
+    for value in (
+        cfg.get("data", {}).get("target_column"),
+        feature_spec.get("target_column"),
+        model_info.get("target_column"),
+        preprocess_bundle.get("target_column"),
+    ):
+        if value:
+            return str(value)
+    return None
+
+
+def _feature_preset(
+    feature_spec: dict[str, Any],
+    model_info: dict[str, Any],
+    preprocess_bundle: dict[str, Any],
+) -> str | None:
+    for value in (
+        feature_spec.get("feature_preset"),
+        model_info.get("feature_preset"),
+        preprocess_bundle.get("feature_preset"),
+    ):
+        if value:
+            return str(value)
+    return None
 
 
 def run_infer(cfg: dict[str, Any]) -> RunResult:
@@ -363,17 +518,36 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
     model_info = _load_model_info(cfg, model_path)
     feature_spec = _load_feature_spec(cfg, model_path)
     preprocess_bundle = _load_preprocess_bundle(cfg, model_path)
+    schema_preprocess_bundle = dict(preprocess_bundle)
+    if "transformer" not in schema_preprocess_bundle and hasattr(estimator, "transformer"):
+        schema_preprocess_bundle["transformer"] = getattr(estimator, "transformer")
 
     df = load_dataset(cfg)
-    features = _features_for_inference(
-        df,
+    id_columns = _effective_id_columns(cfg, feature_spec)
+    required_features = _required_feature_columns(
         cfg,
-        model_path=model_path,
         estimator=estimator,
         model_info=model_info,
         feature_spec=feature_spec,
         preprocess_bundle=preprocess_bundle,
     )
+    features = _features_for_inference(
+        df,
+        cfg,
+        required_features=required_features,
+        id_columns=id_columns,
+    )
+    target_column = _known_target_column(cfg, feature_spec, model_info, preprocess_bundle)
+    schema_summary = _schema_check_summary(
+        df,
+        feature_columns=features,
+        id_columns=id_columns,
+        target_column=target_column,
+        preprocess_bundle=schema_preprocess_bundle,
+    )
+    schema_check_json_path, schema_check_table_path = _write_schema_check(schema_summary, run_dir)
+    if schema_summary["status"] == "error":
+        raise ValueError(f"Missing required inference features: {schema_summary['missing_features']}")
 
     prediction_name = cfg.get("output", {}).get("prediction_name", "predictions.csv")
     model_artifact_id = _model_artifact_id(model_info, model_path)
@@ -385,6 +559,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
             estimator,
             features,
             chunk_size,
+            id_columns=schema_summary["id_columns"],
             model_info=model_info,
             run_id=run_dir.name,
             model_artifact_id=model_artifact_id,
@@ -394,6 +569,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         prediction_frame = _prediction_frame(
             df,
             y_pred,
+            id_columns=schema_summary["id_columns"],
             model_info=model_info,
             run_id=run_dir.name,
             model_artifact_id=model_artifact_id,
@@ -409,6 +585,7 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
 
     artifacts = {
         "config": config_path,
+        "schema_check_summary": schema_check_json_path,
     }
     info_path = _model_info_path(cfg, model_path)
     if info_path:
@@ -430,11 +607,11 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         "prediction_file": prediction_name,
         "prediction_summary": str(prediction_summary_path),
         "prediction_schema_version": PREDICTION_SCHEMA_VERSION,
+        "schema_check_status": schema_summary["status"],
+        "schema_check_summary": str(schema_check_json_path),
         "source_type": _model_source_type(cfg),
         "source_task_id": model_cfg.get("source_task_id"),
         "model_selector": _model_selector(cfg),
-        "model_artifact_url": model_cfg.get("model_artifact_url"),
-        "clearml_model_id": model_cfg.get("clearml_model_id"),
         "local_model_path": model_cfg.get("local_model_path"),
         "model_source": str(model_path),
         "resolved_model_path": str(model_path),
@@ -446,8 +623,9 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         "artifact_kind": str(model_info.get("artifact_kind") or "model"),
         "model_artifact_id": model_artifact_id,
         "feature_columns": features,
-        "id_columns": _as_list(data_cfg.get("id_columns")),
-        "target_column": data_cfg.get("target_column"),
+        "id_columns": schema_summary["id_columns"],
+        "target_column": target_column,
+        "feature_preset": _feature_preset(feature_spec, model_info, preprocess_bundle),
         "chunk_size": chunk_size,
     }
     source_summary_path = write_table(
@@ -456,9 +634,13 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
                 {"field": "source_type", "value": manifest_extra["source_type"]},
                 {"field": "source_task_id", "value": manifest_extra["source_task_id"]},
                 {"field": "model_selector", "value": manifest_extra["model_selector"]},
+                {"field": "resolved_model_name", "value": manifest_extra["model_name"]},
                 {"field": "artifact_kind", "value": manifest_extra["artifact_kind"]},
                 {"field": "model_name", "value": manifest_extra["model_name"]},
                 {"field": "ensemble_method", "value": manifest_extra["ensemble_method"]},
+                {"field": "target_column", "value": manifest_extra["target_column"]},
+                {"field": "feature_preset", "value": manifest_extra["feature_preset"]},
+                {"field": "schema_check_status", "value": manifest_extra["schema_check_status"]},
                 {"field": "resolved_model_path", "value": manifest_extra["resolved_model_path"]},
                 {"field": "model_artifact_id", "value": manifest_extra["model_artifact_id"]},
                 {"field": "feature_spec_path", "value": manifest_extra["feature_spec_path"]},
@@ -467,7 +649,12 @@ def run_infer(cfg: dict[str, Any]) -> RunResult:
         ),
         run_dir / "source_summary.csv",
     )
-    tables = {"predictions": predictions_path, **prediction_tables, "source_summary": source_summary_path}
+    tables = {
+        "predictions": predictions_path,
+        "schema_check_summary": schema_check_table_path,
+        **prediction_tables,
+        "source_summary": source_summary_path,
+    }
     manifest_path = write_manifest(
         run_dir,
         config=cfg,

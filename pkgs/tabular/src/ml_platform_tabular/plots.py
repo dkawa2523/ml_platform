@@ -333,9 +333,6 @@ def write_regression_plot_artifacts(y_true, y_pred, output_dir: Path, *, prefix:
         title="Residuals vs predicted",
     )
     return {
-        "prediction_vs_actual": scatter,
-        "residual_histogram": histogram,
-        "residual_vs_predicted": residual_vs_predicted,
         f"{prefix}_prediction_vs_actual": scatter,
         f"{prefix}_residual_histogram": histogram,
         f"{prefix}_residual_vs_predicted": residual_vs_predicted,
@@ -615,7 +612,7 @@ def write_prediction_summary_tables(
 
     plots = {"prediction_distribution_histogram": distribution_path}
     actual_column = None
-    for candidate in ("actual", "_target", target_column):
+    for candidate in ("actual", target_column):
         if candidate and candidate in frame.columns:
             actual_column = candidate
             break

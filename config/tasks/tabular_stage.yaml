@@ -5,7 +5,8 @@ task: tabular_stage
 # handoff values. Do not clone this as a user-facing model-, ensemble-, or
 # optimize-specific template. Run/stage selects the stage behavior. Primary
 # stages are preprocess_features, train_model, build_ensemble, and
-# evaluate_models. Optimization stages are future.
+# evaluate_models. Optimization/search stages are P2 future scope; see
+# docs/ROADMAP.md.
 
 run:
   name: tabular_stage
@@ -23,6 +24,10 @@ data:
 split:
   method: random
   valid_size: 0.2
+  group_column: null
+  time_column: null
+  valid_filter_column: null
+  valid_filter_value: null
 
 metrics:
   names: [mae, rmse, r2]

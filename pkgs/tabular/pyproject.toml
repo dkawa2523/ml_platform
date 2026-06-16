@@ -15,7 +15,6 @@ lightgbm = ["lightgbm>=4.0"]
 xgboost = ["xgboost>=2.0"]
 catboost = ["catboost>=1.2"]
 gbm = ["lightgbm>=4.0", "xgboost>=2.0", "catboost>=1.2"]
-experimental = ["lightgbm>=4.0", "xgboost>=2.0", "catboost>=1.2"]
 
 [build-system]
 requires = ["setuptools>=68"]

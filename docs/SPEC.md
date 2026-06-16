@@ -21,8 +21,20 @@ Primary task configs:
 - `config/tasks/tabular_stage.yaml`
 - `config/tasks/tabular_infer.yaml`
 
-Compatibility or future utilities may remain in `config/tasks`, but they are
-not product entrypoints and must not be synced as user-facing ClearML templates.
+Compatibility-only train/eval task configs are not part of the current product
+surface.
+Future/P2 items are tracked in `docs/ROADMAP.md` and should not appear as
+half-enabled ClearML UI surfaces.
+
+Training uses one holdout validation split. Supported `split.method` values are
+`random`, `group`, `time`, and `fixed`. `random` keeps the seeded shuffle
+behavior. `group` keeps all rows for the same `split.group_column` on one side
+of the split. `time` sorts by `split.time_column` and uses the latest
+`split.valid_size` rows for validation. `fixed` uses
+`split.valid_filter_column == split.valid_filter_value` as validation rows.
+K-fold CV, nested CV, HPO-driven splitting, and external validation files are
+future scope. `external_valid_file`, k-fold, nested CV, and `group_kfold` are
+not implemented in this release.
 
 ## Models
 
@@ -46,6 +58,11 @@ Out-of-scope models:
 ```text
 knn, svr, mlp, gaussian_process, tabpfn
 ```
+
+HPO is not part of the current model flow. `Basic/quality_mode` applies fixed,
+bounded parameter presets; it does not run search. Existing search-like config
+guards may reject `model.search.enabled=true` as future/experimental, but no
+ClearML HPO or optimization stage is implemented.
 
 ## Ensembles
 
@@ -72,8 +89,9 @@ that can be compared in `evaluate_models`.
 - `evaluation_report.json`
 - `evaluation_predictions.csv`
 - `candidate_predictions.csv`
-- `recommendation.json`
-- `decision_summary.md` / `decision_summary.json`
+- `decision_summary.md` / `decision_summary.json` as the canonical inference
+  decision note
+- `recommendation.json` as a compatibility machine-readable recommendation
 - `manifest.json`
 
 ClearML PLOTS should focus on readable leaderboard views: table, top-k score
@@ -100,11 +118,43 @@ Selectors:
 Inference outputs:
 
 - `predictions.csv`
+- `schema_check_summary.json` and `.csv`
 - `prediction_summary.csv`
 - `prediction_preview.csv`
 - `source_summary.csv`
 - `prediction_distribution_histogram.png`
 - `manifest.json`
+
+`predictions.csv` is intentionally slim: it contains `row_index`, configured
+or learned ID columns when present, `prediction`, and lightweight model metadata.
+It does not copy all input feature columns.
+
+`schema_check_summary` compares inference input columns with the training
+feature spec or model info. Missing required features fail the task; extra
+columns, missing ID columns, and unseen categorical values are warnings.
+
+`source_summary.csv` records the model source, selector, resolved model name,
+artifact kind, ensemble method, target column, and feature preset when known.
+
+Drift and monitoring are not implemented. Future monitoring should build from
+stored inference outputs such as `schema_check_summary`, `prediction_summary`,
+and `source_summary`, not from a separate service in the current release.
+
+## P2 Roadmap Boundary
+
+The following items are intentionally not implemented in the current release and
+are tracked in `docs/ROADMAP.md`:
+
+- HPO / hyperparameter optimization behind a small Basic-level control.
+- Model Registry flow from `evaluate_models` recommendations to approved model
+  registration.
+- Drift / monitoring from accumulated inference summaries.
+- Task Registry for non-scalar outputs such as 1D/2D output or mode
+  decomposition.
+- `external_valid_file`, k-fold, nested CV, and `group_kfold`.
+
+Do not expose these as user-facing ClearML parameters or templates until their
+product flow is intentionally designed.
 
 ## ClearML Templates And Projects
 
@@ -157,8 +207,17 @@ Tags:
 ## Architecture
 
 `pkgs/core` and `pkgs/tabular` are ClearML-free. ClearML SDK usage lives under
-`clearml/`. `scripts/` are wrappers. Config remains split between task YAML and
-profile YAML.
+`clearml/`. `scripts/` are the preferred local operator entrypoints and wrap
+package or ClearML operations entrypoints. Remote ClearML templates still execute
+`clearml/app.py` and `clearml/pipelines.py` directly. Config remains split
+between task YAML and profile YAML.
+
+The top-level `clearml/` operations directory intentionally remains in place for
+this release because synced templates reference those paths. Official SDK imports
+must go through the adapter import helpers so the repo directory does not shadow
+the external `clearml` package. A future rename should first add replacement
+entrypoints, sync and verify templates against them, then remove the old paths
+after existing Pipeline drafts are recreated or archived.
 
 Do not add model-specific, dataset-specific, optimization-specific, or
 ensemble-specific templates. Add product behavior through model candidates,

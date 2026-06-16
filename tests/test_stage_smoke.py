@@ -60,11 +60,14 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert preprocess.artifacts["preprocess_bundle"].exists()
     assert preprocess.artifacts["feature_spec"].exists()
     assert preprocess.artifacts["feature_summary"].exists()
+    assert preprocess.artifacts["data_quality_summary"].exists()
     assert preprocess.tables["feature_summary_table"].exists()
     assert preprocess.tables["feature_summary"].exists()
     assert preprocess.tables["missing_rate_by_column"].exists()
     assert preprocess.tables["feature_missingness"].exists()
     assert preprocess.tables["feature_type_counts"].exists()
+    assert preprocess.tables["data_quality_summary_table"].exists()
+    assert preprocess.tables["data_quality_warnings"].exists()
     assert preprocess.tables["processed_train"].exists()
     assert preprocess.tables["processed_valid"].exists()
     assert "missing_rate_by_column_bar" in preprocess.plots
@@ -86,9 +89,6 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
         assert result.tables["metrics_table"].exists()
         assert result.tables["validation_predictions"].exists()
         assert result.tables["feature_importance"].exists()
-        assert "prediction_vs_actual" in result.plots
-        assert "residual_histogram" in result.plots
-        assert "residual_vs_predicted" in result.plots
         assert "validation_prediction_vs_actual" in result.plots
         assert "validation_residual_histogram" in result.plots
         assert "validation_residual_vs_predicted" in result.plots
@@ -145,8 +145,14 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert evaluation.artifacts["decision_summary"].exists()
     assert evaluation.artifacts["decision_summary_json"].exists()
     assert evaluation.artifacts["manifest"].exists()
+    decision_summary = read_json(evaluation.artifacts["decision_summary_json"])
+    assert decision_summary["recommended_inference_settings"]["Model/source_type"] == "task_id"
+    assert decision_summary["recommended_inference_settings"]["Model/model_selector"] == "best"
+    assert decision_summary["recommended_candidate_selector"]
+    assert decision_summary["leaderboard_top5"]
+    assert decision_summary["best_single_model"]["artifact_kind"] == "model"
+    assert decision_summary["best_ensemble"]["artifact_kind"] == "ensemble"
     assert evaluation.extra["report_schema_version"] == "leaderboard_dashboard_v2"
-    assert "metrics_by_model_bar" in evaluation.plots
     assert "metrics_by_candidate_bar" in evaluation.plots
     assert "leaderboard_topk_score_bar" in evaluation.plots
     assert "leaderboard_metric_panel" in evaluation.plots
@@ -165,10 +171,10 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert "best_prediction_vs_actual" in evaluation_manifest["plots"]
 
 
-def test_tabular_stage_runner_rejects_future_optimization_stages(tmp_path):
+def test_tabular_stage_runner_rejects_unsupported_stages(tmp_path):
     train_path = _write_training_data(tmp_path, rows=50)
 
-    search_cfg = _stage_cfg(tmp_path, "search_trials", train_path)
-    search_cfg["run"]["stage"] = "search_trials"
-    with pytest.raises(ValueError, match="future/experimental"):
+    search_cfg = _stage_cfg(tmp_path, "unknown_stage", train_path)
+    search_cfg["run"]["stage"] = "unknown_stage"
+    with pytest.raises(ValueError, match="Unsupported tabular stage"):
         run_task(search_cfg)
