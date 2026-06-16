@@ -1,60 +1,71 @@
 # ml_platform
 
-ClearML-based tabular regression platform for training, comparing, and running
-inference with multiple models and ensemble methods.
+ClearML UI から扱いやすい、tabular scalar regression 向けの学習・評価・推論基盤です。
 
-## Product Flow
+目的は、モデル比較と推論運用に必要な情報を ClearML 上で見やすく出しつつ、core/tabular パッケージは ClearML に依存しない状態を保つことです。
 
-Training is one stage-based pipeline:
+## 製品フロー
+
+学習は stage-based pipeline です。
 
 ```text
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
-The preprocess stage reports lightweight data-quality checks so ClearML users
-can spot missing values, duplicate rows, high-cardinality columns, and possible
-leakage-like feature names early.
+`preprocess_features` では、欠損、重複、ID重複、高カーディナリティ列、リーク疑いの列名などを軽量に確認できます。警告は失敗扱いにせず、致命的な入力不備だけをエラーにします。
 
-After training, open `evaluate_models/decision_summary.md` to choose the
-inference settings: `Model/source_type`, `Model/source_task_id`, and
-`Model/model_selector`.
+学習後は `evaluate_models/decision_summary.md` を最初に確認してください。推論タスクに設定する `Model/source_type`、`Model/source_task_id`、`Model/model_selector` が分かるようになっています。
 
-Inference is a separate task:
+推論は学習 Pipeline とは別の user-facing task です。
 
 ```text
 tabular_infer_template -> predictions.csv
 ```
 
-Inference writes a lightweight schema check and slim predictions with
-`row_index`, available ID columns, and `prediction` rather than copying every
-input feature.
+推論では schema check を行い、`predictions.csv` は `row_index`、存在する ID 列、`prediction` を中心にした slim な出力にします。入力特徴量を丸ごとコピーしません。
 
-Primary task configs are:
+主要なタスク設定は以下です。
 
 - `config/tasks/tabular_pipeline.yaml`
 - `config/tasks/tabular_stage.yaml`
 - `config/tasks/tabular_infer.yaml`
 
-There are no compatibility-only training/evaluation task configs in the current
-product surface.
+現在の製品面では、互換専用の `tabular_train` / `tabular_eval` タスクや将来用 1D output タスクは持ちません。
 
-## Models
+## 対応モデル
 
-Supported model names are `linear`, `ridge`, `lasso`, `elasticnet`,
-`random_forest`, `extra_trees`, `gradient_boosting`, `lightgbm`, `xgboost`, and
-`catboost`.
+対応モデル名:
 
-`lightgbm`, `xgboost`, and `catboost` are supported optional-dependency models.
-They are not required package dependencies. Remote ClearML templates reference
-the profile's `clearml.execution.image` and install GBM packages into the
-Agent-created execution venv. Slim local or custom runs can remove the GBM names
-from `Model/candidates`.
+```text
+linear
+ridge
+lasso
+elasticnet
+random_forest
+extra_trees
+gradient_boosting
+lightgbm
+xgboost
+catboost
+```
 
-Out of scope: `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
+`lightgbm`、`xgboost`、`catboost` は optional dependency です。ローカルの軽量環境では標準インストールに含めず、ClearML remote template では Agent 側の実行 venv に GBM 依存を入れる設計です。
 
-## Local Run
+ローカルで 10 モデルすべてを動かす場合は、事前に `pkgs/tabular[gbm]` 相当の依存を入れてください。軽量に試す場合は `Model/candidates` や `Basic/model_suite=fast` で GBM 系を外します。
 
-Install the lightweight local environment:
+対象外:
+
+```text
+knn
+svr
+mlp
+gaussian_process
+tabpfn
+```
+
+## ローカル実行
+
+軽量な開発環境を作ります。
 
 ```powershell
 uv venv .venv
@@ -62,42 +73,51 @@ uv venv .venv
 uv pip install -e pkgs/core -e pkgs/tabular -r requirements-dev.txt
 ```
 
-Generate sample data and run the portable dependency-free smoke path:
+サンプルデータを作成し、GBM 系を外した軽量候補で学習します。
 
 ```powershell
 python scripts/make_sample_data.py
 python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+```
+
+直近の学習結果を使ってローカル推論します。
+
+```powershell
 python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+```
+
+テスト:
+
+```powershell
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
 ```
 
-Install `pkgs/tabular[gbm]` locally before running the default 10-candidate
-training config without an override.
+## ClearML 実行
 
-## ClearML
-
-Sync templates:
+テンプレートの dry-run:
 
 ```powershell
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+```
+
+ClearML 上のテンプレート更新:
+
+```powershell
 python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
-User-facing templates:
+ユーザー向けテンプレート:
 
 - `template/tabular_train_pipeline`
 - `template/tabular_infer`
 
-Internal template:
+内部テンプレート:
 
 - `internal/tabular_stage`
 
-Profiles route templates, pipelines, stage runs, inference runs, and experiments
-to separate ClearML projects. Old server-side tasks can remain visible until a
-human archives them.
+ClearML Pipeline tab から最初に使うのは `template/tabular_train_pipeline` です。`internal/tabular_stage` は PipelineController が各 stage で使う内部用なので、通常ユーザーが直接 clone しません。
 
-For a first training run from the Pipeline tab, set the remote input fields and
-the Basic group:
+初回実行では、主に以下を設定します。
 
 - `Input/clearml_dataset_id`
 - `Input/dataset_file`
@@ -106,27 +126,26 @@ the Basic group:
 - `Basic/quality_mode=fast|standard|quality`
 - `Basic/use_ensemble=true|false`
 
-`Basic/model_suite` changes the generated `train_<model>` steps without editing
-JSON. `fast` removes optional GBM models, `interpretable` uses linear-family
-models, `tree` uses sklearn tree ensembles, `gbm` uses LightGBM/XGBoost/CatBoost,
-and `custom` uses the detailed `Model/candidates` value. `Basic/quality_mode`
-applies small fixed parameter presets: `fast` keeps tree/GBM estimator counts
-low, `standard` matches the default config, and `quality` modestly increases
-estimator counts without HPO.
+`Basic/model_suite` は JSON を編集せずに候補モデルを切り替えるための入口です。
 
-Advanced JSON parameters remain available for compatibility and precise control:
-`Model/candidates`, `Model/model_params_by_name`, `Features/drop_columns`, and
-`Features/passthrough_columns`. `Model/ensemble_enabled` is also available as a
-detailed override; when explicitly set, it takes precedence over
-`Basic/use_ensemble`.
+- `default`: 全 10 モデル
+- `fast`: optional GBM 系を外す
+- `interpretable`: 線形系のみ
+- `tree`: sklearn tree ensemble 系のみ
+- `gbm`: LightGBM / XGBoost / CatBoost
+- `custom`: `Model/candidates` を直接使う
 
-Remote training normally uses `Input/clearml_dataset_id`,
-`Input/dataset_file`, and `Input/target_column`. `Input/local_path` is for local
-runs or mounted Agent paths only.
+`Basic/quality_mode` は HPO ではありません。固定プリセットとして tree/GBM 系の estimator 数を少し変えるだけです。
 
-Synced remote templates install GBM packages into the ClearML Agent-created venv.
-Local or slim custom environments can still fail on `Basic/model_suite=gbm`
-unless `pkgs/tabular[gbm]` or equivalent packages are installed.
+詳細制御用の JSON パラメータは残しています。
+
+- `Model/candidates`
+- `Model/model_params_by_name`
+- `Features/drop_columns`
+- `Features/passthrough_columns`
+- `Model/ensemble_enabled`
+
+`Model/ensemble_enabled` を明示した場合は、`Basic/use_ensemble` より優先されます。
 
 Pipeline dry-run:
 
@@ -134,21 +153,56 @@ Pipeline dry-run:
 python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
-## Boundaries
+## MkDocs ドキュメント
 
-- `pkgs/core` and `pkgs/tabular` do not import ClearML.
-- ClearML SDK usage stays under `clearml/`.
-- `scripts/` are wrappers around package and ClearML entrypoints.
-- Local operators should use `scripts/`; remote ClearML templates still execute
-  `clearml/app.py` and `clearml/pipelines.py` directly.
-- Do not add model-specific, ensemble-specific, or dataset-specific templates.
-- Do not copy legacy repo trees into this repo.
+MkDocs 版のドキュメントは以下にあります。
 
-## Read Next
+```text
+docs/ml_platform_mkdocs/
+```
 
-- `AGENTS.md`: development charter
-- `docs/SPEC.md`: product source of truth
-- `docs/CLEARML_UI_SPEC.md`: ClearML screen behavior
-- `docs/ROADMAP.md`: short current-vs-future product roadmap
-- `docs/CODEX_HANDOFF.md`: current operator handoff
-- `verification/README.md`: current evidence index
+docs 用依存をインストールします。
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r docs\ml_platform_mkdocs\requirements-docs.txt
+```
+
+ローカルでプレビュー起動します。
+
+```powershell
+.\.venv\Scripts\python.exe -m mkdocs serve --config-file docs\ml_platform_mkdocs\mkdocs.yml
+```
+
+起動後、ブラウザで以下を開きます。
+
+```text
+http://127.0.0.1:8000/
+```
+
+HTML をビルドする場合:
+
+```powershell
+.\.venv\Scripts\python.exe -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict
+```
+
+生成された HTML は `docs/ml_platform_mkdocs/site/` に出力されます。`site/` は生成物なので、通常はコミットしません。
+
+## 境界と方針
+
+- `pkgs/core` と `pkgs/tabular` は ClearML SDK に依存しません。
+- ClearML SDK を使う処理は `clearml/` 配下に閉じます。
+- ローカル運用者は `scripts/` 経由の entrypoint を使います。
+- remote ClearML template は互換性のため `clearml/app.py` と `clearml/pipelines.py` を直接実行します。
+- モデル別、データセット別、アンサンブル別のテンプレートは増やしません。
+- legacy repo tree はこのリポジトリにコピーしません。
+- HPO、Model Registry、drift monitoring、Task Registry、external valid file、kfold は future 扱いです。
+
+## 関連ドキュメント
+
+- `AGENTS.md`: 開発方針
+- `docs/SPEC.md`: 現在の製品仕様
+- `docs/CLEARML_UI_SPEC.md`: ClearML UI の仕様
+- `docs/ROADMAP.md`: 現在範囲と future 範囲
+- `docs/CODEX_HANDOFF.md`: 運用引き継ぎ
+- `docs/ml_platform_mkdocs/README_DOCS.md`: MkDocs ドキュメントの補足
+- `verification/README.md`: 検証記録
