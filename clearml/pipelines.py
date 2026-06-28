@@ -25,7 +25,7 @@ from adapter import (
     as_bool,
     as_candidates,
     as_dict,
-    as_list,
+    as_str_list,
     clearml_execution_image,
     clearml_projects,
     clearml_stage_project,
@@ -36,8 +36,10 @@ from adapter import (
     import_clearml_symbol,
     prefixed_task_name,
     stage_task_label,
+    validate_clearml_runtime,
 )
 from ml_platform_core.config import apply_overrides, load_yaml
+from ml_platform_core.stages import StageName, as_stage_name
 from ml_platform_tabular.models import (
     DEPENDENCY_FREE_MODELS,
     OPTIONAL_DEPENDENCY_MODELS,
@@ -134,7 +136,7 @@ def _execution_image(profile: dict[str, Any]) -> str | None:
     return clearml_execution_image(profile.get("clearml", {}) or {})
 
 
-def _has_ui_value(value: Any) -> bool:
+def _has_runtime_value(value: Any) -> bool:
     return value is not None and not (isinstance(value, str) and value.strip() == "")
 
 
@@ -143,31 +145,31 @@ def _basic_config(pipeline_cfg: dict[str, Any]) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _basic_text(ui_params: dict[str, Any], key: str, default: str) -> str:
-    value = ui_params.get(key)
-    if not _has_ui_value(value):
+def _basic_text(runtime_params: dict[str, Any], key: str, default: str) -> str:
+    value = runtime_params.get(key)
+    if not _has_runtime_value(value):
         return default
     return str(value).strip().lower()
 
 
-def _basic_model_suite(ui_params: dict[str, Any]) -> str:
-    suite = _basic_text(ui_params, "Basic/model_suite", "default")
+def _basic_model_suite(runtime_params: dict[str, Any]) -> str:
+    suite = _basic_text(runtime_params, "Basic/model_suite", "default")
     if suite not in {*BASIC_MODEL_SUITES, "custom"}:
         choices = ", ".join([*BASIC_MODEL_SUITES, "custom"])
         raise ValueError(f"Basic/model_suite must be one of: {choices}.")
     return suite
 
 
-def _basic_quality_mode(ui_params: dict[str, Any]) -> str:
-    mode = _basic_text(ui_params, "Basic/quality_mode", "standard")
+def _basic_quality_mode(runtime_params: dict[str, Any]) -> str:
+    mode = _basic_text(runtime_params, "Basic/quality_mode", "standard")
     if mode not in BASIC_QUALITY_MODES:
         choices = ", ".join(sorted(BASIC_QUALITY_MODES))
         raise ValueError(f"Basic/quality_mode must be one of: {choices}.")
     return mode
 
 
-def _apply_basic_model_suite(model_cfg: dict[str, Any], ui_params: dict[str, Any]) -> None:
-    suite = _basic_model_suite(ui_params)
+def _apply_basic_model_suite(model_cfg: dict[str, Any], runtime_params: dict[str, Any]) -> None:
+    suite = _basic_model_suite(runtime_params)
     if suite in {"default", "custom"}:
         return
     model_cfg["candidates"] = list(BASIC_MODEL_SUITES[suite])
@@ -179,44 +181,44 @@ def _basic_quality_model_params(mode: str) -> dict[str, Any]:
 
 def _apply_basic_quality_mode(
     model_cfg: dict[str, Any],
-    ui_params: dict[str, Any],
-    explicit_ui_params: dict[str, Any],
+    runtime_params: dict[str, Any],
+    explicit_runtime_params: dict[str, Any],
 ) -> None:
-    if "Model/model_params_by_name" in explicit_ui_params or "Model/params" in explicit_ui_params:
+    if "Model/model_params_by_name" in explicit_runtime_params or "Model/params" in explicit_runtime_params:
         return
-    if _basic_model_suite(ui_params) == "custom":
+    if _basic_model_suite(runtime_params) == "custom":
         return
-    model_cfg["params"] = _basic_quality_model_params(_basic_quality_mode(ui_params))
+    model_cfg["params"] = _basic_quality_model_params(_basic_quality_mode(runtime_params))
 
 
 def _model_cfg_for_pipeline(
     pipeline_cfg: dict[str, Any],
-    ui_params: dict[str, Any] | None = None,
-    explicit_ui_params: dict[str, Any] | None = None,
+    runtime_params: dict[str, Any] | None = None,
+    explicit_runtime_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     model_cfg = deepcopy(pipeline_cfg.get("model", {}) or {})
-    ui_params = ui_params or {}
-    explicit_ui_params = explicit_ui_params or {}
-    if "Model/candidates" in ui_params:
-        model_cfg["candidates"] = as_candidates(ui_params.get("Model/candidates"))
-    if "Model/model_params_by_name" in explicit_ui_params:
-        model_cfg["params"] = as_dict(ui_params.get("Model/model_params_by_name"))
-    elif "Model/params" in explicit_ui_params:
-        model_cfg["params"] = as_dict(ui_params.get("Model/params"))
-    if "Model/selection_metric" in ui_params and ui_params.get("Model/selection_metric"):
-        model_cfg["selection_metric"] = ui_params["Model/selection_metric"]
-    _apply_basic_model_suite(model_cfg, ui_params)
-    _apply_basic_quality_mode(model_cfg, ui_params, explicit_ui_params)
-    if _has_ui_value(ui_params.get("Basic/use_ensemble")):
-        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(ui_params.get("Basic/use_ensemble"))
-    if _has_ui_value(ui_params.get("Model/ensemble_enabled")):
-        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(ui_params.get("Model/ensemble_enabled"))
-    if "Model/ensemble_methods" in ui_params:
-        model_cfg.setdefault("ensemble", {})["methods"] = as_list(ui_params.get("Model/ensemble_methods")) or []
-    if "Model/ensemble_method" in ui_params and ui_params.get("Model/ensemble_method"):
-        model_cfg.setdefault("ensemble", {})["method"] = ui_params["Model/ensemble_method"]
-    if "Model/ensemble_top_k" in ui_params and ui_params.get("Model/ensemble_top_k") not in {None, ""}:
-        model_cfg.setdefault("ensemble", {})["top_k"] = int(ui_params["Model/ensemble_top_k"])
+    runtime_params = runtime_params or {}
+    explicit_runtime_params = explicit_runtime_params or {}
+    if "Model/candidates" in runtime_params:
+        model_cfg["candidates"] = as_candidates(runtime_params.get("Model/candidates"))
+    if "Model/model_params_by_name" in explicit_runtime_params:
+        model_cfg["params"] = as_dict(runtime_params.get("Model/model_params_by_name"))
+    elif "Model/params" in explicit_runtime_params:
+        model_cfg["params"] = as_dict(runtime_params.get("Model/params"))
+    if "Model/selection_metric" in runtime_params and runtime_params.get("Model/selection_metric"):
+        model_cfg["selection_metric"] = runtime_params["Model/selection_metric"]
+    _apply_basic_model_suite(model_cfg, runtime_params)
+    _apply_basic_quality_mode(model_cfg, runtime_params, explicit_runtime_params)
+    if _has_runtime_value(runtime_params.get("Basic/use_ensemble")):
+        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(runtime_params.get("Basic/use_ensemble"))
+    if _has_runtime_value(runtime_params.get("Model/ensemble_enabled")):
+        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(runtime_params.get("Model/ensemble_enabled"))
+    if "Model/ensemble_methods" in runtime_params:
+        model_cfg.setdefault("ensemble", {})["methods"] = as_str_list(runtime_params.get("Model/ensemble_methods")) or []
+    if "Model/ensemble_method" in runtime_params and runtime_params.get("Model/ensemble_method"):
+        model_cfg.setdefault("ensemble", {})["method"] = runtime_params["Model/ensemble_method"]
+    if "Model/ensemble_top_k" in runtime_params and runtime_params.get("Model/ensemble_top_k") not in {None, ""}:
+        model_cfg.setdefault("ensemble", {})["top_k"] = int(runtime_params["Model/ensemble_top_k"])
     return model_cfg
 
 
@@ -227,7 +229,7 @@ def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str |
     return dataset_id, dataset_file
 
 
-def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
+def _training_pipeline_runtime_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     run = pipeline_cfg.get("run", {})
     basic = _basic_config(pipeline_cfg)
     data = pipeline_cfg.get("data", {})
@@ -286,14 +288,22 @@ def _training_pipeline_ui_params(pipeline_cfg: dict[str, Any], profile: dict[str
     }
 
 
-def pipeline_ui_params(
+def pipeline_runtime_params(
     task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
     profile_path: str | Path = "config/profiles/clearml-dev.yaml",
 ) -> dict[str, Any]:
     pipeline_cfg = load_yaml(task_path)
     if "data" not in pipeline_cfg:
         raise ValueError("ClearML pipeline sync supports only the official stage-based training pipeline config.")
-    return _training_pipeline_ui_params(pipeline_cfg, load_yaml(profile_path))
+    return _training_pipeline_runtime_params(pipeline_cfg, load_yaml(profile_path))
+
+
+def pipeline_ui_params(
+    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
+    profile_path: str | Path = "config/profiles/clearml-dev.yaml",
+) -> dict[str, Any]:
+    """Deprecated compatibility wrapper for `pipeline_runtime_params`."""
+    return pipeline_runtime_params(task_path, profile_path)
 
 
 def pipeline_arg_params(params: dict[str, Any]) -> dict[str, Any]:
@@ -331,7 +341,7 @@ def _data_overrides(params: dict[str, Any]) -> dict[str, Any]:
         if key in params:
             value = params[key]
             if key in {"Input/feature_columns", "Input/id_columns"}:
-                value = as_list(value)
+                value = as_str_list(value)
             overrides[key] = value
     return overrides
 
@@ -365,7 +375,7 @@ def _feature_overrides(params: dict[str, Any]) -> dict[str, Any]:
             overrides[key] = params[key]
     for key in ("Features/drop_columns", "Features/passthrough_columns"):
         if key in params:
-            overrides[key] = as_list(params.get(key)) or []
+            overrides[key] = as_str_list(params.get(key)) or []
     return overrides
 
 
@@ -395,7 +405,7 @@ def _ensemble_methods(ensemble_cfg: dict[str, Any]) -> list[str]:
     raw = ensemble_cfg.get("methods")
     if raw is None or raw == "":
         raw = [ensemble_cfg.get("method") or "mean_topk"]
-    methods = as_list(raw) or []
+    methods = as_str_list(raw) or []
     return methods or ["mean_topk"]
 
 
@@ -417,7 +427,7 @@ def _ensemble_ref(step_name: str, method: str | None = None) -> dict[str, Any]:
 def _stage_step(
     *,
     name: str,
-    stage: str,
+    stage: StageName | str,
     templates_project: str,
     projects: dict[str, str],
     run_name: str,
@@ -427,10 +437,11 @@ def _stage_step(
     parents: list[str] | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    label = stage_task_label(stage, model_name, ensemble_method)
+    stage_name = as_stage_name(str(stage))
+    label = stage_task_label(stage_name, model_name, ensemble_method)
     parameter_override = {
         "Run/name": prefixed_task_name("stage", label, run_name),
-        "Run/stage": stage,
+        "Run/stage": stage_name,
         **(overrides or {}),
     }
     parameter_override = {key: value for key, value in parameter_override.items() if value is not None}
@@ -440,14 +451,14 @@ def _stage_step(
         "base_task_project": templates_project,
         "base_task_name": clearml_template_name(STAGE_TEMPLATE),
         "task_config": STAGE_TASK_CONFIG,
-        "target_project": clearml_stage_project(projects, stage),
+        "target_project": clearml_stage_project(projects, stage_name),
         "execution_queue": execution_queue,
         "pipeline_stage_group": label,
         "parameter_override": parameter_override,
         "tags": clearml_tags(
             "stage",
             internal=True,
-            stage=stage,
+            stage=stage_name,
             model=model_name,
             ensemble=ensemble_method,
         ),
@@ -468,7 +479,7 @@ def _build_training_plan(
     clearml_cfg = profile.get("clearml", {})
     stage_queue = str(clearml_cfg.get("stage_queue") or clearml_cfg.get("queue") or "default")
     controller_queue = str(clearml_cfg.get("controller_queue") or clearml_cfg.get("pipeline_queue") or stage_queue)
-    default_params = _training_pipeline_ui_params(pipeline_cfg, profile)
+    default_params = _training_pipeline_runtime_params(pipeline_cfg, profile)
     raw_ui_params = ui_params or {}
     explicit_params = {
         key: value
@@ -869,7 +880,8 @@ def sync_pipeline_draft(
     clearml_sdk = import_clearml_sdk()
     Task = clearml_sdk.Task
     display_name = clearml_template_name(template_name)
-    params = pipeline_ui_params(task_path, profile_path)
+    validate_clearml_runtime()
+    params = pipeline_runtime_params(task_path, profile_path)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, ui_params=params)
     if execution_image is None:
         execution_image = _execution_image(load_yaml(profile_path))
@@ -934,7 +946,8 @@ def register_tabular_pipeline(
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
     Task = import_clearml_symbol("Task")
-    defaults = pipeline_ui_params(task_path, profile_path)
+    validate_clearml_runtime()
+    defaults = pipeline_runtime_params(task_path, profile_path)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, overrides=overrides)
 
     pipe = PipelineController(

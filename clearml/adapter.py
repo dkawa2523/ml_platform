@@ -6,13 +6,22 @@ import sys
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Protocol
 
 from ml_platform_core.io import find_table_file
+from ml_platform_core.stages import StageName, as_stage_name
 
 
 class ClearMLUnavailable(RuntimeError):
     pass
+
+
+class ClearMLExecutionTask(Protocol):
+    def set_base_docker(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+    def update_parameters(self, params: dict[str, Any]) -> Any:
+        ...
 
 
 def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
@@ -49,30 +58,27 @@ def clearml_execution_image(clearml_cfg: dict[str, Any] | None) -> str | None:
     return execution.get("image") or clearml_cfg.get("execution_image")
 
 
-def apply_execution_image(task: Any, image: str | None) -> None:
+def apply_execution_image(task: ClearMLExecutionTask, image: str | None) -> None:
     if not image:
         return
-    set_base_docker = getattr(task, "set_base_docker", None)
-    if callable(set_base_docker):
-        try:
-            set_base_docker(docker_image=image)
-        except TypeError:  # pragma: no cover - ClearML SDK version compatibility
-            set_base_docker(docker_cmd=image)
-    update_parameters = getattr(task, "update_parameters", None)
-    if callable(update_parameters):
-        update_parameters({"Execution/docker_image": image})
+    try:
+        task.set_base_docker(docker_image=image)
+    except TypeError:  # pragma: no cover - ClearML SDK version compatibility
+        task.set_base_docker(docker_cmd=image)
+    task.update_parameters({"Execution/docker_image": image})
 
 
-def clearml_stage_project(projects: dict[str, str], stage: str) -> str:
-    if stage == "preprocess_features":
+def clearml_stage_project(projects: dict[str, str], stage: StageName | str) -> str:
+    stage_name = as_stage_name(str(stage))
+    if stage_name == "preprocess_features":
         return projects["preprocess"]
-    if stage == "train_model":
+    if stage_name == "train_model":
         return projects["train"]
-    if stage == "build_ensemble":
+    if stage_name == "build_ensemble":
         return projects["ensemble"]
-    if stage == "evaluate_models":
+    if stage_name == "evaluate_models":
         return projects["evaluate"]
-    return projects["stages"]
+    raise AssertionError(f"Unhandled stage: {stage_name}")
 
 
 def clearml_template_name(template_name: str) -> str:
@@ -115,12 +121,13 @@ def prefixed_task_name(prefix: str, name: str, run_name: str | None = None) -> s
     return f"{prefix}/{name}"
 
 
-def stage_task_label(stage: str, model_name: str | None = None, ensemble_method: str | None = None) -> str:
-    if stage == "train_model" and model_name:
+def stage_task_label(stage: StageName | str, model_name: str | None = None, ensemble_method: str | None = None) -> str:
+    stage_name = as_stage_name(str(stage))
+    if stage_name == "train_model" and model_name:
         return f"train_{model_name}"
-    if stage == "build_ensemble" and ensemble_method:
+    if stage_name == "build_ensemble" and ensemble_method:
         return f"build_ensemble_{ensemble_method}"
-    return stage
+    return stage_name
 
 
 def _apply_clearml_metadata(
@@ -212,6 +219,28 @@ def import_clearml_automation() -> Any:
         raise ClearMLUnavailable("ClearML automation module could not be imported. Install/upgrade ClearML SDK.") from exc
 
 
+def validate_clearml_runtime() -> None:
+    """Fail early when the ClearML SDK/runtime cannot be imported."""
+    import_clearml_symbol("Task")
+
+
+def clearml_dataset_exists(dataset_id: str) -> bool:
+    """Return whether a ClearML Dataset ID resolves.
+
+    Callers should validate ClearML runtime availability at the entrypoint
+    before using this narrow existence check.
+    """
+    dataset_id = dataset_id.strip()
+    if not dataset_id:
+        raise ValueError("dataset_id must not be empty.")
+    Dataset = import_clearml_symbol("Dataset")
+    try:
+        Dataset.get(dataset_id=dataset_id)
+    except Exception:  # pragma: no cover - ClearML SDK raises version-specific exceptions
+        return False
+    return True
+
+
 def as_bool(value: Any, *, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -225,7 +254,7 @@ def as_bool(value: Any, *, default: bool = False) -> bool:
     return bool(value)
 
 
-def as_list(value: Any) -> list[str] | None:
+def as_str_list(value: Any) -> list[str] | None:
     if value is None or value == "":
         return None
     if isinstance(value, list):
@@ -244,6 +273,11 @@ def as_list(value: Any) -> list[str] | None:
             pass
         return [v.strip() for v in text.split(",") if v.strip()]
     raise ValueError(f"Cannot convert value to list: {value!r}")
+
+
+def as_list(value: Any) -> list[str] | None:
+    """Deprecated compatibility wrapper for `as_str_list`."""
+    return as_str_list(value)
 
 
 def as_dict(value: Any) -> dict[str, Any]:
@@ -286,14 +320,15 @@ def as_candidates(value: Any) -> list[Any]:
     return candidates
 
 
-def _ui_value(value: Any) -> Any:
+def _to_clearml_parameter_value(value: Any) -> Any:
+    """Serialize composite values for ClearML parameter transport."""
     if isinstance(value, (dict, list)):
         return json.dumps(value)
     return value
 
 
-def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Return the small ClearML UI parameter surface for a task config."""
+def default_runtime_params(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Return the small ClearML runtime parameter surface for a task config."""
     run = cfg.get("run", {})
     params = {
         "Run/task": cfg.get("task"),
@@ -339,7 +374,7 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
                 ensemble = {}
             params["Model/ensemble_enabled"] = as_bool(ensemble.get("enabled"))
             if "methods" in ensemble:
-                params["Model/ensemble_methods"] = _ui_value(ensemble.get("methods") or [])
+                params["Model/ensemble_methods"] = _to_clearml_parameter_value(ensemble.get("methods") or [])
             params["Model/ensemble_method"] = ensemble.get("method", "mean_topk")
             params["Model/ensemble_top_k"] = int(ensemble.get("top_k") or 3)
         for key in (
@@ -359,7 +394,7 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
     if "metrics" in cfg:
         metric_names = cfg.get("metrics", {}).get("names")
         if metric_names is not None:
-            params["Model/evaluation_metrics"] = _ui_value(metric_names)
+            params["Model/evaluation_metrics"] = _to_clearml_parameter_value(metric_names)
     if "features" in cfg:
         features = cfg.get("features", {}) or {}
         for key in (
@@ -372,7 +407,7 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             "passthrough_columns",
         ):
             if key in features:
-                params[f"Features/{key}"] = _ui_value(features.get(key))
+                params[f"Features/{key}"] = _to_clearml_parameter_value(features.get(key))
     if "output" in cfg:
         output = cfg.get("output", {})
         if "prediction_name" in output:
@@ -383,11 +418,16 @@ def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
             params["Output/report_plots"] = as_bool(output.get("report_plots"), default=True)
     if "stage_inputs" in cfg:
         for key, value in (cfg.get("stage_inputs") or {}).items():
-            params[f"Input/{key}"] = _ui_value(value)
+            params[f"Input/{key}"] = _to_clearml_parameter_value(value)
     return params
 
 
-def grouped_ui_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Deprecated compatibility wrapper for `default_runtime_params`."""
+    return default_runtime_params(cfg)
+
+
+def grouped_runtime_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for key, value in params.items():
         group, name = key.split("/", 1)
@@ -395,14 +435,20 @@ def grouped_ui_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return groups
 
 
-def apply_ui_params(
+def grouped_ui_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Deprecated compatibility wrapper for `grouped_runtime_params`."""
+    return grouped_runtime_params(params)
+
+
+def apply_runtime_params(
     cfg: dict[str, Any],
-    connected: dict[str, Any],
+    connected_params: dict[str, Any],
     *,
     resolved_local_path: str | None = None,
 ) -> dict[str, Any]:
-    """Apply ClearML UI parameter values to nested config without importing ClearML."""
+    """Apply ClearML runtime parameter values to nested config without importing ClearML."""
     cfg = deepcopy(cfg)
+    connected = connected_params
     data_input_keys = {
         "Input/local_path",
         "Input/clearml_dataset_id",
@@ -461,9 +507,9 @@ def apply_ui_params(
             if ui_key in connected:
                 cfg["data"][config_key] = connected[ui_key]
         if "Input/feature_columns" in connected:
-            cfg["data"]["feature_columns"] = as_list(connected.get("Input/feature_columns"))
+            cfg["data"]["feature_columns"] = as_str_list(connected.get("Input/feature_columns"))
         if "Input/id_columns" in connected:
-            cfg["data"]["id_columns"] = as_list(connected.get("Input/id_columns")) or []
+            cfg["data"]["id_columns"] = as_str_list(connected.get("Input/id_columns")) or []
 
     if connected.get("Model/name"):
         cfg["model"]["name"] = connected["Model/name"]
@@ -476,12 +522,12 @@ def apply_ui_params(
     if connected.get("Model/selection_metric"):
         cfg["model"]["selection_metric"] = connected["Model/selection_metric"]
     if "Model/evaluation_metrics" in connected:
-        cfg["metrics"]["names"] = as_list(connected.get("Model/evaluation_metrics"))
+        cfg["metrics"]["names"] = as_str_list(connected.get("Model/evaluation_metrics"))
     ensemble_updates: dict[str, Any] = {}
     if "Model/ensemble_enabled" in connected:
         ensemble_updates["enabled"] = as_bool(connected.get("Model/ensemble_enabled"))
     if "Model/ensemble_methods" in connected:
-        ensemble_updates["methods"] = as_list(connected.get("Model/ensemble_methods")) or []
+        ensemble_updates["methods"] = as_str_list(connected.get("Model/ensemble_methods")) or []
     if connected.get("Model/ensemble_method"):
         ensemble_updates["method"] = connected["Model/ensemble_method"]
     if "Model/ensemble_top_k" in connected and connected.get("Model/ensemble_top_k") not in {None, ""}:
@@ -512,9 +558,9 @@ def apply_ui_params(
         if ui_key in connected and connected.get(ui_key) not in {None, ""}:
             cfg["features"][config_key] = connected[ui_key]
     if "Features/drop_columns" in connected:
-        cfg["features"]["drop_columns"] = as_list(connected.get("Features/drop_columns")) or []
+        cfg["features"]["drop_columns"] = as_str_list(connected.get("Features/drop_columns")) or []
     if "Features/passthrough_columns" in connected:
-        cfg["features"]["passthrough_columns"] = as_list(connected.get("Features/passthrough_columns")) or []
+        cfg["features"]["passthrough_columns"] = as_str_list(connected.get("Features/passthrough_columns")) or []
 
     if connected.get("Output/prediction_name"):
         cfg["output"]["prediction_name"] = connected["Output/prediction_name"]
@@ -529,6 +575,16 @@ def apply_ui_params(
             if ui_key in connected:
                 cfg["stage_inputs"][key] = connected[ui_key]
     return cfg
+
+
+def apply_ui_params(
+    cfg: dict[str, Any],
+    connected: dict[str, Any],
+    *,
+    resolved_local_path: str | None = None,
+) -> dict[str, Any]:
+    """Deprecated compatibility wrapper for `apply_runtime_params`."""
+    return apply_runtime_params(cfg, connected, resolved_local_path=resolved_local_path)
 
 
 def _decode_stage_value(value: Any) -> Any:
@@ -697,7 +753,7 @@ class ClearMLAdapter:
 
     def connect_params(self, params: dict[str, Any]) -> dict[str, Any]:
         connected: dict[str, Any] = {}
-        for group, values in grouped_ui_params(params).items():
+        for group, values in grouped_runtime_params(params).items():
             group_values = self.task.connect(values, name=group)
             if not isinstance(group_values, dict):
                 group_values = values
@@ -711,13 +767,14 @@ class ClearMLAdapter:
         *,
         dataset_file: str | None = None,
     ) -> str:
-        if not dataset_id:
+        if dataset_id is None or not str(dataset_id).strip():
             if not fallback_local_path:
                 raise ValueError("Either clearml_dataset_id or local_path is required.")
             return str(find_table_file(fallback_local_path, preferred_name=dataset_file))
 
+        dataset_id_text = str(dataset_id).strip()
         Dataset = import_clearml_symbol("Dataset")
-        dataset = Dataset.get(dataset_id=dataset_id)
+        dataset = Dataset.get(dataset_id=dataset_id_text)
         return str(find_table_file(Path(dataset.get_local_copy()), preferred_name=dataset_file))
 
     def resolve_artifact_path(self, artifact_path: str | Path | None) -> str | None:
