@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
+import sys
 from pathlib import Path
 from typing import Any
 
 
-def _load_entrypoint_bootstrap():
-    module_path = Path(__file__).resolve().parent / "_entrypoint_bootstrap.py"
-    spec = importlib.util.spec_from_file_location("ml_platform_clearml_entrypoint_bootstrap", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load ClearML entrypoint bootstrap: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+_CLEARML_DIR = Path(__file__).resolve().parent
+if str(_CLEARML_DIR) not in sys.path:
+    sys.path.insert(0, str(_CLEARML_DIR))
 
+from _entrypoint_bootstrap import add_clearml_entrypoint_paths
 
-_load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
+add_clearml_entrypoint_paths()
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -122,8 +118,14 @@ def _entry_command(entry_point: str, task_config: str, profile_path: str | Path)
 
 def _remote_packages() -> list[str]:
     requirements = REPO_ROOT / "requirements.txt"
-    packages = [line.strip() for line in requirements.read_text(encoding="utf-8").splitlines() if line.strip() and not line.strip().startswith("#")]
-    if not any(line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0].strip().lower() == "clearml" for line in packages):
+    packages = [
+        line.strip()
+        for line in requirements.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not any(
+        line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0].strip().lower() == "clearml" for line in packages
+    ):
         packages.append("clearml==2.1.7")
     for package in REMOTE_GBM_PACKAGES:
         if package not in packages:
@@ -267,10 +269,10 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
                 f"working_dir={working_dir} "
                 f"execution_image={execution_image or ''} "
                 f"entry_point={entry_point} "
-                f"args=\"{_task_args(task_config, profile_path)}\" "
+                f'args="{_task_args(task_config, profile_path)}" '
                 f"params=[{params}] "
                 f"tags={_template_tags(task_name)} "
-                f"note=\"{_template_note(task_name, execution_image)}\""
+                f'note="{_template_note(task_name, execution_image)}"'
             )
         for task_name, task_config, task_type_name in PIPELINE_TEMPLATES:
             runtime_params = pipeline_runtime_params(task_config, profile_path)
@@ -288,11 +290,11 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
                 f"working_dir={working_dir} "
                 f"execution_image={execution_image or ''} "
                 f"entry_point={_entry_point(task_name)} "
-                f"args=\"{_task_args(task_config, profile_path)}\" "
+                f'args="{_task_args(task_config, profile_path)}" '
                 f"params=[{params}] "
                 f"steps={steps} "
                 f"tags={_template_tags(task_name)} "
-                f"note=\"{_template_note(task_name, execution_image)}\""
+                f'note="{_template_note(task_name, execution_image)}"'
             )
         return
 
@@ -321,7 +323,9 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
         apply_execution_image(task, execution_image)
         _apply_task_metadata(task, task_name, execution_image)
         _delete_stale_created_templates(Task, project_name, display_name, task.id)
-        print(f"Synced template: {project_name}/{display_name} id={task.id} image={execution_image or '-'} ({_template_note(task_name, execution_image)})")
+        print(
+            f"Synced template: {project_name}/{display_name} id={task.id} image={execution_image or '-'} ({_template_note(task_name, execution_image)})"
+        )
 
     for task_name, task_config, _ in PIPELINE_TEMPLATES:
         task = sync_pipeline_draft(

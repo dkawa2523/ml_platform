@@ -352,3 +352,92 @@ CLEAN-4 should focus on one of:
    tabular evaluation.
 3. S06: decide whether unused/dependency audit tools should become dev
    dependencies.
+
+## 2026-06-29 - CLEAN-S05/S08/S09 module facade and responsibility cleanup
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: remove private helper imports through old tabular facades, shrink
+  runner facades to public API, and reduce duplicated ClearML entrypoint
+  bootstrap loading without changing runner paths.
+
+## Changed Files
+
+- `clearml/app.py`
+- `clearml/pipelines.py`
+- `clearml/templates.py`
+- `pkgs/tabular/src/ml_platform_tabular/infer.py`
+- `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+- `pkgs/tabular/src/ml_platform_tabular/stage.py`
+- `tests/test_decision_summary.py`
+- `tests/test_infer_schema_check.py`
+- `tests/test_tabular_characterization.py`
+- `tests/test_tabular_plots.py`
+- `docs/review/PORTING_GUIDE.md`
+- `docs/review/SIMPLIFICATION_AUDIT.md`
+- `docs/review/SIMPLIFICATION_FIX_MAP.md`
+- `docs/review/SIMPLIFICATION_WORK_LOG.md`
+
+## Commands
+
+```powershell
+git status --short
+git branch --show-current
+rg -n "from \\.pipeline import|from ml_platform_tabular\\.pipeline import|from ml_platform_tabular\\.infer import|from ml_platform_tabular\\.plots import|_load_entrypoint_bootstrap|importlib\\.util" pkgs tests clearml scripts docs --glob "!docs/review/source/**"
+rg -n "def _metric_name|def _metric_names|def _safe_name|def _build_ensemble|def _train_model|def _preprocess_features|def _ranked_results|def _evaluate_models|def _best_vs_ensemble_rows|def _decision_summary_payload|def _recommendation_payload|class EvaluationResult" pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/inference
+uv run python -m ruff check clearml/app.py clearml/templates.py clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/stage.py pkgs/tabular/src/ml_platform_tabular/infer.py pkgs/tabular/src/ml_platform_tabular/pipeline.py tests/test_decision_summary.py tests/test_infer_schema_check.py tests/test_tabular_plots.py tests/test_tabular_characterization.py
+uv run python -m pytest tests/test_infer_schema_check.py tests/test_decision_summary.py tests/test_tabular_plots.py
+uv run python -m pytest tests/test_stage_smoke.py tests/test_tabular_characterization.py tests/test_runtime_manifest.py
+uv run python -m pytest tests/test_clearml_mapping.py
+uv run python -m ruff format clearml/app.py clearml/templates.py pkgs/tabular/src/ml_platform_tabular/stage.py
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check clearml/app.py clearml/templates.py clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/stage.py pkgs/tabular/src/ml_platform_tabular/infer.py pkgs/tabular/src/ml_platform_tabular/pipeline.py tests/test_decision_summary.py tests/test_infer_schema_check.py tests/test_tabular_plots.py tests/test_tabular_characterization.py
+uv run python -m ruff format --check .
+uv run python -m compileall clearml pkgs scripts
+```
+
+## Results
+
+- `stage.py` imports `_build_ensemble`, `_evaluate_models`, metric helpers,
+  preprocessing, ranking, and candidate training from `training.*` modules
+  instead of `pipeline.py`.
+- Tests that exercise private inference, summary, and plotting helpers now
+  import the implementation packages directly.
+- `infer.py` was reduced to the `run_infer` compatibility runner facade.
+- `pipeline.py` was reduced to public training exports:
+  `run_pipeline`, `evaluate_model_candidates`, and `EvaluationResult`.
+- `plots.py` remains as the public plotting compatibility facade for external
+  imports.
+- `clearml/app.py`, `clearml/pipelines.py`, and `clearml/templates.py` no
+  longer duplicate `spec_from_file_location()` bootstrap loader functions.
+  They still preserve direct entrypoint compatibility via
+  `_entrypoint_bootstrap.py`.
+- Targeted tabular facade tests passed: 9 tests.
+- Stage/characterization/runtime-manifest tests passed: 15 tests.
+- ClearML mapping tests passed: 51 tests.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- Changed code/test files pass `ruff format --check`.
+
+## Failures / Unknowns
+
+- `uv run python -m ruff format --check .` still fails on known unrelated
+  11-file format debt.
+- ClearML remote Agent execution was not verified, so `_entrypoint_bootstrap.py`,
+  SDK shadow guards, and ClearML script metadata compatibility helpers remain.
+- External imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`,
+  and `ml_platform_tabular.pipeline` were not audited outside this repository.
+
+## Next Action
+
+CLEAN-5 should focus on one of:
+
+1. S05: split a cohesive part of `clearml/reports.py` or tabular
+   `training/evaluation.py` if call sites become simpler.
+2. S06: decide whether `vulture` / `deptry` should become temporary audit tools
+   or dev dependencies.
+3. S10: run final lean validation and update porting notes after the remaining
+   cleanup batch.

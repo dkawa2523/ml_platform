@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
-def _load_entrypoint_bootstrap():
-    module_path = Path(__file__).resolve().parent / "_entrypoint_bootstrap.py"
-    spec = importlib.util.spec_from_file_location("ml_platform_clearml_entrypoint_bootstrap", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load ClearML entrypoint bootstrap: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+_CLEARML_DIR = Path(__file__).resolve().parent
+if str(_CLEARML_DIR) not in sys.path:
+    sys.path.insert(0, str(_CLEARML_DIR))
 
+from _entrypoint_bootstrap import add_clearml_entrypoint_paths
 
-_load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
+add_clearml_entrypoint_paths()
 
 from adapter import (
     apply_execution_image,

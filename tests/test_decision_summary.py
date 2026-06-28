@@ -1,11 +1,8 @@
 from pathlib import Path
 
-from ml_platform_tabular.pipeline import (
-    EvaluationResult,
-    _best_vs_ensemble_rows,
-    _decision_summary_payload,
-    _recommendation_payload,
-)
+from ml_platform_tabular.training.artifacts import EvaluationResult
+from ml_platform_tabular.training.recommendation import _recommendation_payload
+from ml_platform_tabular.training.summary import _best_vs_ensemble_rows, _decision_summary_payload
 
 
 def _candidate(name, *, artifact_kind="model", rmse=1.0, mae=0.5, r2=0.8, ensemble_method=None):

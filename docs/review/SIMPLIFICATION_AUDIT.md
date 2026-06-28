@@ -98,8 +98,10 @@ Not removed in CLEAN-1:
 - `_delete_legacy_pipeline_templates()`: still called during pipeline draft sync
   to clean a known old template name.
 - `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
-  `ml_platform_tabular.pipeline`: compatibility facades remain referenced by
-  tests, runner paths, `stage.py`, and porting notes.
+  `ml_platform_tabular.pipeline`: public compatibility facades remain for
+  external imports and runner paths. CLEAN-4 removed private helper re-exports
+  from `infer.py` / `pipeline.py` after moving repo-internal imports to
+  implementation modules.
 
 ## Verification Notes
 
@@ -223,13 +225,13 @@ are confirmed:
   - still required unless direct ClearML `clearml/app.py` and
     `clearml/pipelines.py` execution is replaced or remotely verified.
 - `pkgs/tabular/src/ml_platform_tabular/plots.py`
-  - compatibility facade for `ml_platform_tabular.plots`.
+  - public compatibility facade for `ml_platform_tabular.plots`; repo-internal
+    tests now import the canonical `ml_platform_tabular.plotting` package.
 - `pkgs/tabular/src/ml_platform_tabular/infer.py`
-  - compatibility facade for `ml_platform_tabular.infer:run_infer` and private
-    helpers used by tests.
+  - thin compatibility facade for `ml_platform_tabular.infer:run_infer`.
 - `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
-  - compatibility facade for `ml_platform_tabular.pipeline:run_pipeline` and
-    private helpers still used by `stage.py` and tests.
+  - thin compatibility facade for `ml_platform_tabular.pipeline:run_pipeline`,
+    `evaluate_model_candidates`, and `EvaluationResult`.
 
 Deletion risk is high for ClearML runner paths and external import users. Treat
 these as `needs_confirmation`, not immediate delete.
@@ -307,8 +309,10 @@ S03 verification:
   prediction table writing, leaderboard artifacts, recommendation, and summary
   generation are partially split but still orchestrated in one high-complexity
   function.
-- `pkgs/tabular/src/ml_platform_tabular/stage.py`: stage dispatch still imports
-  private compatibility helpers from `pipeline.py`.
+- `pkgs/tabular/src/ml_platform_tabular/stage.py`: CLEAN-4 removed the import
+  dependency on private `pipeline.py` re-exports. The file still owns stage
+  dispatch plus artifact-ref loading and may be split later only if call sites
+  become clearer.
 
 ## Diagnostics, Logging, And Error Handling Duplication
 
@@ -375,11 +379,16 @@ S04 verification:
 
 ## Deletion Possibility
 
+Removed or narrowed in CLEAN-4:
+
+- Private helper re-exports from `infer.py` and `pipeline.py`.
+- Repo-internal test imports from `ml_platform_tabular.plots`.
+- Duplicated `importlib.util.spec_from_file_location()` bootstrap loaders in
+  `clearml/app.py`, `clearml/pipelines.py`, and `clearml/templates.py`.
+
 Likely deletion candidates after confirmation:
 
 - UI-named compatibility wrappers after all internal and target imports migrate.
-- Private helper re-exports from `infer.py` and `pipeline.py` after tests and
-  `stage.py` import implementation modules directly.
 - `plots.py` facade after external imports are confirmed gone.
 - ClearML direct-entrypoint bootstrap only after ClearML remote template
   execution no longer depends on file execution paths.
@@ -415,13 +424,40 @@ Low-risk areas:
 - Adding optional audit tooling notes.
 - Isolated formatting-only cleanup.
 
+## CLEAN-S05/S08/S09 Verification
+
+CLEAN-4 narrowed the confirmed facade and entrypoint cleanup:
+
+- `stage.py` now imports tabular training helpers from `training.*` modules
+  instead of private `pipeline.py` re-exports.
+- Inference, decision-summary, and plot tests now import implementation
+  modules directly where they exercise private helpers.
+- `infer.py` now exposes only `run_infer`.
+- `pipeline.py` now exposes only `run_pipeline`,
+  `evaluate_model_candidates`, and `EvaluationResult`.
+- `plots.py` remains as a public plotting compatibility facade.
+- ClearML direct entrypoints still call `_entrypoint_bootstrap.py`, but the
+  duplicate `importlib.util` loader function was removed from each entrypoint.
+
+Verification:
+
+- `uv run python -m pytest tests/test_infer_schema_check.py tests/test_decision_summary.py tests/test_tabular_plots.py`: passed, 9 tests.
+- `uv run python -m pytest tests/test_stage_smoke.py tests/test_tabular_characterization.py tests/test_runtime_manifest.py`: passed, 15 tests.
+- `uv run python -m pytest tests/test_clearml_mapping.py`: passed, 51 tests.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check` on changed code/test files: passed.
+- `uv run python -m ruff format --check .`: failed on the known remaining
+  11-file format debt outside this cleanup.
+
 ## Recommended Cleanup Order
 
 1. Confirm unused-code tooling approach and run it without committing tool churn.
-2. Migrate internal tests and `stage.py` away from private facade imports.
-3. Remove stale UI-named wrappers only after target imports are confirmed.
-4. Split ClearML adapter/reporting responsibilities behind existing behavior.
-5. Simplify manifest/policy/contracts only where a real multi-domain boundary is
+2. Keep public facades and ClearML direct-entrypoint bootstrap until external
+   imports and remote Agent execution are confirmed.
+3. Split ClearML adapter/reporting responsibilities behind existing behavior.
+4. Simplify manifest/policy/contracts only where a real multi-domain boundary is
    proven.
-6. Address ruff formatting debt in a standalone no-behavior commit.
-7. Re-run full tests and porting checks.
+5. Address ruff formatting debt in a standalone no-behavior commit.
+6. Re-run full tests and porting checks.

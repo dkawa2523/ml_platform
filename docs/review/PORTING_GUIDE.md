@@ -302,6 +302,9 @@ Before relying on the ported branch, check:
 - External imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`,
   and `ml_platform_tabular.pipeline`; compatibility facades are intentionally
   kept and should not be removed during porting.
+- Repo-internal imports should target `ml_platform_tabular.plotting`,
+  `ml_platform_tabular.inference.*`, and `ml_platform_tabular.training.*`
+  rather than private helpers re-exported from compatibility facades.
 
 ### PR response text reference
 

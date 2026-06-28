@@ -1,6 +1,6 @@
 import pandas as pd
 
-from ml_platform_tabular.plots import (
+from ml_platform_tabular.plotting import (
     write_candidate_prediction_vs_actual_plot,
     write_candidate_residual_histogram,
     write_candidate_residual_vs_predicted_plot,
@@ -11,7 +11,6 @@ from ml_platform_tabular.plots import (
     write_residual_histogram,
     write_residual_vs_predicted_plot,
 )
-from ml_platform_tabular.plotting import write_leaderboard_table as write_leaderboard_table_from_package
 
 
 def test_tabular_plot_writers_create_csv_and_png(tmp_path):
@@ -71,7 +70,7 @@ def test_tabular_plot_writers_create_csv_and_png(tmp_path):
 
 
 def test_tabular_plotting_package_exports_new_split_boundary(tmp_path):
-    path = write_leaderboard_table_from_package(
+    path = write_leaderboard_table(
         [{"rank": 1, "model_name": "ridge", "rmse": 0.2}],
         tmp_path / "leaderboard_from_package.csv",
     )

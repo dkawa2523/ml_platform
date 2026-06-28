@@ -16,16 +16,12 @@ from ml_platform_core.io import load_joblib, read_json, read_table
 from ml_platform_core.result import RunResult
 from ml_platform_core.stages import StageName, as_stage_name
 
-from .pipeline import (
-    _build_ensemble,
-    _evaluate_models,
-    _metric_name,
-    _metric_names,
-    _preprocess_features,
-    _ranked_results,
-    _safe_name,
-    _train_model,
-)
+from .training.artifacts import _metric_name, _metric_names, _safe_name
+from .training.candidate_training import _train_model
+from .training.ensemble import _build_ensemble
+from .training.evaluation import _evaluate_models
+from .training.preprocessing import _preprocess_features
+from .training.ranking import _ranked_results
 
 
 def _run_dir(cfg: dict[str, Any], stage: StageName | str) -> Path:
@@ -62,7 +58,9 @@ def _finish_stage(
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
     update_latest(run_dir, output_dir / "latest_tabular_stage")
     update_latest(run_dir, output_dir / "latest")
-    return RunResult(run_dir=run_dir, metrics=metrics or {}, artifacts=artifacts, tables=tables, plots=plots, extra=extra)
+    return RunResult(
+        run_dir=run_dir, metrics=metrics or {}, artifacts=artifacts, tables=tables, plots=plots, extra=extra
+    )
 
 
 def _json_value(value: Any, *, default: Any) -> Any:
@@ -150,7 +148,9 @@ def _model_ref(item: dict[str, Any]) -> dict[str, Any]:
     metrics = read_json(metrics_path) if metrics_path.exists() else {}
     model_info_path = Path(str(item.get("model_info") or "")) if item.get("model_info") else None
     model_info = read_json(model_info_path) if model_info_path and model_info_path.exists() else {}
-    model_name = str(item.get("model_name") or model_info.get("model_name") or model_path.parent.name.replace("train_", ""))
+    model_name = str(
+        item.get("model_name") or model_info.get("model_name") or model_path.parent.name.replace("train_", "")
+    )
     model_params = item.get("model_params")
     if model_params is None:
         model_params = model_info.get("model_params") or {}

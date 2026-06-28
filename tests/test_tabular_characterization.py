@@ -7,7 +7,7 @@ from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
 from ml_platform_tabular.infer import run_infer
 from ml_platform_tabular.pipeline import run_pipeline
-from ml_platform_tabular.plots import (
+from ml_platform_tabular.plotting import (
     write_feature_importance_plot_if_available,
     write_leaderboard_metric_panel,
     write_leaderboard_pareto_plot,
