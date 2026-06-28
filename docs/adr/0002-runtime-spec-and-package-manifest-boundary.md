@@ -50,12 +50,11 @@ downstream runtime and tabular consumers should migrate to typed accessors
 incrementally.
 
 Phase 4-A adds the first runtime-facing contract and tabular package manifest
-scaffold. `pkgs/core` now defines `ArtifactSpec`, `ParameterSpec`, `StageSpec`,
+scaffold. `pkgs/core` defines `ArtifactSpec`, `ParameterSpec`, `StageSpec`,
 `PipelineSpec`, `TaskSpec`, `PackageManifest`, `DomainStepPlan`, and
-`DomainPipelinePlan`, plus minimal runtime adapter protocols. `pkgs/tabular`
-now owns an initial manifest and policy module for tabular model suites,
-quality presets, task/stage declarations, and a ClearML-free domain pipeline
-plan builder.
+`DomainPipelinePlan`. `pkgs/tabular` owns an initial manifest and policy module
+for tabular model suites, quality presets, task/stage declarations, and a
+ClearML-free domain pipeline plan builder.
 
 Phase 4-B connects the ClearML runtime to that boundary. Tabular-owned model
 suite selection, quality-mode presets, runtime parameter defaults, candidate
@@ -69,6 +68,12 @@ The ClearML runtime still owns runtime-vendor work: SDK access,
 script metadata, artifact reference wiring, and direct `clearml/app.py` /
 `clearml/pipelines.py` entrypoint compatibility. ClearML localhost UI, remote
 Agent execution, and Kubernetes checks remain manual verification required.
+
+LEAN-S03 trims the first scaffold back to the active boundary. The unused
+`runtime_types.py` Protocol module was removed, and descriptive-only fields were
+removed from the contract dataclasses. The remaining core contracts are limited
+to manifest validation, runner path declaration, artifact/parameter schema, and
+runtime-neutral domain plans consumed by the ClearML renderer.
 
 ## Consequences
 

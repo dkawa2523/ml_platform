@@ -236,27 +236,55 @@ these as `needs_confirmation`, not immediate delete.
 
 ## Excessive Contract Candidates
 
-The runtime/package manifest boundary is useful, but several abstractions are
-still single-domain or single-implementation:
+The runtime/package manifest boundary is useful, but LEAN-S00 found that the
+first scaffold had grown beyond current use. CLEAN-S03 simplified the confirmed
+excess:
 
-- `pkgs/core/src/ml_platform_core/runtime_types.py`
-  - `TaskRunner`
-  - `RuntimeAdapter`
-- `pkgs/core/src/ml_platform_core/contracts.py`
-  - broad `ArtifactSpec`, `ParameterSpec`, `StageSpec`, `PipelineSpec`,
-    `TaskSpec`, `PackageManifest`, `DomainStepPlan`, `DomainPipelinePlan`
-    surface.
-- `pkgs/tabular/src/ml_platform_tabular/manifest.py`
-  - manifest constants and domain plan builder live together.
-- `pkgs/tabular/src/ml_platform_tabular/policy.py`
-  - defaults, runtime parameter parsing, model-suite policy, and quality-mode
-    application are all in one module.
-- `clearml/pipelines.py`
-  - runtime consumes `DomainPipelinePlan`, but still has its own plan dict shape
-    and ClearML render lifecycle.
+- Removed `pkgs/core/src/ml_platform_core/runtime_types.py`.
+  - `TaskRunner` and `RuntimeAdapter` were Protocols with no concrete
+    implementation, no package export, and no runtime caller.
+- Trimmed descriptive-only fields from `pkgs/core/src/ml_platform_core/contracts.py`.
+  - Removed `description` fields from specs and plans.
+  - Removed `StageSpec.supports_local_run` and `supports_remote_run`.
+  - Removed `PipelineSpec.entry_stage_key` and `supports_partial_stage_run`.
+  - Removed `TaskSpec.runtime_features` and `user_facing`.
+  - Removed `DomainStepPlan.tags` and `DomainPipelinePlan.tags`.
+- Updated `pkgs/tabular/src/ml_platform_tabular/manifest.py` so the manifest no
+  longer passes removed metadata.
+- Added a manifest test that pins the current minimal contract surface.
 
-These are not immediate deletion candidates. They should be simplified only
-after deciding which boundaries are real product extension points.
+Contracts intentionally retained:
+
+- `ArtifactSpec` and `ParameterSpec` because manifest validation and tests use
+  artifact kind, required parameters, defaults, and enum choices.
+- `StageSpec`, `TaskSpec`, `PipelineSpec`, and `PackageManifest` because they
+  keep runner paths, stage graph keys, and manifest uniqueness testable without
+  ClearML.
+- `DomainStepPlan` and `DomainPipelinePlan` because ClearML runtime consumes
+  them to render the training DAG while tabular keeps graph policy ownership.
+
+Remaining non-S03 cleanup:
+
+- `pkgs/tabular/src/ml_platform_tabular/manifest.py` still combines constants
+  and plan construction; track under S05/S08 if it remains hard to read.
+- `pkgs/tabular/src/ml_platform_tabular/policy.py` still combines defaults,
+  runtime parameter parsing, model-suite policy, and quality-mode application;
+  track under S05.
+- `clearml/pipelines.py` still converts `DomainPipelinePlan` to its own plan
+  dict before rendering; track under S08.
+
+S03 verification:
+
+- `uv run python -m pytest tests/test_runtime_manifest.py`: passed, 10 tests.
+- `uv run python -m ruff check pkgs/core/src/ml_platform_core/contracts.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`: passed.
+- `uv run python -m ruff format --check pkgs/core/src/ml_platform_core/contracts.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`: passed.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 118 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check .`: failed on the known pre-existing
+  16-file format debt.
+- The requested bare `python -m ...` validation commands failed because this
+  workstation resolves `python` to the Windows Store alias.
 
 ## Ambiguous Responsibility Files
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 
 import pytest
 
@@ -84,6 +85,24 @@ def test_contract_specs_validate_supported_kinds():
         ParameterSpec(name="bad", value_type="object")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="enum type but no choices"):
         ParameterSpec(name="mode", value_type="enum")
+
+
+def test_runtime_contract_surface_stays_minimal():
+    manifest = get_tabular_manifest()
+    stage = manifest.stage("preprocess_features")
+    task = manifest.task("tabular_pipeline")
+    pipeline = manifest.pipeline("tabular_training_graph")
+    plan = build_tabular_domain_plan(candidates=("ridge",), include_ensemble=False)
+
+    assert importlib.util.find_spec("ml_platform_core.runtime_types") is None
+    assert not hasattr(stage, "supports_local_run")
+    assert not hasattr(stage, "supports_remote_run")
+    assert not hasattr(task, "runtime_features")
+    assert not hasattr(task, "user_facing")
+    assert not hasattr(pipeline, "entry_stage_key")
+    assert not hasattr(pipeline, "supports_partial_stage_run")
+    assert not hasattr(plan, "tags")
+    assert not hasattr(plan.steps[0], "tags")
 
 
 def test_tabular_policy_presets_are_package_owned_and_copy_safe():

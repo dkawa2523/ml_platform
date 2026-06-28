@@ -27,8 +27,8 @@ TABULAR_INFER_RUNNER = "ml_platform_tabular.infer:run_infer"
 TRAINING_STAGE_KEYS = ("preprocess_features", "train_model", "build_ensemble", "evaluate_models")
 
 
-def _artifact(name: str, kind: str, *, required: bool = True, description: str = "") -> ArtifactSpec:
-    return ArtifactSpec(name=name, kind=kind, required=required, description=description)
+def _artifact(name: str, kind: str, *, required: bool = True) -> ArtifactSpec:
+    return ArtifactSpec(name=name, kind=kind, required=required)
 
 
 def _param(
@@ -38,7 +38,6 @@ def _param(
     required: bool = False,
     default: object | None = None,
     choices: tuple[str, ...] = (),
-    description: str = "",
 ) -> ParameterSpec:
     return ParameterSpec(
         name=name,
@@ -46,7 +45,6 @@ def _param(
         required=required,
         default=default,
         choices=choices,
-        description=description,
     )
 
 
@@ -196,7 +194,6 @@ TABULAR_PIPELINE_TASK = TaskSpec(
     display_name="Tabular training pipeline",
     runner_path=TABULAR_PIPELINE_RUNNER,
     kind="pipeline",
-    runtime_features=("pipeline", "clearml_template", "local_run"),
     parameters=TABULAR_PIPELINE_PARAMETERS,
     artifacts=TABULAR_PIPELINE_ARTIFACTS,
     stage_keys=TRAINING_STAGE_KEYS,
@@ -206,16 +203,13 @@ TABULAR_STAGE_TASK = TaskSpec(
     display_name="Tabular stage task",
     runner_path=TABULAR_STAGE_RUNNER,
     kind="stage",
-    runtime_features=("stage", "clearml_internal", "local_run"),
     stage_keys=TRAINING_STAGE_KEYS,
-    user_facing=False,
 )
 TABULAR_INFER_TASK = TaskSpec(
     key="tabular_infer",
     display_name="Tabular inference",
     runner_path=TABULAR_INFER_RUNNER,
     kind="task",
-    runtime_features=("task", "clearml_template", "local_run"),
     parameters=TABULAR_INFER_STAGE.parameters,
     artifacts=TABULAR_INFER_STAGE.output_artifacts,
     stage_keys=("infer",),
@@ -224,8 +218,6 @@ TABULAR_TRAINING_PIPELINE_SPEC = PipelineSpec(
     key="tabular_training_graph",
     display_name="Tabular stage-based training graph",
     stage_keys=TRAINING_STAGE_KEYS,
-    entry_stage_key="preprocess_features",
-    supports_partial_stage_run=True,
 )
 TABULAR_MANIFEST = PackageManifest(
     domain=TABULAR_DOMAIN,
@@ -234,7 +226,6 @@ TABULAR_MANIFEST = PackageManifest(
     stages=TABULAR_STAGES,
     pipelines=(TABULAR_TRAINING_PIPELINE_SPEC,),
     tags=("problem:scalar_regression", "domain:tabular"),
-    description="Tabular scalar regression training and inference package manifest.",
 )
 
 
@@ -302,7 +293,6 @@ def build_tabular_domain_plan(
             stage_key="preprocess_features",
             parameter_overrides=preprocess_params,
             expected_artifacts=tuple(artifact.name for artifact in TABULAR_PREPROCESS_STAGE.output_artifacts),
-            tags=("stage:preprocess_features",),
         )
     ]
 
@@ -326,7 +316,6 @@ def build_tabular_domain_plan(
                 parameter_overrides=train_params,
                 expected_artifacts=tuple(artifact.name for artifact in TABULAR_TRAIN_STAGE.output_artifacts),
                 model_name=model_name,
-                tags=("stage:train_model", f"model:{model_name}"),
             )
         )
 
@@ -351,7 +340,6 @@ def build_tabular_domain_plan(
                 parameter_overrides=ensemble_params,
                 expected_artifacts=tuple(artifact.name for artifact in TABULAR_ENSEMBLE_STAGE.output_artifacts),
                 ensemble_method=method,
-                tags=("stage:build_ensemble", f"ensemble:{method}"),
             )
         )
 
@@ -365,7 +353,6 @@ def build_tabular_domain_plan(
             parents=tuple(evaluate_parents),
             parameter_overrides=evaluate_params,
             expected_artifacts=tuple(artifact.name for artifact in TABULAR_EVALUATE_STAGE.output_artifacts),
-            tags=("stage:evaluate_models",),
         )
     )
     return DomainPipelinePlan(
@@ -373,6 +360,4 @@ def build_tabular_domain_plan(
         version=TABULAR_MANIFEST.version,
         run_name=run_name,
         steps=tuple(steps),
-        tags=TABULAR_MANIFEST.tags,
-        description="Runtime-neutral tabular training graph plan.",
     )

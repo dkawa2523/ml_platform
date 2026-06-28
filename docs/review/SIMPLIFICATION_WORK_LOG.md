@@ -191,3 +191,87 @@ CLEAN-2 should focus on one of:
    permanent dev dependencies.
 3. S04: simplify duplicated ClearML diagnostics and reporting helpers with
    behavior-preserving tests.
+
+## 2026-06-29 - CLEAN-S03 runtime contract surface simplification
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: simplify excessive runtime contracts while preserving the
+  runtime/package manifest boundary and excluding Kubernetes / K8 work.
+
+## Changed Files
+
+- `pkgs/core/src/ml_platform_core/contracts.py`
+- `pkgs/core/src/ml_platform_core/runtime_types.py`
+- `pkgs/tabular/src/ml_platform_tabular/manifest.py`
+- `tests/test_runtime_manifest.py`
+- `docs/review/SIMPLIFICATION_AUDIT.md`
+- `docs/review/SIMPLIFICATION_FIX_MAP.md`
+- `docs/review/SIMPLIFICATION_WORK_LOG.md`
+- `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+- `docs/adr/0003-lean-codebase-guidelines.md`
+
+## Commands
+
+```powershell
+git status --short
+rg -n "class .*Spec|class .*Contract|class .*Protocol|Protocol\)|PackageManifest|TaskSpec|StageSpec|ArtifactSpec|ParameterSpec|RunResult|DomainPipelinePlan|DomainStepPlan" pkgs clearml tests docs
+rg -n "runtime_types|contracts|manifest|policy" pkgs clearml tests docs
+uv run python -m pytest tests/test_runtime_manifest.py
+uv run python -m ruff check pkgs/core/src/ml_platform_core/contracts.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py
+uv run python -m ruff format --check pkgs/core/src/ml_platform_core/contracts.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+rg -n "runtime_types|runtime_features|supports_local_run|supports_remote_run|entry_stage_key|supports_partial_stage_run|description=|\.description|DomainStepPlan\.tags|DomainPipelinePlan\.tags" pkgs tests clearml docs/adr docs/review/SIMPLIFICATION_AUDIT.md docs/review/SIMPLIFICATION_FIX_MAP.md docs/review/SIMPLIFICATION_WORK_LOG.md
+```
+
+## Results
+
+- Deleted unused `ml_platform_core.runtime_types` Protocol scaffold.
+- Removed descriptive-only or unused contract fields:
+  - `description` fields on specs/plans
+  - `StageSpec.supports_local_run`
+  - `StageSpec.supports_remote_run`
+  - `PipelineSpec.entry_stage_key`
+  - `PipelineSpec.supports_partial_stage_run`
+  - `TaskSpec.runtime_features`
+  - `TaskSpec.user_facing`
+  - `DomainStepPlan.tags`
+  - `DomainPipelinePlan.tags`
+- Kept the runtime boundary types that are actively consumed:
+  - manifest specs for task/stage/pipeline/artifact/parameter validation
+  - `DomainStepPlan` and `DomainPipelinePlan` for ClearML DAG rendering
+- `uv run python -m pytest tests/test_runtime_manifest.py`: passed, 10 tests.
+- `uv run python -m ruff check ...`: passed on changed code/test files.
+- `uv run python -m ruff format --check ...`: passed on changed code/test
+  files.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 118 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check .`: failed only on the known
+  pre-existing 16-file format debt.
+
+## Failures / Unknowns
+
+- The requested bare `python -m ...` commands failed on this workstation
+  because `python` resolves to the Windows Store alias. Use `uv run python`.
+- Full-suite validation is recorded in the final command pass for this cleanup.
+- R18 live ClearML UI/remote verification remains outside this cleanup scope.
+
+## Next Action
+
+CLEAN-3 should focus on one of:
+
+1. S08: simplify the ClearML runtime plan/render surface without changing
+   template entrypoints.
+2. S05: split tabular manifest constants from plan construction if readability
+   remains poor.
+3. S06: decide whether `vulture` / `deptry` should be added for confirmed
+   unused-code cleanup.

@@ -43,7 +43,6 @@ class ArtifactSpec:
     name: str
     kind: ArtifactKind
     required: bool = True
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.name, "ArtifactSpec.name")
@@ -58,7 +57,6 @@ class ParameterSpec:
     required: bool = False
     default: object | None = None
     choices: tuple[str, ...] = field(default_factory=tuple)
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.name, "ParameterSpec.name")
@@ -78,9 +76,6 @@ class StageSpec:
     input_artifacts: tuple[ArtifactSpec, ...] = field(default_factory=tuple)
     output_artifacts: tuple[ArtifactSpec, ...] = field(default_factory=tuple)
     parameters: tuple[ParameterSpec, ...] = field(default_factory=tuple)
-    supports_local_run: bool = True
-    supports_remote_run: bool = True
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.key, "StageSpec.key")
@@ -98,17 +93,12 @@ class PipelineSpec:
     key: str
     display_name: str
     stage_keys: tuple[str, ...]
-    entry_stage_key: str | None = None
-    supports_partial_stage_run: bool = False
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.key, "PipelineSpec.key")
         _require_text(self.display_name, "PipelineSpec.display_name")
         object.__setattr__(self, "stage_keys", _tuple_text(tuple(self.stage_keys), "PipelineSpec.stage_keys"))
         _unique(self.stage_keys, f"PipelineSpec {self.key!r} stage keys")
-        if self.entry_stage_key is not None and self.entry_stage_key not in self.stage_keys:
-            raise ValueError(f"PipelineSpec {self.key!r} entry_stage_key is not present in stage_keys.")
 
 
 @dataclass(frozen=True)
@@ -117,12 +107,9 @@ class TaskSpec:
     display_name: str
     runner_path: str
     kind: TaskKind = "task"
-    runtime_features: tuple[str, ...] = field(default_factory=tuple)
     parameters: tuple[ParameterSpec, ...] = field(default_factory=tuple)
     artifacts: tuple[ArtifactSpec, ...] = field(default_factory=tuple)
     stage_keys: tuple[str, ...] = field(default_factory=tuple)
-    user_facing: bool = True
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.key, "TaskSpec.key")
@@ -130,9 +117,6 @@ class TaskSpec:
             raise ValueError(f"TaskSpec.kind must be one of: {', '.join(TASK_KINDS)}.")
         _require_text(self.display_name, "TaskSpec.display_name")
         _require_text(self.runner_path, "TaskSpec.runner_path")
-        object.__setattr__(
-            self, "runtime_features", _tuple_text(tuple(self.runtime_features), "TaskSpec.runtime_features")
-        )
         object.__setattr__(self, "stage_keys", _tuple_text(tuple(self.stage_keys), "TaskSpec.stage_keys"))
         _unique(tuple(parameter.name for parameter in self.parameters), f"TaskSpec {self.key!r} parameters")
         _unique(tuple(artifact.name for artifact in self.artifacts), f"TaskSpec {self.key!r} artifacts")
@@ -147,7 +131,6 @@ class PackageManifest:
     stages: tuple[StageSpec, ...]
     pipelines: tuple[PipelineSpec, ...] = field(default_factory=tuple)
     tags: tuple[str, ...] = field(default_factory=tuple)
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.domain, "PackageManifest.domain")
@@ -195,7 +178,6 @@ class DomainStepPlan:
     expected_artifacts: tuple[str, ...] = field(default_factory=tuple)
     model_name: str | None = None
     ensemble_method: str | None = None
-    tags: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         _require_text(self.name, "DomainStepPlan.name")
@@ -206,7 +188,6 @@ class DomainStepPlan:
             "expected_artifacts",
             _tuple_text(tuple(self.expected_artifacts), "DomainStepPlan.expected_artifacts"),
         )
-        object.__setattr__(self, "tags", _tuple_text(tuple(self.tags), "DomainStepPlan.tags"))
 
 
 @dataclass(frozen=True)
@@ -215,8 +196,6 @@ class DomainPipelinePlan:
     version: str
     run_name: str
     steps: tuple[DomainStepPlan, ...]
-    tags: tuple[str, ...] = field(default_factory=tuple)
-    description: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.key, "DomainPipelinePlan.key")
@@ -224,7 +203,6 @@ class DomainPipelinePlan:
         _require_text(self.run_name, "DomainPipelinePlan.run_name")
         if not self.steps:
             raise ValueError("DomainPipelinePlan.steps must contain at least one step.")
-        object.__setattr__(self, "tags", _tuple_text(tuple(self.tags), "DomainPipelinePlan.tags"))
         step_names = tuple(step.name for step in self.steps)
         _unique(step_names, f"DomainPipelinePlan {self.key!r} steps")
         known_steps = set(step_names)

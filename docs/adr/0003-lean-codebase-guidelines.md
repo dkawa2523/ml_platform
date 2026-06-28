@@ -19,6 +19,9 @@ undoing product behavior or ClearML template compatibility.
 - Do not add abstractions only because they may be useful later.
 - Remove one-implementation Protocols, Registries, or Providers unless they
   protect a real runtime or package boundary.
+- Do not keep contract fields that are only explanatory. If no runtime,
+  manifest validation, artifact schema, or test consumes the field, remove it
+  or move the explanation to docs.
 - Prefer confirming actual repository usage and ClearML template compatibility
   before preserving public API compatibility for internal-only helpers.
 - If an API is already externally published, record the compatibility impact
