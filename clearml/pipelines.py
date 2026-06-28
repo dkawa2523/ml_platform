@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +22,6 @@ _load_entrypoint_bootstrap().add_clearml_entrypoint_paths()
 from adapter import (
     apply_execution_image,
     as_bool,
-    as_candidates,
-    as_dict,
     as_str_list,
     clearml_execution_image,
     clearml_projects,
@@ -39,13 +36,18 @@ from adapter import (
     validate_clearml_runtime,
 )
 from ml_platform_core.config import apply_overrides, load_yaml
+from ml_platform_core.contracts import DomainPipelinePlan, DomainStepPlan
 from ml_platform_core.stages import StageName, as_stage_name
-from ml_platform_tabular.models import (
-    DEPENDENCY_FREE_MODELS,
-    OPTIONAL_DEPENDENCY_MODELS,
-    SUPPORTED_MODELS,
-    candidate_params,
-    model_candidates,
+from ml_platform_tabular.manifest import build_tabular_domain_plan
+from ml_platform_tabular.policy import (
+    ensemble_enabled_from_config,
+    ensemble_methods_from_config,
+    model_cfg_for_runtime,
+    pipeline_runtime_defaults,
+    runtime_model_suite,
+    runtime_quality_mode,
+    training_model_candidates,
+    validate_primary_training_graph,
 )
 
 
@@ -53,70 +55,6 @@ PIPELINE_ARG_PREFIX = "Args/"
 STAGE_TASK_CONFIG = "config/tasks/tabular_stage.yaml"
 STAGE_TEMPLATE = "tabular_stage_template"
 PIPELINE_TEMPLATE_TAGS = clearml_tags("template", user_facing=True)
-BASIC_MODEL_SUITES = {
-    "default": list(SUPPORTED_MODELS),
-    "fast": list(DEPENDENCY_FREE_MODELS),
-    "interpretable": ["linear", "ridge", "lasso", "elasticnet"],
-    "tree": ["random_forest", "extra_trees", "gradient_boosting"],
-    "gbm": list(OPTIONAL_DEPENDENCY_MODELS),
-}
-BASIC_QUALITY_MODES = {"fast", "standard", "quality"}
-BASIC_QUALITY_MODEL_PARAMS = {
-    "fast": {
-        "linear": {},
-        "ridge": {"alpha": 1.0},
-        "lasso": {"alpha": 0.01, "max_iter": 3000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 3000, "random_state": 42},
-        "random_forest": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 10, "random_state": 42},
-        "lightgbm": {"n_estimators": 30, "random_state": 42, "n_jobs": 1},
-        "xgboost": {
-            "n_estimators": 30,
-            "random_state": 42,
-            "n_jobs": 1,
-            "objective": "reg:squarederror",
-            "verbosity": 0,
-        },
-        "catboost": {"iterations": 30, "random_seed": 42, "verbose": False},
-    },
-    "standard": {
-        "linear": {},
-        "ridge": {"alpha": 1.0},
-        "lasso": {"alpha": 0.01, "max_iter": 5000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42},
-        "random_forest": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 20, "random_state": 42},
-        "lightgbm": {"n_estimators": 100, "random_state": 42, "n_jobs": 1},
-        "xgboost": {
-            "n_estimators": 100,
-            "random_state": 42,
-            "n_jobs": 1,
-            "objective": "reg:squarederror",
-            "verbosity": 0,
-        },
-        "catboost": {"iterations": 100, "random_seed": 42, "verbose": False},
-    },
-    "quality": {
-        "linear": {},
-        "ridge": {"alpha": 1.0},
-        "lasso": {"alpha": 0.01, "max_iter": 8000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 8000, "random_state": 42},
-        "random_forest": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 60, "random_state": 42},
-        "lightgbm": {"n_estimators": 200, "random_state": 42, "n_jobs": 1},
-        "xgboost": {
-            "n_estimators": 200,
-            "random_state": 42,
-            "n_jobs": 1,
-            "objective": "reg:squarederror",
-            "verbosity": 0,
-        },
-        "catboost": {"iterations": 200, "random_seed": 42, "verbose": False},
-    },
-}
 
 
 def _artifact_ref(step_name: str, artifact_name: str) -> str:
@@ -136,92 +74,6 @@ def _execution_image(profile: dict[str, Any]) -> str | None:
     return clearml_execution_image(profile.get("clearml", {}) or {})
 
 
-def _has_runtime_value(value: Any) -> bool:
-    return value is not None and not (isinstance(value, str) and value.strip() == "")
-
-
-def _basic_config(pipeline_cfg: dict[str, Any]) -> dict[str, Any]:
-    raw = pipeline_cfg.get("basic") or pipeline_cfg.get("Basic") or {}
-    return raw if isinstance(raw, dict) else {}
-
-
-def _basic_text(runtime_params: dict[str, Any], key: str, default: str) -> str:
-    value = runtime_params.get(key)
-    if not _has_runtime_value(value):
-        return default
-    return str(value).strip().lower()
-
-
-def _basic_model_suite(runtime_params: dict[str, Any]) -> str:
-    suite = _basic_text(runtime_params, "Basic/model_suite", "default")
-    if suite not in {*BASIC_MODEL_SUITES, "custom"}:
-        choices = ", ".join([*BASIC_MODEL_SUITES, "custom"])
-        raise ValueError(f"Basic/model_suite must be one of: {choices}.")
-    return suite
-
-
-def _basic_quality_mode(runtime_params: dict[str, Any]) -> str:
-    mode = _basic_text(runtime_params, "Basic/quality_mode", "standard")
-    if mode not in BASIC_QUALITY_MODES:
-        choices = ", ".join(sorted(BASIC_QUALITY_MODES))
-        raise ValueError(f"Basic/quality_mode must be one of: {choices}.")
-    return mode
-
-
-def _apply_basic_model_suite(model_cfg: dict[str, Any], runtime_params: dict[str, Any]) -> None:
-    suite = _basic_model_suite(runtime_params)
-    if suite in {"default", "custom"}:
-        return
-    model_cfg["candidates"] = list(BASIC_MODEL_SUITES[suite])
-
-
-def _basic_quality_model_params(mode: str) -> dict[str, Any]:
-    return deepcopy(BASIC_QUALITY_MODEL_PARAMS[mode])
-
-
-def _apply_basic_quality_mode(
-    model_cfg: dict[str, Any],
-    runtime_params: dict[str, Any],
-    explicit_runtime_params: dict[str, Any],
-) -> None:
-    if "Model/model_params_by_name" in explicit_runtime_params or "Model/params" in explicit_runtime_params:
-        return
-    if _basic_model_suite(runtime_params) == "custom":
-        return
-    model_cfg["params"] = _basic_quality_model_params(_basic_quality_mode(runtime_params))
-
-
-def _model_cfg_for_pipeline(
-    pipeline_cfg: dict[str, Any],
-    runtime_params: dict[str, Any] | None = None,
-    explicit_runtime_params: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    model_cfg = deepcopy(pipeline_cfg.get("model", {}) or {})
-    runtime_params = runtime_params or {}
-    explicit_runtime_params = explicit_runtime_params or {}
-    if "Model/candidates" in runtime_params:
-        model_cfg["candidates"] = as_candidates(runtime_params.get("Model/candidates"))
-    if "Model/model_params_by_name" in explicit_runtime_params:
-        model_cfg["params"] = as_dict(runtime_params.get("Model/model_params_by_name"))
-    elif "Model/params" in explicit_runtime_params:
-        model_cfg["params"] = as_dict(runtime_params.get("Model/params"))
-    if "Model/selection_metric" in runtime_params and runtime_params.get("Model/selection_metric"):
-        model_cfg["selection_metric"] = runtime_params["Model/selection_metric"]
-    _apply_basic_model_suite(model_cfg, runtime_params)
-    _apply_basic_quality_mode(model_cfg, runtime_params, explicit_runtime_params)
-    if _has_runtime_value(runtime_params.get("Basic/use_ensemble")):
-        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(runtime_params.get("Basic/use_ensemble"))
-    if _has_runtime_value(runtime_params.get("Model/ensemble_enabled")):
-        model_cfg.setdefault("ensemble", {})["enabled"] = as_bool(runtime_params.get("Model/ensemble_enabled"))
-    if "Model/ensemble_methods" in runtime_params:
-        model_cfg.setdefault("ensemble", {})["methods"] = as_str_list(runtime_params.get("Model/ensemble_methods")) or []
-    if "Model/ensemble_method" in runtime_params and runtime_params.get("Model/ensemble_method"):
-        model_cfg.setdefault("ensemble", {})["method"] = runtime_params["Model/ensemble_method"]
-    if "Model/ensemble_top_k" in runtime_params and runtime_params.get("Model/ensemble_top_k") not in {None, ""}:
-        model_cfg.setdefault("ensemble", {})["top_k"] = int(runtime_params["Model/ensemble_top_k"])
-    return model_cfg
-
-
 def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str | None]:
     clearml_cfg = profile.get("clearml", {}) or {}
     dataset_id = clearml_cfg.get("default_dataset_id")
@@ -229,63 +81,17 @@ def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str |
     return dataset_id, dataset_file
 
 
-def _training_pipeline_runtime_params(pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
-    run = pipeline_cfg.get("run", {})
-    basic = _basic_config(pipeline_cfg)
-    data = pipeline_cfg.get("data", {})
-    split = pipeline_cfg.get("split", {}) or {}
-    features = pipeline_cfg.get("features", {}) or {}
-    model = pipeline_cfg.get("model", {})
-    metrics = pipeline_cfg.get("metrics", {}) or {}
-    output = pipeline_cfg.get("output", {}) or {}
-    ensemble = model.get("ensemble", {}) or {}
-    if not isinstance(ensemble, dict):
-        ensemble = {}
+def _training_pipeline_runtime_params(
+    pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None
+) -> dict[str, Any]:
     profile = profile or {}
     remote_default_dataset_id, remote_default_dataset_file = _remote_dataset_defaults(profile)
-    use_clearml = bool(profile.get("runtime", {}).get("use_clearml"))
-    clearml_dataset_id = data.get("clearml_dataset_id")
-    dataset_file = data.get("dataset_file")
-    local_path = data.get("local_path")
-    if use_clearml and remote_default_dataset_id and not clearml_dataset_id:
-        clearml_dataset_id = remote_default_dataset_id
-        dataset_file = dataset_file or remote_default_dataset_file
-        local_path = ""
-    return {
-        "Basic/model_suite": basic.get("model_suite", "default"),
-        "Basic/quality_mode": basic.get("quality_mode", "standard"),
-        "Basic/use_ensemble": basic.get("use_ensemble", as_bool(ensemble.get("enabled"), default=True)),
-        "Basic/notes": basic.get("notes") or run.get("description", ""),
-        "Run/name": run.get("name"),
-        "Run/seed": run.get("seed"),
-        "Split/method": split.get("method", "random"),
-        "Split/valid_size": split.get("valid_size", 0.2),
-        "Split/group_column": split.get("group_column"),
-        "Split/time_column": split.get("time_column"),
-        "Split/valid_filter_column": split.get("valid_filter_column"),
-        "Split/valid_filter_value": split.get("valid_filter_value"),
-        "Input/local_path": local_path,
-        "Input/clearml_dataset_id": clearml_dataset_id,
-        "Input/dataset_file": dataset_file,
-        "Input/target_column": data.get("target_column"),
-        "Input/feature_columns": data.get("feature_columns") or [],
-        "Input/id_columns": data.get("id_columns", []),
-        "Features/preset": features.get("preset", "basic"),
-        "Features/numeric_impute_strategy": features.get("numeric_impute_strategy", "median"),
-        "Features/categorical_impute_strategy": features.get("categorical_impute_strategy", "missing_token"),
-        "Features/categorical_encoder": features.get("categorical_encoder", "onehot"),
-        "Features/scaling": features.get("scaling", "standard"),
-        "Features/drop_columns": _json(features.get("drop_columns", []) or []),
-        "Features/passthrough_columns": _json(features.get("passthrough_columns", []) or []),
-        "Model/candidates": _json(SUPPORTED_MODELS),
-        "Model/model_params_by_name": _json(model.get("params", {}) or {}),
-        "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
-        "Model/selection_metric": model.get("selection_metric", "rmse"),
-        "Model/ensemble_enabled": "",
-        "Model/ensemble_methods": _json(ensemble.get("methods", [ensemble.get("method", "mean_topk")]) or []),
-        "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
-        "Output/report_plots": as_bool(output.get("report_plots"), default=True),
-    }
+    return pipeline_runtime_defaults(
+        pipeline_cfg,
+        remote_default_dataset_id=remote_default_dataset_id,
+        remote_default_dataset_file=remote_default_dataset_file,
+        use_clearml=bool(profile.get("runtime", {}).get("use_clearml")),
+    )
 
 
 def pipeline_runtime_params(
@@ -401,14 +207,6 @@ def _model_ref(step_name: str, model_name: str, model_params: dict[str, Any]) ->
     }
 
 
-def _ensemble_methods(ensemble_cfg: dict[str, Any]) -> list[str]:
-    raw = ensemble_cfg.get("methods")
-    if raw is None or raw == "":
-        raw = [ensemble_cfg.get("method") or "mean_topk"]
-    methods = as_str_list(raw) or []
-    return methods or ["mean_topk"]
-
-
 def _ensemble_ref(step_name: str, method: str | None = None) -> dict[str, Any]:
     suffix = f"_{method}" if method else ""
     return {
@@ -422,6 +220,79 @@ def _ensemble_ref(step_name: str, method: str | None = None) -> dict[str, Any]:
         "metrics": _artifact_ref(step_name, f"metrics{suffix}"),
         "ensemble_predictions": _artifact_ref(step_name, f"ensemble_predictions{suffix}"),
     }
+
+
+def _step_model_params(step: DomainStepPlan) -> dict[str, Any]:
+    raw = step.parameter_overrides.get("Model/params") or {}
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, str):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Domain step {step.name!r} Model/params must be a mapping.")
+        return parsed
+    raise ValueError(f"Domain step {step.name!r} Model/params must be a mapping.")
+
+
+def _serialized_stage_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
+    serialized = dict(overrides)
+    for key in ("Model/params", "Model/ensemble_methods"):
+        if key in serialized and not isinstance(serialized[key], str):
+            serialized[key] = _json(serialized[key])
+    return serialized
+
+
+def _render_domain_plan_steps(
+    domain_plan: DomainPipelinePlan,
+    *,
+    templates_project: str,
+    projects: dict[str, str],
+    run_name: str,
+    execution_queue: str,
+) -> list[dict[str, Any]]:
+    model_refs = [
+        _model_ref(step.name, step.model_name, _step_model_params(step))
+        for step in domain_plan.steps
+        if step.stage_key == "train_model" and step.model_name is not None
+    ]
+    ensemble_refs = [
+        _ensemble_ref(step.name, step.ensemble_method)
+        for step in domain_plan.steps
+        if step.stage_key == "build_ensemble" and step.ensemble_method is not None
+    ]
+    rendered_steps: list[dict[str, Any]] = []
+    for step in domain_plan.steps:
+        overrides = dict(step.parameter_overrides)
+        if step.stage_key == "train_model":
+            overrides = {**_preprocess_refs(), **overrides}
+        elif step.stage_key == "build_ensemble":
+            overrides = {
+                **_preprocess_refs(),
+                "Input/model_refs": _json(model_refs),
+                **overrides,
+            }
+        elif step.stage_key == "evaluate_models":
+            overrides = {
+                **overrides,
+                "Input/model_refs": _json(model_refs),
+                "Input/ensemble_refs": _json(ensemble_refs) if ensemble_refs else None,
+                "Input/ensemble_ref": _json(ensemble_refs[0]) if ensemble_refs else None,
+            }
+        rendered_steps.append(
+            _stage_step(
+                name=step.name,
+                stage=step.stage_key,
+                templates_project=templates_project,
+                projects=projects,
+                run_name=run_name,
+                execution_queue=execution_queue,
+                model_name=step.model_name,
+                ensemble_method=step.ensemble_method,
+                parents=list(step.parents),
+                overrides=_serialized_stage_overrides(overrides),
+            )
+        )
+    return rendered_steps
 
 
 def _stage_step(
@@ -488,27 +359,16 @@ def _build_training_plan(
     }
     effective_params = {**default_params, **(ui_params or {})}
     run_name = str(effective_params.get("Run/name") or pipeline_cfg.get("run", {}).get("name") or "run")
-    model_suite = _basic_model_suite(effective_params)
-    quality_mode = _basic_quality_mode(effective_params)
-    model_cfg = _model_cfg_for_pipeline(pipeline_cfg, effective_params, explicit_params)
-    search_cfg = model_cfg.get("search", {}) or {}
-    if not isinstance(search_cfg, dict):
-        search_cfg = {}
-    if as_bool(search_cfg.get("enabled")):
-        raise ValueError(
-            "model.search.enabled=true is future/experimental and is not part of the "
-            "primary ClearML training pipeline graph. Remove model.search or set enabled=false for "
-            "preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models."
-        )
-    candidates = model_candidates(model_cfg)
-    if not candidates:
-        raise ValueError("Training pipeline requires at least one model candidate.")
-
+    model_suite = runtime_model_suite(effective_params)
+    quality_mode = runtime_quality_mode(effective_params)
+    model_cfg = model_cfg_for_runtime(pipeline_cfg, effective_params, explicit_params)
+    validate_primary_training_graph(model_cfg)
+    candidates = training_model_candidates(model_cfg)
     ensemble_cfg = model_cfg.get("ensemble", {}) or {}
     if not isinstance(ensemble_cfg, dict):
         ensemble_cfg = {}
-    ensemble_enabled = as_bool(ensemble_cfg.get("enabled"))
-    ensemble_methods = _ensemble_methods(ensemble_cfg)
+    ensemble_enabled = ensemble_enabled_from_config(ensemble_cfg)
+    ensemble_methods = ensemble_methods_from_config(ensemble_cfg)
     selection_metric = str(model_cfg.get("selection_metric") or "rmse")
     data_overrides = _data_overrides(effective_params)
     split_overrides = _split_overrides(effective_params)
@@ -517,101 +377,26 @@ def _build_training_plan(
         "Model/evaluation_metrics": effective_params.get("Model/evaluation_metrics"),
         "Output/report_plots": as_bool(effective_params.get("Output/report_plots"), default=True),
     }
-
-    steps: list[dict[str, Any]] = [
-        _stage_step(
-            name="preprocess_features",
-            stage="preprocess_features",
-            templates_project=templates_project,
-            projects=projects,
-            run_name=run_name,
-            execution_queue=stage_queue,
-            overrides={
-                **data_overrides,
-                **split_overrides,
-                **feature_overrides,
-                **stage_common_overrides,
-            },
-        )
-    ]
-
-    model_refs: list[dict[str, Any]] = []
-    train_steps: list[str] = []
-    for candidate in candidates:
-        model_name = candidate["name"]
-        step_name = f"train_{model_name}"
-        model_params = candidate_params(model_cfg.get("params") or {}, model_name)
-        train_steps.append(step_name)
-        model_refs.append(_model_ref(step_name, model_name, model_params))
-        steps.append(
-            _stage_step(
-                name=step_name,
-                stage="train_model",
-                templates_project=templates_project,
-                projects=projects,
-                run_name=run_name,
-                execution_queue=stage_queue,
-                model_name=model_name,
-                parents=["preprocess_features"],
-                overrides={
-                    **_preprocess_refs(),
-                    **stage_common_overrides,
-                    "Model/name": model_name,
-                    "Model/params": _json(model_params),
-                    "Model/selection_metric": selection_metric,
-                },
-            )
-        )
-
-    parents_for_evaluate = list(train_steps)
-    ensemble_refs = []
-    ensemble_steps: list[str] = []
-    if ensemble_enabled:
-        for method in ensemble_methods:
-            step_name = f"build_ensemble_{method}"
-            ensemble_steps.append(step_name)
-            ensemble_refs.append(_ensemble_ref(step_name, method))
-            steps.append(
-                _stage_step(
-                    name=step_name,
-                    stage="build_ensemble",
-                    templates_project=templates_project,
-                    projects=projects,
-                    run_name=run_name,
-                    execution_queue=stage_queue,
-                    ensemble_method=method,
-                    parents=train_steps,
-                    overrides={
-                        **_preprocess_refs(),
-                        **stage_common_overrides,
-                        "Input/model_refs": _json(model_refs),
-                        "Model/selection_metric": selection_metric,
-                        "Model/ensemble_enabled": True,
-                        "Model/ensemble_methods": _json([method]),
-                        "Model/ensemble_method": method,
-                        "Model/ensemble_top_k": int(ensemble_cfg.get("top_k") or 3),
-                    },
-                )
-            )
-        parents_for_evaluate.extend(ensemble_steps)
-
-    steps.append(
-        _stage_step(
-            name="evaluate_models",
-            stage="evaluate_models",
-            templates_project=templates_project,
-            projects=projects,
-            run_name=run_name,
-            execution_queue=stage_queue,
-            parents=parents_for_evaluate,
-            overrides={
-                **stage_common_overrides,
-                "Input/model_refs": _json(model_refs),
-                "Input/ensemble_refs": _json(ensemble_refs) if ensemble_refs else None,
-                "Input/ensemble_ref": _json(ensemble_refs[0]) if ensemble_refs else None,
-                "Model/selection_metric": selection_metric,
-            },
-        )
+    domain_plan = build_tabular_domain_plan(
+        run_name=run_name,
+        candidates=candidates,
+        ensemble_methods=ensemble_methods,
+        include_ensemble=ensemble_enabled,
+        selection_metric=selection_metric,
+        preprocess_overrides={
+            **data_overrides,
+            **split_overrides,
+            **feature_overrides,
+        },
+        stage_common_overrides=stage_common_overrides,
+        ensemble_top_k=int(ensemble_cfg.get("top_k") or 3),
+    )
+    steps = _render_domain_plan_steps(
+        domain_plan,
+        templates_project=templates_project,
+        projects=projects,
+        run_name=run_name,
+        execution_queue=stage_queue,
     )
 
     return {
@@ -650,7 +435,9 @@ def build_pipeline_plan(
     pipeline_cfg = apply_overrides(load_yaml(task_path), overrides)
     profile = load_yaml(profile_path)
     if "data" not in pipeline_cfg:
-        raise ValueError("ClearML pipeline planning requires a stage-based tabular_pipeline config with a data section.")
+        raise ValueError(
+            "ClearML pipeline planning requires a stage-based tabular_pipeline config with a data section."
+        )
     return _build_training_plan(pipeline_cfg, profile, task_path, profile_path, ui_params)
 
 
@@ -750,7 +537,11 @@ def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
             candidate_project = str(get_project_name())
             if candidate_project != project_name and not candidate_project.startswith(f"{project_name}/.pipelines/"):
                 continue
-        task_type = getattr(task, "task_type", None) or getattr(task, "type", None) or getattr(getattr(task, "data", None), "type", None)
+        task_type = (
+            getattr(task, "task_type", None)
+            or getattr(task, "type", None)
+            or getattr(getattr(task, "data", None), "type", None)
+        )
         if str(task_type) != str(Task.TaskTypes.controller):
             continue
         if "pipeline" not in (task.get_system_tags() or []):
@@ -768,7 +559,11 @@ def _delete_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, 
             candidate_project = str(get_project_name())
             if candidate_project != project_name and not candidate_project.startswith(f"{project_name}/.pipelines/"):
                 continue
-        task_type = getattr(task, "task_type", None) or getattr(task, "type", None) or getattr(getattr(task, "data", None), "type", None)
+        task_type = (
+            getattr(task, "task_type", None)
+            or getattr(task, "type", None)
+            or getattr(getattr(task, "data", None), "type", None)
+        )
         if str(task_type) != str(Task.TaskTypes.controller):
             continue
         delete = getattr(task, "delete", None)
@@ -969,7 +764,9 @@ def register_tabular_pipeline(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Register or dry-run the ClearML tabular training pipeline graph.")
-    parser.add_argument("--task", default="config/tasks/tabular_pipeline.yaml", help="Path to pipeline task config YAML.")
+    parser.add_argument(
+        "--task", default="config/tasks/tabular_pipeline.yaml", help="Path to pipeline task config YAML."
+    )
     parser.add_argument("--profile", default="config/profiles/clearml-dev.yaml", help="Path to profile config YAML.")
     parser.add_argument("--dry-run", action="store_true", help="Print the pipeline DAG without requiring ClearML SDK.")
     parser.add_argument(
