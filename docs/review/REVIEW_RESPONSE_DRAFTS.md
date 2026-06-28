@@ -545,3 +545,16 @@ Phase 1では、R01/R13/R14/R21/R22/R23/R24/R25 を対象に、実装コード�
 - R23 draft: MkDocs build/deploy workflow is restored, but GitHub Pages deployment target remains `needs_confirmation`.
 - R24 draft: `.vscode` shared settings/extensions are restored without personal paths or secrets.
 - R25 draft: `ml_platform.code-workspace` is restored with relative folders for repo root, `pkgs/core`, and `pkgs/tabular`.
+
+## Prompt 2-B reviewer reply draft update
+
+Status: draft / implementation prepared / pending commit
+
+```text
+Phase 2では、R02/R08/R16/R17 を対象に、root pyproject.toml を uv workspace の正本へ寄せ、uv.lock を生成しました。requirements.txt / requirements-dev.txt は Docker/ClearML remote と legacy pip setup の互換ファイルとして残しています。
+```
+
+- R02 draft: uv workspace, workspace package sources, clearml/gbm extras, dev/docs dependency groups, and `uv.lock` were added. CI, smoke, and MkDocs workflows now use `uv sync --frozen` and `uv run`. `gitlint` remains requirements-only because gitlint 0.19.x pins `sh==1.14.3`, which fails uv lock metadata build on Windows.
+- R08 draft: `import_clearml_sdk()` remains for the local `clearml/` operations directory compatibility, but its error handling now distinguishes missing SDK, missing SDK dependencies, and import failures. Official ClearML SDK resolution was confirmed under uv.
+- R16 draft: local script bootstrap was removed and Ruff no longer reports E402. ClearML direct-entrypoint files keep documented E402 ignores until the runtime entrypoint boundary moves in R18.
+- R17 draft: `scripts/_bootstrap.py` was deleted and local scripts now rely on uv workspace/package-installed imports. `clearml/_entrypoint_bootstrap.py` remains intentionally because synced ClearML templates still execute `clearml/app.py` and `clearml/pipelines.py` directly.
