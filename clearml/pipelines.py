@@ -104,14 +104,6 @@ def pipeline_runtime_params(
     return _training_pipeline_runtime_params(pipeline_cfg, load_yaml(profile_path))
 
 
-def pipeline_ui_params(
-    task_path: str | Path = "config/tasks/tabular_pipeline.yaml",
-    profile_path: str | Path = "config/profiles/clearml-dev.yaml",
-) -> dict[str, Any]:
-    """Deprecated compatibility wrapper for `pipeline_runtime_params`."""
-    return pipeline_runtime_params(task_path, profile_path)
-
-
 def pipeline_arg_params(params: dict[str, Any]) -> dict[str, Any]:
     """Mirror UI params under Args/* so ClearML Pipeline New Run exposes them."""
     return {f"{PIPELINE_ARG_PREFIX}{key}": value for key, value in params.items()}

@@ -92,6 +92,16 @@ Planned files:
 deploy/**, docs/review/*
 ```
 
+R04 final scope note:
+
+```text
+This initial draft is superseded by the final response summary below.
+Kubernetes / K8 verification was intentionally excluded from this repository
+cleanup. R04 is recorded as not_applicable; no kubectl, kustomize, helm,
+cluster verification, rollout check, or Kubernetes manifest change was
+performed in this branch.
+```
+
 
 ## R05 - 明確な入力型の Any を Task または Protocol へ狭める
 

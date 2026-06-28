@@ -1007,3 +1007,124 @@
   - Commit the final documentation evidence if desired.
   - Keep R04 out of this cleanup branch. Handle Kubernetes evidence in a
     separate operational branch/repository.
+
+## 2026-06-29 - Final completion judgment
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: final completion judgment
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 30`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m pre_commit run --all-files`
+  - `rg -n "ui_params|ui_value|default_ui_params|pipeline_ui_params" clearml pkgs scripts tests docs`
+  - `rg -n "sys\\.path|_entrypoint_bootstrap|add_clearml_entrypoint_paths" clearml pkgs scripts tests docs`
+  - `rg -n "getattr\\(" clearml pkgs scripts tests`
+  - `rg -n "set_dotted_path|class Registry" .`
+  - `rg -n "OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS" clearml pkgs scripts`
+- Results:
+  - Completion: `pass_with_notes`
+  - Working tree was clean before this log entry.
+  - Current branch was `review/pr28-complete-response`.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+  - R01-R27 statuses are recorded in `docs/review/PR28_REVIEW_MAP.md`.
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md` contains reviewer replies, including
+    the R04 Kubernetes / K8 scope exclusion.
+  - `docs/review/PORTING_GUIDE.md` contains the target-repo migration order and
+    excludes `review/r07-clearml-k8s-evidence`.
+  - `set_dotted_path` and `class Registry` remain only in review source/docs and
+    the smoke assertion proving the alias is absent from code.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands failed because PATH `python` resolves
+    to the Windows Store alias on this machine.
+  - `uv run python -m pre_commit run --all-files` failed only at the Ruff format
+    check hook. The same formatting debt is tracked under R01.
+  - Residual `ui_*` names remain as compatibility wrappers/tests and are tracked
+    under R15.
+  - `clearml/_entrypoint_bootstrap.py` remains for ClearML direct-entrypoint
+    compatibility and is tracked under R17.
+  - `getattr(...)` remains in flexible ClearML SDK/optional attribute surfaces;
+    the unsafe execution-image path from R06 is already addressed.
+  - R03 residual search still finds BLAS/OpenMP defaults in `clearml/app.py`,
+    `scripts/local_run.py`, and `scripts/make_sample_data.py`.
+- Remaining items:
+  - `in_progress`: R01, R08, R15, R16, R26
+  - `needs_confirmation`: R13, R17, R18, R23
+  - `deferred`: R03
+  - `not_applicable`: R04
+  - `blocked`: none
+- K8 scope handling:
+  - R04 is `not_applicable`.
+  - Kubernetes / K8 verification is intentionally excluded from completion.
+  - No `kubectl`, `kustomize`, `helm`, cluster verification, rollout checks, or
+    Kubernetes manifest edits were performed for this judgment.
+- Next action:
+  - Commit this final judgment log if desired.
+  - Suggested commit message: `docs: record final completion judgment`.
+
+## 2026-06-29 - Final review response status reconciliation
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: confirm no unrecorded review-response leftovers after final
+  completion judgment, without Kubernetes / K8 scope.
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 30`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m pre_commit run --all-files`
+  - PowerShell status extraction for R01-R27 from
+    `docs/review/PR28_REVIEW_MAP.md`
+  - Presence check for R01-R27 in `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Results:
+  - R01-R27 all exist in the final review map override and all have a final
+    status.
+  - R04 is `not_applicable`, not `done`.
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md` contains R01-R27 references.
+  - Added an R04 final scope note immediately after the old R04 initial draft so
+    the draft file cannot be read as claiming Kubernetes / K8 verification was
+    completed in this branch.
+  - `docs/review/PORTING_GUIDE.md` contains target-repo cherry-pick order and
+    explicitly excludes `review/r07-clearml-k8s-evidence`.
+  - `docs/review/CODEX_WORK_LOG.md` already contained the final completion
+    judgment; this entry records the reconciliation pass.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+- Remaining recorded statuses:
+  - `in_progress`: R01, R08, R15, R16, R26
+  - `needs_confirmation`: R13, R17, R18, R23
+  - `deferred`: R03
+  - `not_applicable`: R04
+  - `blocked`: none
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python`
+    resolves to the Windows Store alias.
+  - `uv run python -m pre_commit run --all-files` still fails only at the Ruff
+    format check hook for the already-recorded format debt.
+  - No new unrecorded review leftovers were found.
+- K8 scope handling:
+  - Kubernetes / K8 verification remains excluded.
+  - No `kubectl`, `kustomize`, `helm`, cluster verification, rollout checks, or
+    Kubernetes manifest edits were performed.
+- Next action:
+  - Commit this reconciliation note and the prior final judgment log if desired.
+  - Suggested commit message:
+    `docs: reconcile final review response status`.

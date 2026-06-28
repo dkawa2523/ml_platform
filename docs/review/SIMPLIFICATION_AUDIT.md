@@ -52,6 +52,55 @@ verification path is `uv run python ...`.
 | `uv run python -m vulture clearml pkgs scripts tests --min-confidence 70` | failed: module not installed |
 | `uv run python -m deptry .` | failed: module not installed |
 
+## CLEAN-1 S01/S02 Deletion Pass
+
+Date: 2026-06-29
+
+Confirmed removals:
+
+- `clearml/adapter.py`
+  - removed `as_list()`
+  - removed `default_ui_params()`
+  - removed `grouped_ui_params()`
+  - removed `apply_ui_params()`
+- `clearml/pipelines.py`
+  - removed `pipeline_ui_params()`
+- `clearml/templates.py`
+  - removed `_task_ui_params()`
+
+Reason:
+
+- Repository grep showed no production caller for these wrappers.
+- Active tests used them only to assert compatibility; tests were migrated to
+  the current runtime names.
+- The wrappers were one-line aliases to current helpers and did not represent
+  ClearML template runner paths, CLI entrypoints, or product behavior.
+
+Post-removal verification:
+
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 117 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check .`: failed on the pre-existing 16-file
+  format debt; no newly edited file remains in the format-failure list.
+- `uv run python -m pytest tests/test_clearml_mapping.py`: passed, 49 tests.
+- `uv run python -m ruff check clearml tests/test_clearml_mapping.py`: passed.
+- `rg "def as_list|def default_ui_params|def grouped_ui_params|def apply_ui_params|def pipeline_ui_params|def _task_ui_params" clearml tests`: no live definitions.
+- `python -m ...` commands with the bare `python` launcher failed because this
+  workstation resolves `python` to the Windows Store alias.
+
+Not removed in CLEAN-1:
+
+- `clearml/_entrypoint_bootstrap.py`: ClearML direct-entrypoint compatibility
+  still needs remote/template confirmation.
+- `_set_script_with_compat()` and `_set_pipeline_script_with_compat()`:
+  ClearML SDK script metadata compatibility remains a live behavior.
+- `_delete_legacy_pipeline_templates()`: still called during pipeline draft sync
+  to clean a known old template name.
+- `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
+  `ml_platform_tabular.pipeline`: compatibility facades remain referenced by
+  tests, runner paths, `stage.py`, and porting notes.
+
 ## Verification Notes
 
 Passing checks:
@@ -150,22 +199,25 @@ deleting live code. Until then, S01 stays `needs_confirmation`.
 
 ## Stale Compatibility Layer Candidates
 
-These wrappers or compatibility surfaces are intentional today, but are
+The following one-line UI-named wrappers were removed in CLEAN-1 after
+repository references were migrated to the runtime names:
+
+- `as_list()`
+- `default_ui_params()`
+- `grouped_ui_params()`
+- `apply_ui_params()`
+- `pipeline_ui_params()`
+- `_task_ui_params()`
+
+The remaining wrappers or compatibility surfaces are intentional today, but are
 candidates for staged removal after target imports and ClearML execution paths
 are confirmed:
 
-- `clearml/adapter.py`
-  - `as_list()`
-  - `default_ui_params()`
-  - `grouped_ui_params()`
-  - `apply_ui_params()`
 - `clearml/pipelines.py`
-  - `pipeline_ui_params()`
   - `ui_params` argument naming in build helpers
   - `_set_pipeline_script_with_compat()`
   - `_delete_legacy_pipeline_templates()`
 - `clearml/templates.py`
-  - `_task_ui_params()`
   - `_set_script_with_compat()`
 - `clearml/_entrypoint_bootstrap.py`
   - still required unless direct ClearML `clearml/app.py` and

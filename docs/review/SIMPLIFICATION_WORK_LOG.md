@@ -95,3 +95,99 @@ Start CLEAN-1 with S06 or S09:
 2. Migrate internal tabular tests and `stage.py` away from private facade
    imports.
 3. Keep all facade and ClearML runner path removals gated by confirmation.
+
+## 2026-06-29 - CLEAN-1 confirmed stale wrapper removal
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: remove confirmed one-line stale compatibility wrappers under S01/S02
+  without touching public runner paths, ClearML template entrypoints,
+  `docs/review/source`, or Kubernetes / K8 assets.
+
+## Changed Files
+
+- `clearml/adapter.py`
+- `clearml/pipelines.py`
+- `clearml/templates.py`
+- `tests/test_clearml_mapping.py`
+- `docs/review/SIMPLIFICATION_AUDIT.md`
+- `docs/review/SIMPLIFICATION_FIX_MAP.md`
+- `docs/review/SIMPLIFICATION_WORK_LOG.md`
+
+Pre-existing modified files from earlier review-document work remain separate:
+
+- `docs/review/CODEX_WORK_LOG.md`
+- `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+
+## Commands
+
+```powershell
+git status --short
+git branch --show-current
+rg -n "Backward-compatible|compat|deprecated|legacy|temporary|workaround" clearml pkgs scripts tests docs
+rg -n "Registry|set_dotted_path|as_list|default_ui_params|grouped_ui_params|apply_ui_params|pipeline_ui_params|_task_ui_params|_ui_value" .
+uv run python -m vulture clearml pkgs scripts tests --min-confidence 80
+uv run python -m ruff check .
+git grep -n "default_ui_params\|grouped_ui_params\|apply_ui_params\|pipeline_ui_params\|_task_ui_params\|as_list" -- ':!docs/review/source/*'
+uv run python -m pytest tests/test_clearml_mapping.py
+uv run python -m ruff check clearml tests/test_clearml_mapping.py
+rg -n "def as_list|def default_ui_params|def grouped_ui_params|def apply_ui_params|def pipeline_ui_params|def _task_ui_params" clearml tests
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+uv run python -m vulture clearml pkgs scripts tests --min-confidence 80
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m vulture clearml pkgs scripts tests --min-confidence 80
+```
+
+## Results
+
+- Removed confirmed one-line wrappers:
+  - `as_list`
+  - `default_ui_params`
+  - `grouped_ui_params`
+  - `apply_ui_params`
+  - `pipeline_ui_params`
+  - `_task_ui_params`
+- Migrated active tests to current runtime helper names.
+- Added assertions that removed wrapper names are no longer exposed from the
+  ClearML adapter/pipeline modules.
+- `uv run python -m pytest tests/test_clearml_mapping.py`: passed, 49 tests.
+- `uv run python -m ruff check clearml tests/test_clearml_mapping.py`: passed.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 117 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check .`: failed only on the pre-existing
+  16-file format debt; `tests/test_clearml_mapping.py` was manually adjusted so
+  this patch does not add new format debt.
+- The uv-managed interpreter remains the verified path for Python commands in
+  this workstation.
+
+## Failures / Unknowns
+
+- `uv run python -m vulture ...`: failed because `vulture` is not installed.
+- Bare `python -m compileall`, `python -m pytest`, `python -m ruff check`,
+  `python -m ruff format --check`, and `python -m vulture` failed with exit
+  9009 because the `python` command resolves to the Windows Store alias in this
+  workstation.
+- Broad unused-code deletion remains `needs_confirmation`.
+- ClearML direct-entrypoint bootstrap, script metadata compatibility helpers,
+  and tabular compatibility facades were not removed because they are referenced
+  by active runtime paths, tests, porting notes, or require external ClearML
+  remote confirmation.
+
+## Next Action
+
+CLEAN-2 should focus on one of:
+
+1. S09: migrate internal tabular tests and `stage.py` away from private facade
+   helper imports.
+2. S06: decide whether `vulture` / `deptry` should be temporary audit tools or
+   permanent dev dependencies.
+3. S04: simplify duplicated ClearML diagnostics and reporting helpers with
+   behavior-preserving tests.

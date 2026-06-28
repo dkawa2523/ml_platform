@@ -145,11 +145,6 @@ def _task_runtime_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
     return params
 
 
-def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
-    """Deprecated compatibility wrapper for `_task_runtime_params`."""
-    return _task_runtime_params(task_name, cfg)
-
-
 def _set_script_with_compat(
     task: Any,
     *,

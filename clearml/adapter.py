@@ -275,11 +275,6 @@ def as_str_list(value: Any) -> list[str] | None:
     raise ValueError(f"Cannot convert value to list: {value!r}")
 
 
-def as_list(value: Any) -> list[str] | None:
-    """Deprecated compatibility wrapper for `as_str_list`."""
-    return as_str_list(value)
-
-
 def as_dict(value: Any) -> dict[str, Any]:
     if value is None or value == "":
         return {}
@@ -422,22 +417,12 @@ def default_runtime_params(cfg: dict[str, Any]) -> dict[str, Any]:
     return params
 
 
-def default_ui_params(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Deprecated compatibility wrapper for `default_runtime_params`."""
-    return default_runtime_params(cfg)
-
-
 def grouped_runtime_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for key, value in params.items():
         group, name = key.split("/", 1)
         groups.setdefault(group, {})[name] = value
     return groups
-
-
-def grouped_ui_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Deprecated compatibility wrapper for `grouped_runtime_params`."""
-    return grouped_runtime_params(params)
 
 
 def apply_runtime_params(
@@ -575,16 +560,6 @@ def apply_runtime_params(
             if ui_key in connected:
                 cfg["stage_inputs"][key] = connected[ui_key]
     return cfg
-
-
-def apply_ui_params(
-    cfg: dict[str, Any],
-    connected: dict[str, Any],
-    *,
-    resolved_local_path: str | None = None,
-) -> dict[str, Any]:
-    """Deprecated compatibility wrapper for `apply_runtime_params`."""
-    return apply_runtime_params(cfg, connected, resolved_local_path=resolved_local_path)
 
 
 def _decode_stage_value(value: Any) -> Any:
