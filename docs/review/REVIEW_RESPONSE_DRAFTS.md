@@ -599,3 +599,32 @@ R26について、まず外部YAML境界にdataclassベースのtyped config mod
 - Existing dict compatibility is preserved: `load_run_config()` still returns a plain dict and keeps absent sections absent.
 - Tests cover valid minimal config, default values, wrong-type failures, unknown-key preservation, override parsing, and `load_run_config()` compatibility.
 - Verification: `uv run python -m pytest` passed 102 tests; compileall passed. Full Ruff still reports pre-existing out-of-scope F841/F401 and broad formatting debt.
+
+## Prompt 4-A reviewer reply draft update
+
+Status: draft / scaffold implemented / pending commit
+
+```text
+R18について、まず全面rewriteではなく、core contract と tabular manifest/policy の足場を追加しました。`pkgs/core` には runtime-facing な spec/plan 型を置き、`pkgs/tabular` には tabular の task/stage/pipeline manifest、model suite / quality preset policy、ClearML なしで構築できる `DomainPipelinePlan` を追加しています。既存の ClearML runtime 挙動はこの段階では変えず、次のPrompt 4-Bで `clearml/pipelines.py` が manifest/policy を読む方向へ段階接続します。
+```
+
+- Added core contracts: `ArtifactSpec`, `ParameterSpec`, `StageSpec`, `PipelineSpec`, `TaskSpec`, `PackageManifest`, `DomainStepPlan`, and `DomainPipelinePlan`.
+- Added runtime adapter protocol scaffold in `ml_platform_core.runtime_types`.
+- Added tabular-owned manifest and policy modules for tabular task/stage declarations, model suites, quality presets, and a runtime-neutral training graph plan.
+- Added tests that validate manifest uniqueness, runner path resolution without ClearML, required artifacts/parameters, contract kind validation, policy preset copy safety, duplicate-key rejection, and `DomainPipelinePlan` construction.
+- Verification: `uv run python -m pytest` passed 110 tests; `uv run python -m compileall clearml pkgs scripts` passed. Targeted Ruff/format for new files passed.
+- Remaining R18 work: `clearml/pipelines.py` still contains tabular defaults and graph assembly until Prompt 4-B connects the ClearML renderer to the manifest.
+
+## Prompt 4-B reviewer reply draft update
+
+Status: draft / implementation prepared / pending commit
+
+```text
+R18について、tabular manifest / domain plan を ClearML runtime が消費する構造へ一段進めました。tabular model suite、quality preset、runtime parameter defaults、candidate/ensemble policy、training graph construction は `ml_platform_tabular.policy` / `ml_platform_tabular.manifest` 側へ移し、`clearml/pipelines.py` は `DomainPipelinePlan` を既存の ClearML `PipelineController` stepへrenderする責務に寄せています。既存のstage名、ClearML parameter key、direct entrypoint互換は維持しています。
+```
+
+- Runtimeから移したもの: model suite selection, quality mode preset application, default runtime parameter construction, candidate normalization, ensemble policy, and training graph/domain plan construction.
+- Runtimeに残したもの: ClearML SDK access, PipelineController rendering, project/queue/tag wiring, task draft lifecycle, script metadata, artifact reference wiring, and direct `clearml/app.py` / `clearml/pipelines.py` entrypoint compatibility.
+- Tests added/updated: domain plan override propagation in `tests/test_runtime_manifest.py`; fake-controller rendering/order check in `tests/test_clearml_mapping.py`.
+- Verification: `uv run python -m compileall clearml pkgs scripts` passed; `uv run python -m pytest` passed 112 tests; targeted Ruff/format for changed R18 files passed.
+- Remaining verification: ClearML localhost UI, ClearML remote execution, and Kubernetes behavior are manual verification required. Full Ruff still has pre-existing F841/F401 and broad format debt outside this R18 change.
