@@ -690,3 +690,52 @@
   - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
 - Next action:
   - Phase 5 should add tabular characterization tests before module splitting, especially around training/inference artifact compatibility and ClearML-facing output contracts.
+
+## 2026-06-29 - Prompt 5 tabular characterization before module split
+
+- Branch: `review/r05-tabular-characterization-tests`
+- Worker: Codex
+- Purpose: Add ClearML-free characterization tests for current tabular pipeline, inference, and plot outputs before splitting `pipeline.py`, `infer.py`, and `plots.py`.
+- Review IDs: TABULAR-SPLIT, related R18/R26
+- Changed files:
+  - `tests/test_tabular_characterization.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/EXTRA_REVIEW_NOTES.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `find pkgs/tabular/src/ml_platform_tabular -maxdepth 2 -type f -print | sort`
+  - `rg -n "def run_|def .*plot|def evaluate_models|def train|def infer|class " pkgs/tabular/src/ml_platform_tabular`
+  - `find tests pkgs/tabular -maxdepth 5 -type f | sort | grep -E "test_|_test"`
+  - temporary local probes against tiny seeded train/infer runs to identify current artifact/table/plot/metric keys
+  - `uv run python -m pytest tests/test_tabular_characterization.py`
+  - `uv run python -m ruff format tests/test_tabular_characterization.py`
+  - `uv run python -m ruff check tests/test_tabular_characterization.py`
+  - `uv run python -m ruff format --check tests/test_tabular_characterization.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `tests/test_tabular_characterization.py`.
+  - Pinned training output contract for artifact keys, table keys, plot keys, metric keys, leaderboard columns, candidate prediction columns, evaluation prediction columns, summary rows, and decision summary fields.
+  - Pinned inference output contract for artifact/table/plot keys, metric keys, slim prediction columns, schema check table columns/status, prediction summary rows, source summary fields, and prediction manifest fields.
+  - Pinned plot helper contracts for leaderboard tables/plots, candidate metrics tables/plots, feature importance tables/plots, and prediction summary tables/plots.
+  - Targeted characterization tests passed: 3 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 115 passed.
+  - Targeted Ruff check and format check for `tests/test_tabular_characterization.py` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt in existing files.
+  - Numeric model-score exactness, optional GBM behavior, ClearML server/UI, ClearML remote execution, and Kubernetes execution remain out of scope for this characterization phase.
+- Next action:
+  - Phase 6 should split tabular modules in this order: `plots.py` first, `infer.py` second, typed result/artifact helper boundaries third, then `pipeline.py` orchestration into training, ensemble, evaluation, ranking, summary, recommendation, and artifact-writing helpers.
