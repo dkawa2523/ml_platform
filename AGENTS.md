@@ -114,3 +114,17 @@ Boundary check:
 ```powershell
 rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular
 ```
+
+## Review Response Rules
+
+- Do not run `git push` from this repository unless the user explicitly requests it.
+- Do not display, create, or commit secrets, credentials, ClearML API keys, or `.env` contents.
+- Keep each change focused on one purpose. Do not mix review responses with unrelated improvements.
+- Include `Review-Refs: Rxx` in the body of commits that address review comments.
+- Put review-external improvements on `feature/non-review-improvements`.
+- After each review response task, update `docs/review/PR28_REVIEW_MAP.md` and `docs/review/CODEX_WORK_LOG.md`.
+- Add characterization tests before large refactors.
+- Split `pipeline.py`, `infer.py`, and `plots.py` only after existing-output compatibility tests are in place.
+- If ClearML localhost UI or Kubernetes verification cannot be run, record `manual verification required`.
+- Prefer `pyproject.toml` / uv-managed dependencies for dependency changes.
+- Edit requirements files only for compatibility reasons, and record the reason in the work log.
