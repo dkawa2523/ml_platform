@@ -167,13 +167,26 @@ def _without_repo_clearml_shadow() -> Iterator[None]:
 
 
 def import_clearml_sdk() -> Any:
+    """Import the official ClearML SDK while the repo keeps `clearml/`.
+
+    The operations directory is still named `clearml` for template compatibility,
+    so SDK imports stay behind this helper until the runtime entrypoints move.
+    """
     try:
         with _without_repo_clearml_shadow():
             return importlib.import_module("clearml")
-    except Exception as exc:  # pragma: no cover - optional dependency
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        if exc.name == "clearml":
+            raise ClearMLUnavailable(
+                "Official ClearML SDK is not installed. Install the `clearml` extra or run `uv sync --extra clearml`."
+            ) from exc
         raise ClearMLUnavailable(
-            "Official ClearML SDK is not installed or cannot be imported. "
-            "Install with `pip install clearml`."
+            f"ClearML SDK dependency is missing while importing official SDK: {exc.name}"
+        ) from exc
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ClearMLUnavailable(
+            "Official ClearML SDK is installed but could not be imported. "
+            "Check the SDK version and its optional runtime dependencies."
         ) from exc
 
 
@@ -189,8 +202,14 @@ def import_clearml_automation() -> Any:
     try:
         with _without_repo_clearml_shadow():
             return importlib.import_module("clearml.automation")
-    except Exception as exc:  # pragma: no cover - optional dependency
-        raise ClearMLUnavailable("ClearML automation module is unavailable. Install/upgrade ClearML SDK.") from exc
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        if exc.name in {"clearml", "clearml.automation"}:
+            raise ClearMLUnavailable("ClearML automation module is unavailable. Install/upgrade ClearML SDK.") from exc
+        raise ClearMLUnavailable(
+            f"ClearML automation dependency is missing while importing official SDK: {exc.name}"
+        ) from exc
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ClearMLUnavailable("ClearML automation module could not be imported. Install/upgrade ClearML SDK.") from exc
 
 
 def as_bool(value: Any, *, default: bool = False) -> bool:

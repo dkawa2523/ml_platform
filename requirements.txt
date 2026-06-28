@@ -1,3 +1,6 @@
+# Compatibility file for Docker/ClearML remote paths.
+# Source of truth is pyproject.toml plus uv.lock; keep this file in sync while
+# deploy/base/Dockerfile and ClearML Agent setup still consume requirements.txt.
 pandas>=2.0
 numpy>=1.24
 pyyaml>=6.0

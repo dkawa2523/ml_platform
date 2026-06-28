@@ -526,3 +526,417 @@ Use `.venv\Scripts\python.exe` or activate `.venv` locally. CI can use
 - ClearML localhost UI: manual verification required.
 - ClearML remote execution: manual verification required.
 - Kubernetes / ClearML remote target cluster: manual verification required.
+
+## Prompt 2-A dependency/import investigation
+
+### Git and environment state
+
+```text
+git status --short
+<clean>
+
+git branch --show-current
+review/r02-dependency-import-runtime
+
+python --version
+Result: failed; Windows Store execution alias
+
+python -m pip --version
+Result: failed; Windows Store execution alias
+
+.\.venv\Scripts\python.exe --version
+Python 3.13.12
+
+.\.venv\Scripts\python.exe -m pip --version
+pip 25.3 from .venv
+
+uv --version
+uv 0.11.16 (135a36367 2026-05-21 x86_64-pc-windows-msvc)
+```
+
+### Dependency management state
+
+```text
+Root pyproject.toml:
+- project name: ml-platform-mvp
+- runtime dependencies: empty list
+- optional clearml extra: clearml>=1.14
+- pytest pythonpath still points at pkgs/core/src, pkgs/tabular/src, and repo root
+- Ruff and import-linter config exists from Phase 1
+
+requirements.txt:
+- pandas>=2.0
+- numpy>=1.24
+- pyyaml>=6.0
+- scikit-learn>=1.3
+- pillow>=10.0
+- clearml==2.1.7
+
+requirements-dev.txt:
+- includes requirements.txt
+- pytest>=8.0
+- ruff>=0.8
+- pre-commit>=4.0
+- gitlint>=0.19
+- radon>=6.0
+- import-linter>=2.0
+
+pkgs/core/pyproject.toml:
+- package dependencies include pandas and pyyaml
+
+pkgs/tabular/pyproject.toml:
+- package dependencies include ml-platform-core, pandas, numpy, scikit-learn, and pillow
+- optional gbm extras include lightgbm, xgboost, and catboost
+
+uv.lock:
+- missing
+```
+
+`requirements.txt` is still used outside local development:
+
+```text
+deploy/base/Dockerfile:
+- installs requirements.txt and clearml-agent
+- installs editable pkgs/core and pkgs/tabular[gbm]
+
+deploy/base/configmap.yaml:
+- CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES is true
+
+clearml/templates.py:
+- remote package list still includes GBM packages for ClearML Agent venvs
+```
+
+Classification:
+
+- R02 is `in_progress`.
+- Prompt 2-B should make `pyproject.toml` / `uv.lock` the source of truth.
+- Keep requirements files as compatibility files for Docker and ClearML remote execution rather than deleting them in the same change.
+
+### uv dry-run/check
+
+```text
+uv sync --all-extras --dev --dry-run
+Result: success; no mutation performed
+Summary:
+- would use project environment `.venv`
+- would create `uv.lock`
+- would download 5 packages
+- would uninstall 42 packages
+- would install 5 packages
+- would upgrade packages including clearml from 2.1.7 to 2.1.9
+
+uv sync --all-extras --dev --check
+Result: failed
+Summary:
+- environment is outdated
+- lockfile would be created
+```
+
+Actual `uv sync` was not run in Prompt 2-A because it would mutate `.venv` and
+create `uv.lock`. That mutation is deferred to Prompt 2-B.
+
+### Bootstrap and import structure
+
+Manual path bootstrap remains:
+
+```text
+clearml/_entrypoint_bootstrap.py
+- prepends clearml directory
+- prepends pkgs/core/src
+- prepends pkgs/tabular/src
+
+scripts/_bootstrap.py
+- prepends pkgs/core/src
+- prepends pkgs/tabular/src
+- prepends clearml
+```
+
+Files importing after bootstrap:
+
+```text
+clearml/app.py
+clearml/pipelines.py
+clearml/templates.py
+scripts/local_run.py
+scripts/sync_clearml_templates.py
+scripts/clearml_pipeline.py
+```
+
+Dynamic ClearML SDK import/shadow handling remains:
+
+```text
+clearml/adapter.py
+- _without_repo_clearml_shadow()
+- import_clearml_sdk()
+- import_clearml_automation()
+- import_clearml_symbol()
+```
+
+Sibling imports still depend on the current entrypoint layout:
+
+```text
+clearml/app.py          -> from adapter import ...
+clearml/pipelines.py    -> from adapter import ...
+clearml/templates.py    -> from adapter import ..., from pipelines import ...
+```
+
+Tests currently load ClearML entrypoint modules by file path:
+
+```text
+tests/test_clearml_mapping.py
+tests/test_deploy_config.py
+```
+
+These facts explain why imports cannot all be moved to the file top before the
+package install/entrypoint strategy is normalized.
+
+### Import probe
+
+```text
+.\.venv\Scripts\python.exe <import probe>
+
+ml_platform_core ok
+ml_platform_tabular ok
+import clearml resolved to:
+C:\Users\user\Desktop\ml_project\ml_platform\.venv\Lib\site-packages\clearml\__init__.py
+```
+
+Current `.venv` resolves `import clearml` to the official SDK, but the local
+`clearml/` directory name remains a shadow risk for direct script execution,
+test file loaders, and ClearML remote templates.
+
+### Verification results
+
+```text
+.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts
+Result: success
+
+.\.venv\Scripts\python.exe -m pytest
+Result: success; 89 passed
+
+.\.venv\Scripts\python.exe -m ruff check .
+Result: failed
+Summary:
+- E402 in clearml/app.py, clearml/pipelines.py, clearml/templates.py, scripts/local_run.py
+- F841 in pkgs/tabular/src/ml_platform_tabular/infer.py
+- F401 in pkgs/tabular/src/ml_platform_tabular/pipeline.py
+
+.\.venv\Scripts\python.exe -m ruff format --check .
+Result: failed
+Summary:
+- 20 files would be reformatted
+```
+
+Classification:
+
+- E402 belongs to R16/R17 dependency/import normalization.
+- F841/F401 should be handled in the later type/config cleanup phase or a small focused cleanup.
+- Broad formatting should not be mixed into Prompt 2-A/2-B unless explicitly planned.
+
+### Prompt 2-B minimum direction
+
+- Add uv workspace/lock metadata at the root while keeping `pkgs/core` and `pkgs/tabular` as workspace members.
+- Add `uv.lock` via `uv lock`.
+- Keep `requirements.txt` and `requirements-dev.txt` as compatibility files and mark them as derived/compatibility inputs where practical.
+- Move local script execution toward package-installed imports and reduce `scripts/_bootstrap.py` reliance.
+- Do not rename the local `clearml/` directory in Phase 2.
+- Normalize `adapter.import_clearml_sdk()` toward a simpler lazy official SDK import only after confirming local shadow behavior.
+- Keep `clearml/_entrypoint_bootstrap.py` until direct script execution, `spec_from_file_location` tests, synced ClearML templates, and ClearML remote execution are verified.
+
+### Manual verification required
+
+- ClearML localhost UI: manual verification required.
+- ClearML remote template execution for `clearml/app.py` and `clearml/pipelines.py`: manual verification required.
+- Kubernetes / ClearML remote target cluster: manual verification required.
+- Full removal of `clearml/_entrypoint_bootstrap.py`: needs confirmation after remote/template compatibility checks.
+
+## Prompt 2-B dependency/import implementation baseline
+
+### Files changed
+
+```text
+pyproject.toml
+uv.lock
+requirements.txt
+requirements-dev.txt
+.github/workflows/ci.yml
+.github/workflows/smoke-test.yml
+.github/workflows/deploy-mkdocs.yml
+clearml/adapter.py
+scripts/local_run.py
+scripts/sync_clearml_templates.py
+scripts/clearml_pipeline.py
+scripts/_bootstrap.py (deleted)
+docs/review/PR28_REVIEW_MAP.md
+docs/review/CODEX_WORK_LOG.md
+docs/review/BASELINE_ENV_REPORT.md
+docs/review/REVIEW_RESPONSE_DRAFTS.md
+docs/adr/0002-runtime-spec-and-package-manifest-boundary.md
+```
+
+### Dependency state after implementation
+
+```text
+pyproject.toml:
+- root project is uv package=false
+- workspace members: pkgs/core, pkgs/tabular
+- workspace sources: ml-platform-core, ml-platform-tabular
+- root dependencies: ml-platform-core, ml-platform-tabular
+- extras: clearml, gbm
+- dependency groups: dev, docs
+
+uv.lock:
+- generated successfully
+
+requirements.txt / requirements-dev.txt:
+- retained as compatibility files
+- comments now state that pyproject.toml plus uv.lock is the source of truth
+```
+
+`gitlint` note:
+
+```text
+gitlint remains in requirements-dev.txt but is not in the uv dev group.
+Reason:
+- gitlint 0.19.x depends on gitlint-core
+- gitlint-core pins sh==1.14.3
+- sh==1.14.3 imports fcntl during build metadata generation on Windows
+- uv lock fails on this dependency from the Windows workstation
+```
+
+### Bootstrap/import state after implementation
+
+```text
+Removed:
+- scripts/_bootstrap.py
+- scripts/local_run.py dependency on scripts/_bootstrap.py
+- scripts/sync_clearml_templates.py dependency on scripts/_bootstrap.py
+- scripts/clearml_pipeline.py dependency on scripts/_bootstrap.py
+
+Retained:
+- clearml/_entrypoint_bootstrap.py
+```
+
+Reason for retained bootstrap:
+
+```text
+ClearML remote templates still directly execute:
+- clearml/app.py
+- clearml/pipelines.py
+
+These files need the operations directory and workspace packages importable
+before sibling imports. Full removal is blocked until ClearML remote/template
+direct-entrypoint behavior is manually verified.
+```
+
+Ruff import-order state:
+
+```text
+Ruff E402 is no longer reported.
+Documented per-file E402 ignores remain only for:
+- clearml/app.py
+- clearml/pipelines.py
+- clearml/templates.py
+```
+
+### Verification results
+
+```text
+python -m compileall clearml pkgs scripts
+Result: failed; Windows Store execution alias
+
+python -m pytest
+Result: failed; Windows Store execution alias
+
+python -m ruff check .
+Result: failed; Windows Store execution alias
+
+python -m ruff format --check .
+Result: failed; Windows Store execution alias
+
+uv lock
+Result: success after leaving gitlint in requirements compatibility file only
+
+uv sync --all-extras --dev
+Result: success
+
+uv run python -m compileall clearml pkgs scripts
+Result: success
+
+uv run python -m pytest
+Result: success; 89 passed
+
+uv run python -m ruff check .
+Result: failed
+Summary:
+- F841 local variable data_cfg assigned but never used in pkgs/tabular/src/ml_platform_tabular/infer.py
+- F401 numpy imported but unused in pkgs/tabular/src/ml_platform_tabular/pipeline.py
+Classification:
+- out of R02/R08/R16/R17 scope
+- route to Phase 3 type/config cleanup or a focused lint cleanup
+
+uv run python -m ruff format --check .
+Result: failed
+Summary:
+- 19 files would be reformatted
+Classification:
+- broad formatting debt; do not mix into Phase 2
+
+uv run lint-imports --config pyproject.toml
+Result: success; 1 contract kept, 0 broken
+
+uv run python scripts/make_sample_data.py
+Result: success
+
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+Result: success
+
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+Result: success
+
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+Result: success
+
+uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+Result: success
+
+PowerShell here-string import probe piped into uv run python -
+Result: success
+Summary:
+- clearml resolves to .venv site-packages official SDK
+- ml_platform_core resolves to pkgs/core/src
+- ml_platform_tabular resolves to pkgs/tabular/src
+
+uv run gitlint --version
+Result: failed; program not found
+Classification:
+- expected after excluding gitlint from uv dev group due Windows lock issue
+
+git diff --check
+Result: success; Git printed a CRLF-to-LF warning for the ADR file
+
+rg -n "from _bootstrap|add_repo_paths|scripts/_bootstrap|scripts\\_bootstrap" scripts clearml tests
+Result: no matches
+
+uv run python -m ruff check clearml scripts
+Result: success
+
+uv run python -m pre_commit run check-yaml --files .github/workflows/ci.yml .github/workflows/smoke-test.yml .github/workflows/deploy-mkdocs.yml
+Result: success
+
+uv run python -m pre_commit run check-toml --files pyproject.toml
+Result: success
+
+uv run python -m pre_commit run check-added-large-files --files uv.lock
+Result: success
+
+uv run python -m pre_commit run end-of-file-fixer --files <changed text files>
+Result: success
+```
+
+### Manual verification required
+
+- ClearML localhost UI: manual verification required.
+- ClearML remote execution of `clearml/app.py` and `clearml/pipelines.py`: manual verification required.
+- Kubernetes / ClearML remote target cluster: manual verification required.
+- Removal of `clearml/_entrypoint_bootstrap.py`: needs confirmation after remote/template compatibility checks.

@@ -3,10 +3,43 @@ name = "ml-platform-mvp"
 version = "0.1.0"
 description = "Minimal ML platform scaffold with ClearML boundary and tabular regression MVP."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "ml-platform-core",
+  "ml-platform-tabular",
+]
 
 [project.optional-dependencies]
-clearml = ["clearml>=1.14"]
+clearml = ["clearml==2.1.7"]
+gbm = ["ml-platform-tabular[gbm]"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.8",
+  "pre-commit>=4.0",
+  # gitlint remains in requirements-dev.txt for compatibility. gitlint 0.19.x
+  # pins sh==1.14.3, whose build metadata imports fcntl on Windows under uv.
+  "radon>=6.0",
+  "import-linter>=2.0",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "pymdown-extensions>=10.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+  "pkgs/core",
+  "pkgs/tabular",
+]
+
+[tool.uv.sources]
+ml-platform-core = { workspace = true }
+ml-platform-tabular = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = [
@@ -26,6 +59,14 @@ extend-exclude = [
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# ClearML templates execute these files directly, so they must bootstrap the
+# operations directory before sibling imports until R18 moves runtime entrypoints
+# behind a package/manifest boundary.
+"clearml/app.py" = ["E402"]
+"clearml/pipelines.py" = ["E402"]
+"clearml/templates.py" = ["E402"]
 
 [tool.importlinter]
 root_packages = [
