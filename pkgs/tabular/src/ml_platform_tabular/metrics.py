@@ -71,6 +71,6 @@ def regression_prediction_frame(base_frame, y_true, y_pred, *, model_name: str |
 
 
 def write_regression_plot_artifacts(y_true, y_pred, output_dir: Path, *, prefix: str = "validation") -> dict[str, Path]:
-    from .plots import write_regression_plot_artifacts as _write_regression_plot_artifacts
+    from .plotting import write_regression_plot_artifacts as _write_regression_plot_artifacts
 
     return _write_regression_plot_artifacts(y_true, y_pred, output_dir, prefix=prefix)
