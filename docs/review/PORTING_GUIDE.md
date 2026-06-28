@@ -109,18 +109,82 @@ git cherry-pick -x 0301d0e   # test: characterize tabular outputs before module 
 git cherry-pick -x b96f622   # refactor: split tabular plotting responsibilities
 git cherry-pick -x e5eda0a   # refactor: split tabular inference responsibilities
 git cherry-pick -x 50c607a   # refactor: split tabular pipeline responsibilities
+git cherry-pick -x f65ec99   # docs: finalize review response evidence without k8 scope
 ```
 
-After applying the implementation commits, add the final integration docs
-commit from `review/pr28-complete-response` with message:
+The final integration docs commit is:
 
 ```text
-docs: finalize review response evidence without k8 scope
+f65ec99 docs: finalize review response evidence without k8 scope
 ```
 
 Do not cherry-pick a `review/r07-clearml-k8s-evidence` branch from this repo:
 that branch was not available in the local or fetched branch set during final
 integration.
+
+### Commit range confirmation commands
+
+Run these before porting so the target operator can see exactly what each
+source branch contains. These ranges include merge commits because each review
+branch was built on top of earlier review branches; for a clean linear port,
+prefer the cherry-pick order above.
+
+```bash
+git log --oneline main..review/r00-setup-review-tracking
+git log --oneline main..review/r01-tooling-ci
+git log --oneline main..review/r02-dependency-import-runtime
+git log --oneline main..review/r03-types-config-adapter
+git log --oneline main..review/r04-runtime-manifest-boundary
+git log --oneline main..review/r05-tabular-characterization-tests
+git log --oneline main..review/r06-tabular-module-split
+git log --oneline main..review/pr28-complete-response
+```
+
+Expected implementation commits from this source repo:
+
+```text
+9faea03 docs: initialize review response workspace
+1728f08 chore: restore review safety and developer tooling
+86cbb1a build: normalize dependency and runtime import setup
+ba51813 refactor: tighten adapter and core utility contracts
+f4fe03a feat: add runtime contracts and tabular manifest scaffold
+0301d0e test: characterize tabular outputs before module split
+b96f622 refactor: split tabular plotting responsibilities
+e5eda0a refactor: split tabular inference responsibilities
+50c607a refactor: split tabular pipeline responsibilities
+f65ec99 docs: finalize review response evidence without k8 scope
+```
+
+### Cherry-pick command template
+
+Do not run these commands in this source repo unless you are intentionally
+working in the target clone. The `target` remote is shown only as a template.
+
+```bash
+git remote add target git@github.com:<other-account>/<other-repo>.git
+git fetch --all --prune
+git switch -c review-sync/pr28 target/feature/alfa_v1.00
+
+git cherry-pick -x 9faea03
+git cherry-pick -x 1728f08
+git cherry-pick -x 86cbb1a
+git cherry-pick -x ba51813
+git cherry-pick -x f4fe03a
+git cherry-pick -x 0301d0e
+git cherry-pick -x b96f622
+git cherry-pick -x e5eda0a
+git cherry-pick -x 50c607a
+git cherry-pick -x f65ec99
+```
+
+Do not cherry-pick:
+
+```text
+review/r07-clearml-k8s-evidence
+Kubernetes / K8 verification docs
+kubectl / kustomize / cluster evidence
+R04 real-cluster verification work
+```
 
 ### Conflict resolution order
 
@@ -145,20 +209,84 @@ Use this when histories are distant or when the target repo is maintained in a
 separate clone:
 
 ```bash
-git format-patch main..review/pr28-complete-response -o ../pr28-review-response-patches
+mkdir -p /tmp/ml-platform-review-patches
+git format-patch main..review/r00-setup-review-tracking -o /tmp/ml-platform-review-patches/r00
+git format-patch main..review/r01-tooling-ci -o /tmp/ml-platform-review-patches/r01
+git format-patch main..review/r02-dependency-import-runtime -o /tmp/ml-platform-review-patches/r02
+git format-patch main..review/r03-types-config-adapter -o /tmp/ml-platform-review-patches/r03
+git format-patch main..review/r04-runtime-manifest-boundary -o /tmp/ml-platform-review-patches/r04
+git format-patch main..review/r05-tabular-characterization-tests -o /tmp/ml-platform-review-patches/r05
+git format-patch main..review/r06-tabular-module-split -o /tmp/ml-platform-review-patches/r06
+git format-patch main..review/pr28-complete-response -o /tmp/ml-platform-review-patches/final
 
 # In the target repo:
-git am --3way ../pr28-review-response-patches/*.patch
+git am --3way /tmp/ml-platform-review-patches/r00/*.patch
+git am --3way /tmp/ml-platform-review-patches/r01/*.patch
+git am --3way /tmp/ml-platform-review-patches/r02/*.patch
+git am --3way /tmp/ml-platform-review-patches/r03/*.patch
+git am --3way /tmp/ml-platform-review-patches/r04/*.patch
+git am --3way /tmp/ml-platform-review-patches/r05/*.patch
+git am --3way /tmp/ml-platform-review-patches/r06/*.patch
+git am --3way /tmp/ml-platform-review-patches/final/*.patch
 ```
 
 If a patch conflicts, stop and resolve by review ID, not by broad file area.
 Update the target repo's `docs/review/PR28_REVIEW_MAP.md` porting note if a
 behavior differs.
 
+Do not create patch directories for r07, k8, kubernetes, cluster evidence, or
+R04 real-cluster verification. R04 is represented only by the final docs note
+that Kubernetes verification is excluded.
+
+### Conflict-prone files
+
+Expect conflicts around these files first:
+
+```text
+pyproject.toml
+uv.lock
+requirements.txt
+requirements-dev.txt
+.github/workflows/ci.yml
+.github/workflows/smoke-test.yml
+.github/workflows/deploy-mkdocs.yml
+clearml/adapter.py
+clearml/app.py
+clearml/pipelines.py
+clearml/templates.py
+pkgs/core/src/ml_platform_core/config.py
+pkgs/core/src/ml_platform_core/config_models.py
+pkgs/core/src/ml_platform_core/contracts.py
+pkgs/core/src/ml_platform_core/io.py
+pkgs/core/src/ml_platform_core/stages.py
+pkgs/tabular/src/ml_platform_tabular/manifest.py
+pkgs/tabular/src/ml_platform_tabular/policy.py
+pkgs/tabular/src/ml_platform_tabular/plots.py
+pkgs/tabular/src/ml_platform_tabular/infer.py
+pkgs/tabular/src/ml_platform_tabular/pipeline.py
+pkgs/tabular/src/ml_platform_tabular/plotting/*
+pkgs/tabular/src/ml_platform_tabular/inference/*
+pkgs/tabular/src/ml_platform_tabular/training/*
+tests/test_clearml_mapping.py
+tests/test_runtime_manifest.py
+tests/test_tabular_characterization.py
+docs/review/*
+docs/adr/0002-runtime-spec-and-package-manifest-boundary.md
+```
+
+Resolve code conflicts before final docs conflicts. The final docs commit
+should describe the target repo's actual status after any conflict-specific
+adjustments.
+
 ### Target repo first checks
 
 Before relying on the ported branch, check:
 
+- `AGENTS.md`, `docs/SPEC.md`, `docs/CLEARML_UI_SPEC.md`, and
+  `docs/ROADMAP.md` for product-boundary differences.
+- Existing dependency source of truth: `pyproject.toml`, `uv.lock`,
+  `requirements*.txt`, package pyprojects, and Docker/ClearML install commands.
+- Existing GitHub workflows and required checks before replacing CI files.
 - PATH `python` behavior. This source environment needs `uv run python ...`
   because `python` is the Windows Store alias.
 - `uv --version` and lock resolution on the target OS.
@@ -174,6 +302,14 @@ Before relying on the ported branch, check:
 - External imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`,
   and `ml_platform_tabular.pipeline`; compatibility facades are intentionally
   kept and should not be removed during porting.
+
+### PR response text reference
+
+Use `docs/review/REVIEW_RESPONSE_DRAFTS.md`, section
+`Final PR response summary - 2026-06-29, Kubernetes verification excluded`, as
+the target PR reply base. For per-review evidence, use
+`docs/review/PR28_REVIEW_MAP.md`, section
+`Final validation status override - 2026-06-29, no K8 scope`.
 
 ### Exclusions
 
