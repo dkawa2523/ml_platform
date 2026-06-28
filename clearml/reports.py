@@ -89,19 +89,24 @@ NON_REPORT_PLOT_IMAGES = {
 def _read_json(path: str | Path) -> dict[str, Any]:
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
+
+
+def _read_csv_or_none(path: str | Path):
+    try:
+        import pandas as pd
+
+        return pd.read_csv(path)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
 
 
 def _numeric_metrics(payload: dict[str, Any]) -> dict[str, float]:
     metrics = payload.get("metrics", payload)
     if not isinstance(metrics, dict):
         return {}
-    return {
-        name: float(metrics[name])
-        for name in MODEL_METRICS
-        if isinstance(metrics.get(name), Real)
-    }
+    return {name: float(metrics[name]) for name in MODEL_METRICS if isinstance(metrics.get(name), Real)}
 
 
 def _report_candidate_metrics(adapter, path: str | Path, *, title_prefix: str) -> None:
@@ -145,11 +150,8 @@ def _report_plain_metrics(adapter, payload: dict[str, Any], *, title: str = "met
 
 
 def _report_metrics_table(adapter, path: str | Path, *, title: str = "metrics") -> None:
-    try:
-        import pandas as pd
-
-        frame = pd.read_csv(path)
-    except Exception:
+    frame = _read_csv_or_none(path)
+    if frame is None:
         return
     if not {"metric", "value"} <= set(frame.columns):
         return
@@ -162,11 +164,8 @@ def _report_metrics_table(adapter, path: str | Path, *, title: str = "metrics") 
 
 
 def _report_ensemble_metrics_table(adapter, path: str | Path) -> None:
-    try:
-        import pandas as pd
-
-        frame = pd.read_csv(path)
-    except Exception:
+    frame = _read_csv_or_none(path)
+    if frame is None:
         return
     if "ensemble_method" not in frame.columns:
         return
@@ -307,7 +306,7 @@ def _prediction_vs_actual_figure(frame, table_name: str, *, title: str) -> dict[
     )
     title_text = title
     if single_group and traces and "(R2=" in traces[0]["name"]:
-        title_text = f"{title} {traces[0]['name'][traces[0]['name'].find('(R2='):]}"
+        title_text = f"{title} {traces[0]['name'][traces[0]['name'].find('(R2=') :]}"
     return {
         "data": traces,
         "layout": {
@@ -624,11 +623,8 @@ def _report_leaderboard_dashboard(adapter, path: str | Path) -> None:
     report_plotly = getattr(adapter, "report_plotly", None)
     if not callable(report_plotly):
         return
-    try:
-        import pandas as pd
-
-        frame = pd.read_csv(path)
-    except Exception:
+    frame = _read_csv_or_none(path)
+    if frame is None:
         return
     _report_plotly(adapter, "leaderboard", "table", _leaderboard_table_figure(frame))
     _report_plotly(adapter, "leaderboard", "top_k_scores", _leaderboard_topk_bar_figure(frame))
@@ -642,12 +638,11 @@ def _report_prediction_plots(adapter, table_name: str, path: str | Path) -> None
     report_plotly = getattr(adapter, "report_plotly", None)
     if not callable(report_plotly) and not callable(report_scatter) and not callable(report_histogram):
         return
-    try:
-        import pandas as pd
-
-        frame = pd.read_csv(path)
-    except Exception:
+    frame = _read_csv_or_none(path)
+    if frame is None:
         return
+    import pandas as pd
+
     if "prediction" not in frame:
         return
     prediction = pd.to_numeric(frame["prediction"], errors="coerce")

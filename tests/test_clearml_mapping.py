@@ -712,6 +712,38 @@ def test_clearml_adapter_reports_plotly_and_axis_named_histogram():
     ]
 
 
+def test_clearml_adapter_report_plotly_does_not_silence_logger_runtime_errors():
+    adapter_module = load_clearml_adapter_module()
+
+    class FakeLogger:
+        def report_plotly(self, **kwargs):
+            raise RuntimeError("ClearML backend unavailable")
+
+    class FakeTask:
+        def get_logger(self):
+            return FakeLogger()
+
+    adapter = adapter_module.ClearMLAdapter(FakeTask())
+    with pytest.raises(RuntimeError, match="ClearML backend unavailable"):
+        adapter.report_plotly("plot", "series", {"data": []})
+
+
+def test_clearml_adapter_report_plotly_explains_unsupported_logger_signature():
+    adapter_module = load_clearml_adapter_module()
+
+    class FakeLogger:
+        def report_plotly(self, **kwargs):
+            raise TypeError("unsupported")
+
+    class FakeTask:
+        def get_logger(self):
+            return FakeLogger()
+
+    adapter = adapter_module.ClearMLAdapter(FakeTask())
+    with pytest.raises(TypeError, match="report_plotly has an unsupported signature"):
+        adapter.report_plotly("plot", "series", {"data": []})
+
+
 def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     reports = load_clearml_reports_module()
     metrics = tmp_path / "metrics.json"

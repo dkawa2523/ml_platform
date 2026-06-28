@@ -275,3 +275,80 @@ CLEAN-3 should focus on one of:
    remains poor.
 3. S06: decide whether `vulture` / `deptry` should be added for confirmed
    unused-code cleanup.
+
+## 2026-06-29 - CLEAN-S04 diagnostics and reporting error handling
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: simplify diagnostics and error handling by separating best-effort
+  artifact parsing from ClearML logger failures.
+
+## Changed Files
+
+- `clearml/adapter.py`
+- `clearml/reports.py`
+- `tests/test_clearml_mapping.py`
+- `docs/review/SIMPLIFICATION_AUDIT.md`
+- `docs/review/SIMPLIFICATION_FIX_MAP.md`
+- `docs/review/SIMPLIFICATION_WORK_LOG.md`
+
+## Commands
+
+```powershell
+git status --short
+rg -n "print\(|warnings\.warn|logger\.|raise .*Error|except Exception|except BaseException|traceback|diagnostic|summary|decision" clearml pkgs scripts tests
+rg -n "print\(|warnings\.warn|logger\.|raise .*Error|except Exception|except BaseException|traceback" clearml/adapter.py clearml/reports.py clearml/templates.py clearml/pipelines.py
+uv run python -m pytest tests/test_clearml_mapping.py
+uv run python -m ruff check clearml/adapter.py clearml/reports.py tests/test_clearml_mapping.py
+uv run python -m ruff format clearml/adapter.py clearml/reports.py tests/test_clearml_mapping.py
+uv run python -m ruff format --check clearml/adapter.py clearml/reports.py tests/test_clearml_mapping.py
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+```
+
+## Results
+
+- Replaced repeated broad CSV-read catches in `clearml/reports.py` with
+  `_read_csv_or_none()`.
+- Narrowed JSON parsing fallbacks to `OSError`, `UnicodeDecodeError`, and
+  `json.JSONDecodeError`.
+- Narrowed runtime parameter/stage input JSON decoding fallbacks in
+  `clearml/adapter.py`.
+- ClearML logger calls now surface runtime failures instead of swallowing them.
+- ClearML logger signature fallback still catches `TypeError`, then raises a
+  concise unsupported-signature message if no supported signature works.
+- Operator-facing dry-run/sync `print()` output was reviewed and retained.
+- `uv run python -m pytest tests/test_clearml_mapping.py`: passed, 51 tests.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- Changed files pass `ruff format --check`.
+- Full `uv run python -m ruff format --check .`: failed only on known
+  pre-existing 14-file format debt.
+
+## Failures / Unknowns
+
+- The requested bare `python -m ...` commands failed because `python` resolves
+  to the Windows Store alias in this workstation. Use `uv run python`.
+- `clearml_dataset_exists()` still catches broad ClearML SDK exceptions for
+  missing-dataset probing because SDK versions do not expose one stable
+  exception class here.
+- ClearML remote/UI behavior remains manual verification outside this cleanup.
+
+## Next Action
+
+CLEAN-4 should focus on one of:
+
+1. S08: simplify ClearML pipeline/template rendering while preserving runner
+   paths.
+2. S05: reduce remaining mixed responsibilities in `clearml/reports.py` or
+   tabular evaluation.
+3. S06: decide whether unused/dependency audit tools should become dev
+   dependencies.

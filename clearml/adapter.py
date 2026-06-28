@@ -17,11 +17,9 @@ class ClearMLUnavailable(RuntimeError):
 
 
 class ClearMLExecutionTask(Protocol):
-    def set_base_docker(self, *args: Any, **kwargs: Any) -> Any:
-        ...
+    def set_base_docker(self, *args: Any, **kwargs: Any) -> Any: ...
 
-    def update_parameters(self, params: dict[str, Any]) -> Any:
-        ...
+    def update_parameters(self, params: dict[str, Any]) -> Any: ...
 
 
 def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
@@ -187,9 +185,7 @@ def import_clearml_sdk() -> Any:
             raise ClearMLUnavailable(
                 "Official ClearML SDK is not installed. Install the `clearml` extra or run `uv sync --extra clearml`."
             ) from exc
-        raise ClearMLUnavailable(
-            f"ClearML SDK dependency is missing while importing official SDK: {exc.name}"
-        ) from exc
+        raise ClearMLUnavailable(f"ClearML SDK dependency is missing while importing official SDK: {exc.name}") from exc
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ClearMLUnavailable(
             "Official ClearML SDK is installed but could not be imported. "
@@ -216,7 +212,9 @@ def import_clearml_automation() -> Any:
             f"ClearML automation dependency is missing while importing official SDK: {exc.name}"
         ) from exc
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise ClearMLUnavailable("ClearML automation module could not be imported. Install/upgrade ClearML SDK.") from exc
+        raise ClearMLUnavailable(
+            "ClearML automation module could not be imported. Install/upgrade ClearML SDK."
+        ) from exc
 
 
 def validate_clearml_runtime() -> None:
@@ -269,7 +267,7 @@ def as_str_list(value: Any) -> list[str] | None:
             parsed = json.loads(text)
             if isinstance(parsed, list):
                 return [str(v) for v in parsed]
-        except Exception:
+        except json.JSONDecodeError:
             pass
         return [v.strip() for v in text.split(",") if v.strip()]
     raise ValueError(f"Cannot convert value to list: {value!r}")
@@ -568,7 +566,7 @@ def _decode_stage_value(value: Any) -> Any:
         if text.startswith("{") or text.startswith("["):
             try:
                 return json.loads(text)
-            except Exception:
+            except json.JSONDecodeError:
                 return value
     return value
 
@@ -658,9 +656,10 @@ def _looks_like_stage(task: Any, stage: str) -> bool:
 def _looks_like_train_model(task: Any, selector: str) -> bool:
     safe_selector = selector.replace("-", "_")
     name = _task_name(task)
-    return (
-        _task_stage(task) == "train_model"
-        and (_task_model_name(task) == selector or name.endswith(f"train_{safe_selector}") or name.endswith(f"train_{selector}"))
+    return _task_stage(task) == "train_model" and (
+        _task_model_name(task) == selector
+        or name.endswith(f"train_{safe_selector}")
+        or name.endswith(f"train_{selector}")
     )
 
 
@@ -674,6 +673,19 @@ def _discovery_summary(tasks: list[Any]) -> str:
         stage = _task_stage(task) or "-"
         parts.append(f"{_task_name(task)}(stage={stage}, artifacts={_artifact_keys(task)})")
     return "; ".join(parts) if parts else "no tasks discovered"
+
+
+def _read_table_for_reporting(path: Path):
+    try:
+        import pandas as pd
+
+        return pd.read_csv(path)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+
+
+def _raise_logger_signature_error(method_name: str, exc: TypeError) -> None:
+    raise TypeError(f"ClearML logger method {method_name} has an unsupported signature.") from exc
 
 
 class ClearMLAdapter:
@@ -820,7 +832,14 @@ class ClearMLAdapter:
         if selector == "best":
             if "best_model" in artifacts:
                 return source, "best_model", "best_model_json" if "best_model_json" in artifacts else "model_info"
-            evaluate = next((task for task in tasks if _looks_like_stage(task, "evaluate_models") and "best_model" in _task_artifacts(task)), None)
+            evaluate = next(
+                (
+                    task
+                    for task in tasks
+                    if _looks_like_stage(task, "evaluate_models") and "best_model" in _task_artifacts(task)
+                ),
+                None,
+            )
             if evaluate is not None:
                 info_key = "best_model_json" if "best_model_json" in _task_artifacts(evaluate) else "model_info"
                 return evaluate, "best_model", info_key
@@ -832,14 +851,30 @@ class ClearMLAdapter:
             fallback_info_key = f"ensemble_info_{ensemble_method}" if ensemble_method else "ensemble_info"
             if model_key in artifacts and _looks_like_stage(source, "build_ensemble"):
                 return source, model_key, info_key if info_key in artifacts else fallback_info_key
-            ensemble = next((task for task in tasks if _looks_like_stage(task, "build_ensemble") and model_key in _task_artifacts(task)), None)
+            ensemble = next(
+                (
+                    task
+                    for task in tasks
+                    if _looks_like_stage(task, "build_ensemble") and model_key in _task_artifacts(task)
+                ),
+                None,
+            )
             if ensemble is not None:
                 ensemble_artifacts = _task_artifacts(ensemble)
                 return ensemble, model_key, info_key if info_key in ensemble_artifacts else fallback_info_key
         else:
-            if "model" in artifacts and (_looks_like_train_model(source, selector) or _task_model_name(source) == selector):
+            if "model" in artifacts and (
+                _looks_like_train_model(source, selector) or _task_model_name(source) == selector
+            ):
                 return source, "model", "model_info" if "model_info" in artifacts else None
-            train = next((task for task in tasks if _looks_like_train_model(task, selector) and "model" in _task_artifacts(task)), None)
+            train = next(
+                (
+                    task
+                    for task in tasks
+                    if _looks_like_train_model(task, selector) and "model" in _task_artifacts(task)
+                ),
+                None,
+            )
             if train is not None:
                 return train, "model", "model_info" if "model_info" in _task_artifacts(train) else None
         raise ValueError(
@@ -877,7 +912,13 @@ class ClearMLAdapter:
         if source_type == "task_id":
             return self._resolve_task_model_source(cfg)
         if source_type == "local_path":
-            for key in ("artifact_path", "local_model_path", "info_path", "feature_spec_path", "preprocess_bundle_path"):
+            for key in (
+                "artifact_path",
+                "local_model_path",
+                "info_path",
+                "feature_spec_path",
+                "preprocess_bundle_path",
+            ):
                 value = model_cfg.get(key)
                 if isinstance(value, str) and "://" in value:
                     model_cfg[key] = self.resolve_artifact_path(value)
@@ -899,12 +940,13 @@ class ClearMLAdapter:
         report_table = getattr(self.task.get_logger(), "report_table", None)
         if not callable(report_table):
             return
-        try:
-            import pandas as pd
-
-            report_table(title=title, series=series, table_plot=pd.read_csv(path), iteration=iteration)
-        except Exception:
+        frame = _read_table_for_reporting(path)
+        if frame is None:
             return
+        try:
+            report_table(title=title, series=series, table_plot=frame, iteration=iteration)
+        except TypeError as exc:
+            _raise_logger_signature_error("report_table", exc)
 
     def report_scatter(self, title: str, series: str, points: list[tuple[float, float]], iteration: int = 0) -> None:
         if not points:
@@ -934,12 +976,8 @@ class ClearMLAdapter:
                         y=[point[1] for point in points],
                         iteration=iteration,
                     )
-                except Exception:
-                    return
-            except Exception:
-                return
-        except Exception:
-            return
+                except TypeError as exc:
+                    _raise_logger_signature_error("report_scatter2d", exc)
 
     def report_plotly(self, title: str, series: str, figure: dict[str, Any], iteration: int = 0) -> None:
         if not figure:
@@ -952,10 +990,8 @@ class ClearMLAdapter:
         except TypeError:
             try:
                 report_plotly(title=title, series=series, plotly_object=figure, iteration=iteration)
-            except Exception:
-                return
-        except Exception:
-            return
+            except TypeError as exc:
+                _raise_logger_signature_error("report_plotly", exc)
 
     def report_histogram(
         self,
@@ -995,12 +1031,8 @@ class ClearMLAdapter:
             except TypeError:
                 try:
                     report_histogram(title=title, series=series, values=values, iteration=iteration)
-                except Exception:
-                    return
-            except Exception:
-                return
-        except Exception:
-            return
+                except TypeError as exc:
+                    _raise_logger_signature_error("report_histogram", exc)
 
     def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         path = Path(path)
@@ -1009,10 +1041,7 @@ class ClearMLAdapter:
         report_media = getattr(self.task.get_logger(), "report_media", None)
         if not callable(report_media):
             return
-        try:
-            report_media(title=title, series=series, local_path=str(path), iteration=iteration)
-        except Exception:
-            return
+        report_media(title=title, series=series, local_path=str(path), iteration=iteration)
 
     def report_image(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         path = Path(path)
@@ -1024,7 +1053,7 @@ class ClearMLAdapter:
             try:
                 report_image(title=title, series=series, local_path=str(path), iteration=iteration)
                 return
-            except Exception:
+            except TypeError:
                 pass
         self.report_media(title, series, path, iteration=iteration)
 

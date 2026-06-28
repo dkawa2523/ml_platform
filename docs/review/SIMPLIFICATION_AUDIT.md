@@ -312,17 +312,57 @@ S03 verification:
 
 ## Diagnostics, Logging, And Error Handling Duplication
 
-Potential simplification areas:
+LEAN-S00 found several broad catches and repeated reporting fallbacks. CLEAN-S04
+simplified the confirmed cases:
 
-- `clearml/templates.py` and `clearml/pipelines.py` both contain dry-run/print
-  flows and script setup compatibility helpers.
-- `clearml/adapter.py` has several ClearML metadata/tag helpers that are similar
-  to metadata logic in templates and pipelines.
-- `clearml/reports.py` repeats Plotly-like figure dict construction that overlaps
-  conceptually with `pkgs/tabular/src/ml_platform_tabular/plotting`.
-- CLI-style `print()` calls exist in scripts and ClearML sync/plan functions.
-  These are acceptable operator output today, but should be reviewed if a
-  unified logging policy is introduced.
+- `clearml/reports.py`
+  - centralized best-effort CSV loading in `_read_csv_or_none()`.
+  - narrowed JSON parsing fallback to file, encoding, and JSON decode failures.
+  - removed repeated `except Exception: return` blocks around table/dashboard
+    CSV reads.
+- `clearml/adapter.py`
+  - narrowed JSON decoding fallbacks in runtime parameter and stage input
+    decoding.
+  - added one ClearML logger signature error helper.
+  - stopped swallowing non-`TypeError` ClearML logger failures from table,
+    plotly, scatter, histogram, media, and image reporting.
+  - retained `TypeError` fallbacks only where ClearML SDK logger signatures are
+    known to vary.
+- `tests/test_clearml_mapping.py`
+  - added tests that ClearML logger runtime errors surface instead of silently
+    disappearing.
+  - added a test that unsupported ClearML logger signatures produce an
+    actionable message.
+
+Diagnostics intentionally retained:
+
+- `clearml/templates.py` and `clearml/pipelines.py` dry-run/sync `print()` calls
+  remain operator-facing CLI output.
+- `clearml_dataset_exists()` keeps a broad `Exception` catch because ClearML SDK
+  versions raise different exceptions for missing datasets; runtime import
+  failures still surface before that check.
+
+Remaining non-S04 cleanup:
+
+- `clearml/reports.py` still contains Plotly figure construction that overlaps
+  conceptually with tabular plotting modules; track under S05/S08 if it remains
+  hard to read.
+- `clearml/templates.py` and `clearml/pipelines.py` still have separate CLI
+  dry-run printers; keep until a shared operator output format is worth the
+  extra abstraction.
+
+S04 verification:
+
+- `uv run python -m pytest tests/test_clearml_mapping.py`: passed, 51 tests.
+- `uv run python -m ruff check clearml/adapter.py clearml/reports.py tests/test_clearml_mapping.py`: passed.
+- `uv run python -m ruff format --check clearml/adapter.py clearml/reports.py tests/test_clearml_mapping.py`: passed.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m ruff format --check .`: failed on the known pre-existing
+  14-file format debt.
+- The requested bare `python -m ...` validation commands failed because this
+  workstation resolves `python` to the Windows Store alias.
 
 ## Dependency And Tooling Candidates
 
