@@ -558,3 +558,44 @@ Phase 2では、R02/R08/R16/R17 を対象に、root pyproject.toml を uv worksp
 - R08 draft: `import_clearml_sdk()` remains for the local `clearml/` operations directory compatibility, but its error handling now distinguishes missing SDK, missing SDK dependencies, and import failures. Official ClearML SDK resolution was confirmed under uv.
 - R16 draft: local script bootstrap was removed and Ruff no longer reports E402. ClearML direct-entrypoint files keep documented E402 ignores until the runtime entrypoint boundary moves in R18.
 - R17 draft: `scripts/_bootstrap.py` was deleted and local scripts now rely on uv workspace/package-installed imports. `clearml/_entrypoint_bootstrap.py` remains intentionally because synced ClearML templates still execute `clearml/app.py` and `clearml/pipelines.py` directly.
+
+## Prompt 3-B reviewer reply draft update
+
+Status: draft / implementation prepared / pending commit
+
+```text
+Phase 3-Bでは、R05/R06/R07/R09/R10/R11/R12/R15/R19/R20/R27 を対象に、大規模config型付き化を避けた小粒修正を行いました。ClearML runtime parameter名への移行は互換wrapperを残して段階対応とし、R26のtyped config設計はPrompt 3-Cへ分けています。
+```
+
+- R05 draft: `apply_execution_image()` now accepts a narrow `ClearMLExecutionTask` Protocol instead of `Any`. Wider ClearML artifact/logger/config payload typing remains staged for R26 and later cleanup.
+- R06 draft: stable task execution-image calls now use direct API calls with a legacy ClearML SDK fallback. Version-dependent SDK compatibility guards remain intentionally.
+- R07 draft: stage values now go through shared `StageName` / `as_stage_name()` validation while preserving the existing serialized stage strings used in ClearML tags and artifacts.
+- R09 draft: ClearML runtime availability is checked near entrypoints with `validate_clearml_runtime()`. Dataset existence is now a narrow `clearml_dataset_exists(dataset_id: str)` helper; localhost UI and remote behavior remain manual verification required.
+- R10 draft: dataset IDs are narrowed before `Dataset.get()` and the standalone existence helper rejects empty IDs.
+- R11 draft: `as_list()` was clarified as `as_str_list()` internally, with the old name kept as a deprecated compatibility wrapper.
+- R12 draft: `_ui_value()` was renamed/documented as ClearML parameter transport normalization, preserving serialized parameter values.
+- R15 draft: runtime parameter helpers (`default_runtime_params`, `grouped_runtime_params`, `apply_runtime_params`, `pipeline_runtime_params`) are now used internally. UI-named wrappers remain temporarily for compatibility.
+- R19 draft: table suffix validation now uses one helper across direct file, preferred file, and recursive directory discovery paths.
+- R20 draft: unused non-exported `set_dotted_path` alias was removed after repository-wide reference checks.
+- R27 draft: unused `ml_platform_core.registry` was deleted and covered by a smoke test proving no public package surface depends on it.
+
+Verification:
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 97 tests.
+- Targeted Ruff check on changed ClearML/core/test files: passed.
+- Full Ruff check still reports pre-existing out-of-scope F841/F401 in tabular files; broad format check still reports existing formatting debt.
+
+## Prompt 3-C reviewer reply draft update
+
+Status: draft / implementation prepared / pending commit
+
+```text
+R26について、まず外部YAML境界にdataclassベースのtyped config modelを導入しました。`load_run_config()` は既存どおりdictを返しますが、返却前にtyped parserで既知sectionをvalidationします。typed利用へ移るための新入口として `load_typed_run_config()` と `parse_run_config()` を追加し、下流の大規模rewriteは行っていません。
+```
+
+- Added `ConfigValidationError` for early, readable config failures.
+- Added typed models for runtime, run, data, split, metrics, features, model/ensemble, output, base task, and full run config.
+- Unknown keys are preserved as `extras` and round-trip through `RunConfig.to_dict()` so current YAML extension points are not broken.
+- Existing dict compatibility is preserved: `load_run_config()` still returns a plain dict and keeps absent sections absent.
+- Tests cover valid minimal config, default values, wrong-type failures, unknown-key preservation, override parsing, and `load_run_config()` compatibility.
+- Verification: `uv run python -m pytest` passed 102 tests; compileall passed. Full Ruff still reports pre-existing out-of-scope F841/F401 and broad formatting debt.
