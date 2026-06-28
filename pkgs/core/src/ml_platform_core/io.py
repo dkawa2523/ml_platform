@@ -10,6 +10,18 @@ import pandas as pd
 TABLE_SUFFIXES = {".csv", ".parquet", ".pq"}
 
 
+def is_supported_table_file(path: str | Path) -> bool:
+    path = Path(path)
+    return path.is_file() and path.suffix.lower() in TABLE_SUFFIXES
+
+
+def _require_supported_table_file(path: Path, *, context: str = "Table file") -> Path:
+    if is_supported_table_file(path):
+        return path
+    supported = ", ".join(sorted(TABLE_SUFFIXES))
+    raise ValueError(f"{context} has unsupported table format: {path.suffix}. Supported: {supported}")
+
+
 def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> Path:
     """Resolve a table file from a file or directory path.
 
@@ -18,7 +30,7 @@ def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> P
     """
     path = Path(path)
     if path.is_file():
-        return path
+        return _require_supported_table_file(path)
     if not path.exists():
         raise FileNotFoundError(f"Table path not found: {path}")
     if not path.is_dir():
@@ -27,10 +39,10 @@ def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> P
     if preferred_name:
         candidate = path / preferred_name
         if candidate.exists() and candidate.is_file():
-            return candidate
+            return _require_supported_table_file(candidate, context="Preferred table file")
         raise FileNotFoundError(f"Preferred table file not found in dataset copy: {candidate}")
 
-    candidates = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in TABLE_SUFFIXES)
+    candidates = sorted(p for p in path.rglob("*") if is_supported_table_file(p))
     if not candidates:
         raise FileNotFoundError(f"No supported table file found under directory: {path}")
     if len(candidates) > 1:
