@@ -81,24 +81,30 @@ def test_clearml_project_layout_prefers_explicit_projects():
         "tasks": "Root/Runs/Tabular/Tasks",
         "experiments": "Root/Experiments/Tabular",
     }
-    assert adapter.clearml_projects(
-        {
-            "project_root": "Root",
-            "projects": {
-                "stages": "Legacy/Stages",
-                "tasks": "Legacy/Tasks",
-            },
-        }
-    )["train"] == "Legacy/Stages"
-    assert adapter.clearml_projects(
-        {
-            "project_root": "Root",
-            "projects": {
-                "stages": "Legacy/Stages",
-                "tasks": "Legacy/Tasks",
-            },
-        }
-    )["infer"] == "Legacy/Tasks"
+    assert (
+        adapter.clearml_projects(
+            {
+                "project_root": "Root",
+                "projects": {
+                    "stages": "Legacy/Stages",
+                    "tasks": "Legacy/Tasks",
+                },
+            }
+        )["train"]
+        == "Legacy/Stages"
+    )
+    assert (
+        adapter.clearml_projects(
+            {
+                "project_root": "Root",
+                "projects": {
+                    "stages": "Legacy/Stages",
+                    "tasks": "Legacy/Tasks",
+                },
+            }
+        )["infer"]
+        == "Legacy/Tasks"
+    )
 
 
 def test_clearml_execution_image_is_profile_driven():
@@ -346,9 +352,15 @@ def test_clearml_flat_ensemble_params_apply_to_nested_config():
 
 def test_clearml_default_ui_params_cover_primary_and_internal_tasks():
     adapter = load_clearml_adapter_module()
-    infer = adapter.default_ui_params(load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml"))
-    pipeline = adapter.default_ui_params(load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"))
-    stage = adapter.default_ui_params(load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml"))
+    infer = adapter.default_ui_params(
+        load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml")
+    )
+    pipeline = adapter.default_ui_params(
+        load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+    )
+    stage = adapter.default_ui_params(
+        load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml")
+    )
 
     assert {
         "Model/name",
@@ -832,7 +844,9 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     validation_predictions = tmp_path / "validation_predictions.csv"
     validation_predictions.write_text("actual,prediction,residual,abs_error\n1,0.9,0.1,0.1\n", encoding="utf-8")
     aggregate_validation_predictions = tmp_path / "validation_predictions_linear.csv"
-    aggregate_validation_predictions.write_text("actual,prediction,residual,abs_error\n1,0.9,0.1,0.1\n", encoding="utf-8")
+    aggregate_validation_predictions.write_text(
+        "actual,prediction,residual,abs_error\n1,0.9,0.1,0.1\n", encoding="utf-8"
+    )
     evaluation_predictions = tmp_path / "evaluation_predictions.csv"
     evaluation_predictions.write_text("actual,prediction,residual,abs_error\n1,1.1,-0.1,0.1\n", encoding="utf-8")
     predictions = tmp_path / "predictions.csv"
@@ -1002,7 +1016,9 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert any(item[:3] == ("plotly", "leaderboard", "best_prediction_vs_actual") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "best_residual_histogram") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "best_residual_vs_predicted") for item in adapter.plots)
-    assert any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots)
+    assert any(
+        item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions_weighted") for item in adapter.plots
+    )
     assert not any(item[:3] == ("plotly", "prediction_vs_actual", "ensemble_predictions") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "table") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "top_k_scores") for item in adapter.plots)
@@ -1011,11 +1027,15 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert any(item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "leaderboard", "topk_residual_histogram") for item in adapter.plots)
     assert any(item[:3] == ("plotly", "prediction_distribution_histogram", "predictions") for item in adapter.plots)
-    prediction_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions"))
+    prediction_fig = next(
+        item[3] for item in adapter.plots if item[:3] == ("plotly", "prediction_vs_actual", "validation_predictions")
+    )
     assert any(trace.get("name") == "y=x" for trace in prediction_fig["data"])
     assert prediction_fig["layout"]["xaxis"]["title"] == "actual"
     assert prediction_fig["layout"]["yaxis"]["title"] == "prediction"
-    topk_fig = next(item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual"))
+    topk_fig = next(
+        item[3] for item in adapter.plots if item[:3] == ("plotly", "leaderboard", "topk_prediction_vs_actual")
+    )
     candidate_traces = [trace for trace in topk_fig["data"] if trace.get("name") != "y=x"]
     assert len(candidate_traces) <= 5
     assert all("rank " in trace.get("name", "") for trace in candidate_traces)
@@ -1238,7 +1258,10 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_best_task():
     resolver = adapter.ClearMLAdapter(task=None)
     resolver.resolve_artifact_path = lambda value: str(value)
 
-    cfg = {"task": "tabular_infer", "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "best"}}
+    cfg = {
+        "task": "tabular_infer",
+        "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "best"},
+    }
     resolved = resolver.resolve_infer_model_source(cfg)
 
     assert resolved["model"]["artifact_path"] == "best_model.joblib"
@@ -1269,7 +1292,10 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_ensemble_task():
     resolver = adapter.ClearMLAdapter(task=None)
     resolver.resolve_artifact_path = lambda value: str(value)
 
-    cfg = {"task": "tabular_infer", "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "ensemble"}}
+    cfg = {
+        "task": "tabular_infer",
+        "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "ensemble"},
+    }
     resolved = resolver.resolve_infer_model_source(cfg)
 
     assert resolved["model"]["artifact_path"] == "ensemble.joblib"
@@ -1297,7 +1323,10 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_ensemble_method_
     resolver = adapter.ClearMLAdapter(task=None)
     resolver.resolve_artifact_path = lambda value: str(value)
 
-    cfg = {"task": "tabular_infer", "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "ensemble:weighted"}}
+    cfg = {
+        "task": "tabular_infer",
+        "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "ensemble:weighted"},
+    }
     resolved = resolver.resolve_infer_model_source(cfg)
 
     assert resolved["model"]["artifact_path"] == "ensemble_weighted.joblib"
@@ -1331,11 +1360,17 @@ def test_clearml_resolves_infer_source_from_direct_train_stage_task():
 
 def test_clearml_infer_source_resolution_reports_available_tasks_on_failure():
     adapter = load_clearml_adapter_module()
-    tasks = [FakeTask("pipe", "pipeline"), FakeTask("train-ridge", "train_ridge", params={"Run/stage": "train_model"}, parent="pipe")]
+    tasks = [
+        FakeTask("pipe", "pipeline"),
+        FakeTask("train-ridge", "train_ridge", params={"Run/stage": "train_model"}, parent="pipe"),
+    ]
     _install_fake_task_api(adapter, tasks)
     resolver = adapter.ClearMLAdapter(task=None)
 
-    cfg = {"task": "tabular_infer", "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "linear"}}
+    cfg = {
+        "task": "tabular_infer",
+        "model": {"source_type": "task_id", "source_task_id": "pipe", "model_selector": "linear"},
+    }
     with pytest.raises(ValueError, match="Discovered:"):
         resolver.resolve_infer_model_source(cfg)
 
@@ -1484,7 +1519,10 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
     assert plan["steps"][-4]["name"] == "build_ensemble_mean_topk"
     assert plan["steps"][-4]["target_project"] == "MLPlatform/Dev/Runs/Tabular/Ensemble"
     assert plan["steps"][-4]["parameter_override"]["Run/stage"] == "build_ensemble"
-    assert plan["steps"][-4]["parameter_override"]["Run/name"] == "stage/build_ensemble_mean_topk/tabular_training_pipeline"
+    assert (
+        plan["steps"][-4]["parameter_override"]["Run/name"]
+        == "stage/build_ensemble_mean_topk/tabular_training_pipeline"
+    )
     assert plan["steps"][-4]["parameter_override"]["Model/ensemble_methods"] == '["mean_topk"]'
     assert plan["steps"][-4]["tags"] == [
         "domain:tabular",
@@ -1505,9 +1543,58 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
         "model:linear",
     ]
     assert "${train_linear.artifacts.model.url}" in plan["steps"][-1]["parameter_override"]["Input/model_refs"]
-    assert "${build_ensemble_mean_topk.artifacts.model_mean_topk.url}" in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
-    assert "${build_ensemble_weighted.artifacts.model_weighted.url}" in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
-    assert "${build_ensemble_median.artifacts.model_median.url}" in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
+    assert (
+        "${build_ensemble_mean_topk.artifacts.model_mean_topk.url}"
+        in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
+    )
+    assert (
+        "${build_ensemble_weighted.artifacts.model_weighted.url}"
+        in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
+    )
+    assert (
+        "${build_ensemble_median.artifacts.model_median.url}"
+        in plan["steps"][-1]["parameter_override"]["Input/ensemble_refs"]
+    )
+
+
+def test_clearml_add_plan_steps_uses_rendered_domain_plan_order():
+    pipelines = load_clearml_pipelines_module()
+    plan = pipelines.build_pipeline_plan(
+        "config/tasks/tabular_pipeline.yaml",
+        "config/profiles/clearml-dev.yaml",
+        ui_params={
+            "Basic/model_suite": "custom",
+            "Model/candidates": '["linear","ridge"]',
+            "Basic/use_ensemble": False,
+        },
+    )
+
+    class FakePipeline:
+        def __init__(self):
+            self.default_queue = None
+            self.steps = []
+
+        def set_default_execution_queue(self, queue):
+            self.default_queue = queue
+
+        def add_step(self, **kwargs):
+            self.steps.append(kwargs)
+
+    pipe = FakePipeline()
+    pipelines._add_plan_steps(pipe, plan)
+
+    assert pipe.default_queue == "default"
+    assert [step["name"] for step in pipe.steps] == [
+        "preprocess_features",
+        "train_linear",
+        "train_ridge",
+        "evaluate_models",
+    ]
+    assert pipe.steps[1]["parents"] == ["preprocess_features"]
+    assert pipe.steps[-1]["parents"] == ["train_linear", "train_ridge"]
+    assert pipe.steps[1]["stage"] == "train_linear"
+    assert pipe.steps[1]["parameter_override"]["Model/name"] == "linear"
+    assert pipe.steps[-1]["parameter_override"]["Run/stage"] == "evaluate_models"
 
 
 @pytest.mark.parametrize(
@@ -1552,7 +1639,15 @@ def test_clearml_basic_quality_mode_fast_uses_lightweight_params():
         ui_params={"Basic/model_suite": "fast", "Basic/quality_mode": "fast"},
     )
 
-    assert plan["candidate_models"] == ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting"]
+    assert plan["candidate_models"] == [
+        "linear",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+    ]
     assert _train_model_params(plan, "random_forest")["n_estimators"] == 10
     assert _train_model_params(plan, "extra_trees")["n_estimators"] == 10
     assert _train_model_params(plan, "gradient_boosting")["n_estimators"] == 10
@@ -1763,7 +1858,10 @@ def test_clearml_training_pipeline_plan_applies_dataset_and_model_overrides():
     assert train_linear["parameter_override"]["Model/evaluation_metrics"] == '["mae","rmse"]'
     assert "Features/preset" not in train_linear["parameter_override"]
     assert train_linear["parameter_override"]["Output/report_plots"] is False
-    assert train_linear["parameter_override"]["Input/preprocess_bundle"] == "${preprocess_features.artifacts.preprocess_bundle.url}"
+    assert (
+        train_linear["parameter_override"]["Input/preprocess_bundle"]
+        == "${preprocess_features.artifacts.preprocess_bundle.url}"
+    )
     assert build["parameter_override"]["Model/ensemble_enabled"] is True
     assert build["parameter_override"]["Model/ensemble_methods"] == '["mean_topk"]'
     assert build["parameter_override"]["Run/name"] == "stage/build_ensemble_mean_topk/tabular_training_pipeline"

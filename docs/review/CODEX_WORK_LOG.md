@@ -579,3 +579,114 @@
   - Downstream ClearML/tabular runtime still consumes dict configs; typed access migration remains incremental follow-up work.
 - Next action:
   - Phase 4 should move runtime/package manifest boundary work forward (R18), using the new typed config boundary as the core-side contract starting point.
+
+## 2026-06-29 - Prompt 4-A runtime contract and tabular manifest scaffold
+
+- Branch: `review/r04-runtime-manifest-boundary`
+- Worker: Codex
+- Purpose: Address R18 incrementally by adding ClearML-free core contracts and a tabular manifest/policy scaffold without changing current ClearML runtime behavior.
+- Review IDs: R18
+- Changed files:
+  - `pkgs/core/src/ml_platform_core/contracts.py`
+  - `pkgs/core/src/ml_platform_core/runtime_types.py`
+  - `pkgs/tabular/src/ml_platform_tabular/manifest.py`
+  - `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `tests/test_runtime_manifest.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline -n 8`
+  - read `AGENTS.md`, `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`, `docs/review/PR28_REVIEW_MAP.md`
+  - `rg -n "R18|manifest|runtime|PackageManifest|pipelines\\.py|tabular固有|runtime層|domain" docs/review/source/repository_review_transcription_current.md docs/review/source/pr28_review_consolidated.md`
+  - `rg -n "BASIC_MODEL_SUITES|BASIC_QUALITY_MODES|BASIC_QUALITY_MODEL_PARAMS|SUPPORTED_MODELS|model_candidates|candidate_params|pipeline_ui_params|default_ui_params" clearml pkgs tests`
+  - inspected `clearml/pipelines.py`, `pkgs/tabular/src/ml_platform_tabular/models.py`, `pkgs/tabular/src/ml_platform_tabular/runners.py`, and `pkgs/tabular/src/ml_platform_tabular/ensemble.py`
+  - `uv run python -m compileall pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m pytest tests/test_runtime_manifest.py`
+  - `uv run python -m ruff check pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format --check pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+- Results:
+  - Added `ArtifactSpec`, `ParameterSpec`, `StageSpec`, `PipelineSpec`, `TaskSpec`, `PackageManifest`, `DomainStepPlan`, and `DomainPipelinePlan` in `pkgs/core`.
+  - Added minimal `TaskRunner` and `RuntimeAdapter` protocols for future runtime adapters.
+  - Added tabular-owned model suite and quality preset policy in `ml_platform_tabular.policy`.
+  - Added tabular package manifest with stage specs for preprocess, train, ensemble, evaluate, and infer; task specs for `tabular_pipeline`, `tabular_stage`, and `tabular_infer`; and a `tabular_training_graph` pipeline spec.
+  - Added `build_tabular_domain_plan()` to create a ClearML-free domain pipeline plan.
+  - Added manifest tests for unique keys, runner path resolution, required parameters/artifacts, duplicate key validation, contract kind validation, policy preset copy safety, and domain plan validation.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 110 passed.
+  - Targeted Ruff check and targeted Ruff format check for new files passed.
+- Failures / unknowns:
+  - PATH `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports 20 existing files would be reformatted. New Phase 4-A files are formatted.
+  - `clearml/pipelines.py` still contains tabular model suite constants, quality preset constants, runtime parameter defaults, and stage graph assembly. This is expected for Prompt 4-A and remains the Prompt 4-B connection work.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Prompt 4-B should make the ClearML runtime consume the tabular manifest/policy for model suites, quality presets, parameter declarations, and eventually graph rendering while preserving direct-entrypoint template compatibility.
+
+## 2026-06-29 - Prompt 4-B render ClearML pipeline from tabular domain plan
+
+- Branch: `review/r04-runtime-manifest-boundary`
+- Worker: Codex
+- Purpose: Continue R18 by moving tabular policy and graph construction behind the tabular manifest/domain plan boundary while keeping ClearML runtime as the renderer.
+- Review IDs: R18
+- Changed files:
+  - `clearml/pipelines.py`
+  - `pkgs/tabular/src/ml_platform_tabular/manifest.py`
+  - `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `tests/test_runtime_manifest.py`
+  - `tests/test_clearml_mapping.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `rg -n "BASIC_MODEL_SUITES|BASIC_QUALITY_MODES|BASIC_QUALITY_MODEL_PARAMS|_training_pipeline|_apply_basic|_build_training_plan|_stage_step|_add_plan_steps" clearml pkgs tests`
+  - inspected `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/source/repository_review_transcription_current.md`, `clearml/pipelines.py`, `tests/test_clearml_mapping.py`, `pkgs/tabular/src/ml_platform_tabular/manifest.py`, and `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `uv run python -m pytest tests/test_runtime_manifest.py tests/test_clearml_mapping.py::test_clearml_training_pipeline_plan_is_stage_graph tests/test_clearml_mapping.py::test_clearml_add_plan_steps_uses_rendered_domain_plan_order tests/test_clearml_mapping.py::test_clearml_basic_model_suite_selects_candidate_models tests/test_clearml_mapping.py::test_clearml_basic_quality_mode_fast_uses_lightweight_params tests/test_clearml_mapping.py::test_clearml_training_pipeline_plan_applies_dataset_and_model_overrides`
+  - `uv run python -m ruff check clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py tests/test_clearml_mapping.py`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format clearml/pipelines.py tests/test_clearml_mapping.py`
+  - `uv run python -m ruff format --check clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py tests/test_clearml_mapping.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Moved tabular-owned Basic model suite selection, quality mode application, runtime parameter defaults, candidate normalization, ensemble policy, and training graph construction into `ml_platform_tabular.policy` / `ml_platform_tabular.manifest`.
+  - `build_tabular_domain_plan()` now accepts candidate params, selection metric, preprocess/common stage overrides, ensemble methods, and ensemble top-k without importing ClearML.
+  - `clearml/pipelines.py` now builds a `DomainPipelinePlan` and renders it into the existing ClearML `PipelineController` step payloads.
+  - ClearML runtime still owns ClearML SDK access, queue/project/tag wiring, task draft lifecycle, script metadata, artifact reference wiring, and direct template entrypoint compatibility.
+  - Added tests for manifest/domain-plan override propagation and fake-controller rendering order.
+  - Targeted R18 tests passed: 17 passed.
+  - Targeted Ruff check and targeted Ruff format check for changed R18 files passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 112 passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt in 18 existing files.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Phase 5 should add tabular characterization tests before module splitting, especially around training/inference artifact compatibility and ClearML-facing output contracts.
