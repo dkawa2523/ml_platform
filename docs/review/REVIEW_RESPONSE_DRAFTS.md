@@ -654,3 +654,108 @@ module split is included in this step.
   `uv run python -m compileall clearml pkgs scripts` passed; targeted Ruff for
   the new test passed. Full Ruff still exposes pre-existing F841/F401 and broad
   format debt unrelated to this characterization step.
+
+## Prompt 6 TABULAR-SPLIT plots split reviewer reply draft
+
+Status: draft / plots split implemented / pending commit
+
+```text
+I split the tabular plotting implementation into a new `plotting` package with
+domain-focused modules for common drawing helpers, feature plots, prediction
+diagnostics, candidate comparison plots, leaderboard plots, and prediction
+summary outputs. The existing `ml_platform_tabular.plots` module remains as a
+compatibility facade, so old imports keep working while internal tabular code
+now uses the new responsibility boundaries.
+```
+
+- New modules:
+  - `ml_platform_tabular.plotting.common`
+  - `ml_platform_tabular.plotting.feature`
+  - `ml_platform_tabular.plotting.prediction`
+  - `ml_platform_tabular.plotting.candidate`
+  - `ml_platform_tabular.plotting.leaderboard`
+  - `ml_platform_tabular.plotting.summary`
+- Compatibility: `ml_platform_tabular.plots` still re-exports the existing
+  public functions.
+- Verification: characterization and plot tests passed; full pytest passed
+  116 tests; `uv run python -m ruff check .` passed.
+- Remaining split work: `infer.py` and `pipeline.py` still need staged
+  compatibility-preserving splits.
+- Known environment issue: prompt-style `python -m ...` still hits the Windows
+  Store alias; `uv run python ...` is the verified project execution path.
+
+## Prompt 6 TABULAR-SPLIT inference split reviewer reply draft
+
+Status: draft / inference split implemented / pending commit
+
+```text
+I split tabular inference into a new `inference` package with focused modules
+for model resolution, metadata loading, schema checks, prediction frame
+construction, prediction writing, and runner orchestration. The existing
+`ml_platform_tabular.infer` module remains as a compatibility facade, so
+`ml_platform_tabular.infer:run_infer` and current helper imports keep working
+while the implementation now has clearer responsibility boundaries.
+```
+
+- New modules:
+  - `ml_platform_tabular.inference.resolver`
+  - `ml_platform_tabular.inference.metadata`
+  - `ml_platform_tabular.inference.schema`
+  - `ml_platform_tabular.inference.prediction_frame`
+  - `ml_platform_tabular.inference.prediction_writer`
+  - `ml_platform_tabular.inference.runner`
+- Compatibility: `ml_platform_tabular.infer:run_infer` remains the ClearML and
+  local runner path. `infer.py` also re-exports the private helpers currently
+  used by tests, including `_prediction_frame` and `_schema_check_summary`.
+- Preserved contracts: prediction output filename handling, slim prediction
+  column order, schema check summary/table behavior, chunked CSV behavior, and
+  inference manifest/source summary fields remain covered by characterization
+  and smoke tests.
+- Verification: targeted inference/characterization/smoke tests passed
+  22 tests; full pytest passed 116 tests; `uv run python -m ruff check .`
+  passed.
+- Remaining split work: `pipeline.py` still needs a staged split after this
+  facade-backed inference split.
+- Known environment issue: prompt-style `python -m ...` still hits the Windows
+  Store alias; `uv run python ...` is the verified project execution path.
+
+## Prompt 6 TABULAR-SPLIT pipeline split reviewer reply draft
+
+Status: draft / pipeline split implemented / pending commit
+
+```text
+I split the large tabular pipeline implementation into a new `training`
+package with focused modules for preprocessing, candidate training, ensemble
+construction, evaluation artifact generation, ranking, summary, recommendation,
+and orchestration. The existing `ml_platform_tabular.pipeline` module remains
+as a compatibility facade, so `ml_platform_tabular.pipeline:run_pipeline`,
+stage runner imports, and existing tests keep working while the implementation
+has clearer boundaries.
+```
+
+- New modules:
+  - `ml_platform_tabular.training.preprocessing`
+  - `ml_platform_tabular.training.candidate_training`
+  - `ml_platform_tabular.training.ensemble`
+  - `ml_platform_tabular.training.evaluation`
+  - `ml_platform_tabular.training.ranking`
+  - `ml_platform_tabular.training.summary`
+  - `ml_platform_tabular.training.recommendation`
+  - `ml_platform_tabular.training.artifacts`
+  - `ml_platform_tabular.training.orchestrator`
+- New artifact boundary: `EvaluationResult` is the typed/dataclass boundary for
+  evaluate-models outputs. `evaluate_model_candidates()` returns it, while
+  `_evaluate_models()` remains a dict-returning compatibility wrapper.
+- Compatibility: `ml_platform_tabular.pipeline:run_pipeline` remains the local
+  and ClearML runner path. `pipeline.py` re-exports the private helpers still
+  used by `stage.py` and current tests.
+- Preserved contracts: training artifact/table/plot keys, leaderboard,
+  evaluation/candidate predictions, decision summary, recommendation payloads,
+  and manifest metrics remain covered by characterization and smoke tests.
+- Verification: targeted decision/characterization/pipeline/stage tests passed
+  22 tests; full pytest passed 117 tests; `uv run python -m ruff check .`
+  passed.
+- Remaining cleanup: compatibility facades and private re-exports can be reduced
+  later after external imports and ClearML runner paths are migrated.
+- Known environment issue: prompt-style `python -m ...` still hits the Windows
+  Store alias; `uv run python ...` is the verified project execution path.

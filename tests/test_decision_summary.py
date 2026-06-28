@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from ml_platform_tabular.pipeline import (
+    EvaluationResult,
     _best_vs_ensemble_rows,
     _decision_summary_payload,
     _recommendation_payload,
@@ -84,3 +87,27 @@ def test_decision_summary_recommends_best_for_ensemble_winner():
     assert summary["recommended_candidate_selector"] == "ensemble:weighted"
     assert summary["recommended_inference_settings"]["Model/source_task_id"] == "task-123"
     assert summary["ensemble_improved_over_best_single"] is True
+
+
+def test_evaluation_result_keeps_dict_compatibility():
+    result = EvaluationResult(
+        stage="evaluate_models",
+        stage_dir=Path("run/evaluate_models"),
+        best={"model_name": "ridge"},
+        metrics={"rmse": 0.1},
+        report={"candidate_count": 1},
+        artifacts={"best_model": Path("best_model.joblib")},
+        tables={"leaderboard": Path("leaderboard.csv")},
+        plots={"leaderboard": Path("leaderboard.png")},
+    )
+
+    assert result.to_dict() == {
+        "stage": "evaluate_models",
+        "stage_dir": Path("run/evaluate_models"),
+        "best": {"model_name": "ridge"},
+        "metrics": {"rmse": 0.1},
+        "report": {"candidate_count": 1},
+        "artifacts": {"best_model": Path("best_model.joblib")},
+        "tables": {"leaderboard": Path("leaderboard.csv")},
+        "plots": {"leaderboard": Path("leaderboard.png")},
+    }
