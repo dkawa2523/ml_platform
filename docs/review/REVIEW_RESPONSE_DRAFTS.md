@@ -628,3 +628,29 @@ R18について、tabular manifest / domain plan を ClearML runtime が消費�
 - Tests added/updated: domain plan override propagation in `tests/test_runtime_manifest.py`; fake-controller rendering/order check in `tests/test_clearml_mapping.py`.
 - Verification: `uv run python -m compileall clearml pkgs scripts` passed; `uv run python -m pytest` passed 112 tests; targeted Ruff/format for changed R18 files passed.
 - Remaining verification: ClearML localhost UI, ClearML remote execution, and Kubernetes behavior are manual verification required. Full Ruff still has pre-existing F841/F401 and broad format debt outside this R18 change.
+
+## Prompt 5 TABULAR-SPLIT reviewer reply draft
+
+Status: draft / characterization implemented / pending commit
+
+```text
+Before splitting the large tabular modules, I added ClearML-free
+characterization coverage for the current training, inference, and plotting
+contracts. The tests pin artifact/table/plot/metric key sets, leaderboard and
+summary schemas, slim inference prediction columns, manifest/schema summary
+fields, and standalone plot writer behavior on tiny seeded data. No production
+module split is included in this step.
+```
+
+- Tests added: `tests/test_tabular_characterization.py`.
+- Fixed contracts: training artifact/table/plot/metric keys; leaderboard,
+  candidate prediction, evaluation prediction, decision summary, recommendation,
+  inference prediction, schema summary, prediction summary, source summary, and
+  plot writer schemas.
+- Remaining out of scope: exact numeric score goldens, optional GBM outputs,
+  ClearML server/UI, ClearML remote execution, Kubernetes execution, and the
+  actual module split.
+- Verification: `uv run python -m pytest` passed 115 tests;
+  `uv run python -m compileall clearml pkgs scripts` passed; targeted Ruff for
+  the new test passed. Full Ruff still exposes pre-existing F841/F401 and broad
+  format debt unrelated to this characterization step.

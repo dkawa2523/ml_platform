@@ -1,3 +1,20 @@
+## A11. TABULAR-SPLIT characterization before module split
+
+Before splitting `pkgs/tabular/src/ml_platform_tabular/pipeline.py`,
+`infer.py`, and `plots.py`, keep ClearML-free characterization tests that
+pin the current output contracts:
+
+- training artifact/table/plot/metric key sets
+- leaderboard, evaluation predictions, candidate predictions, decision summary,
+  and recommendation schema
+- inference slim prediction frame columns and manifest/schema summary fields
+- standalone plot writer table and plot key behavior
+
+Phase 6 should split in small steps: `plots.py` first, `infer.py` second,
+typed result/artifact helper boundaries third, then `pipeline.py` orchestration.
+Exact numeric model scores, optional GBM behavior, ClearML UI, ClearML remote,
+and Kubernetes execution remain separate verification items.
+
 # Extra reviewer notes
 
 この文書は、R01〜R27の公式レビューとは別に、現在repoをレビューワー視点で見たときに追加で検討したい改善点です。
