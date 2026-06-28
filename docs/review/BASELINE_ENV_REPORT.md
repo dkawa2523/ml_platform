@@ -278,3 +278,251 @@ BLAS/OpenMP thread env:
 
 - uvがない場合、Phase 0では原則としてglobal installしない。R02でuv workspace化を検討する。
 - dev toolsが不足してpytest/lintが実行できない場合、失敗として記録し、Phase 1またはPhase 2で対応する。
+
+## Prompt 1-A tooling / CI investigation
+
+### Git state
+
+```text
+git status --short
+<clean>
+
+git branch --show-current
+review/r01-tooling-ci
+```
+
+### Current files
+
+```text
+Tracked Phase 1 target files:
+- .github/workflows/ci.yml
+
+Missing Phase 1 target files:
+- .github/workflows/smoke-test.yml
+- .github/workflows/deploy-mkdocs.yml
+- .pre-commit-config.yaml
+- .gitlint
+- .gitattributes
+- .vscode/
+- *.code-workspace
+```
+
+### History investigation
+
+```text
+History candidates found:
+- .github/workflows/ci.yml at 647bcdf Fix CI smoke defaults and pipeline run tags
+- .github/workflows/ci.yml at 6637119 Initial ml_platform MVP
+
+No history candidates found in this repository:
+- .github/workflows/smoke-test.yml
+- .github/workflows/deploy-mkdocs.yml
+- .pre-commit-config.yaml
+- .gitlint
+- .gitattributes
+- .vscode/*
+- *.code-workspace
+```
+
+The current `ci.yml` and the `647bcdf` history candidate both call removed task
+configs:
+
+```text
+config/tasks/tabular_train.yaml     missing
+config/tasks/tabular_eval.yaml      missing
+config/tasks/tabular_1d_output.yaml missing
+```
+
+Current task configs are:
+
+```text
+config/tasks/tabular_pipeline.yaml
+config/tasks/tabular_stage.yaml
+config/tasks/tabular_infer.yaml
+```
+
+### Runner and workflow notes
+
+- Current `ci.yml` uses `runs-on: ubuntu-latest`.
+- Review source mentions `arc-runner-set-spdml-ml-pipeline`.
+- This local repository cannot confirm whether that runner set is available.
+- Prompt 1-B should keep runner choice as `needs_confirmation` unless repository/organization settings confirm it.
+- Package common CI and smoke workflow should be separated.
+
+### Tool availability
+
+```text
+python --version
+Result: failed; Windows Store execution alias
+
+python -m <tool> commands
+Result: failed; Windows Store execution alias
+
+.\.venv\Scripts\python.exe --version
+Python 3.13.12
+
+.\.venv\Scripts\python.exe -m pytest --version
+pytest 9.0.3
+
+.\.venv\Scripts\python.exe -m ruff --version
+Result: failed; No module named ruff
+
+.\.venv\Scripts\python.exe -m pre_commit --version
+Result: failed; No module named pre_commit
+
+.\.venv\Scripts\python.exe -m gitlint --version
+Result: failed; No module named gitlint
+
+.\.venv\Scripts\python.exe -m radon --version
+Result: failed; No module named radon
+
+.\.venv\Scripts\python.exe -m lint_imports --version
+Result: failed; No module named lint_imports
+```
+
+One investigation command failed due PowerShell glob handling:
+
+```text
+rg ... requirements*.txt ...
+Result: failed; PowerShell passed the glob in a way that produced an invalid path.
+Next action: use explicit `requirements.txt requirements-dev.txt` paths in Prompt 1-B.
+```
+
+### Prompt 1-B minimum restoration direction
+
+- Restore `ci.yml` as common package CI: install, compileall, pytest, and lint hooks once tooling is present.
+- Add separate `smoke-test.yml`: sample data, `tabular_pipeline.yaml`, and `tabular_infer.yaml`.
+- Do not call removed `tabular_train.yaml`, `tabular_eval.yaml`, or `tabular_1d_output.yaml`.
+- Add minimal `.pre-commit-config.yaml`, `.gitlint`, `.gitattributes`, `.vscode/*`, and `ml_platform.code-workspace` based on current repo needs.
+- Keep uv migration in R02; do not perform it in Phase 1.
+
+## Prompt 1-B Phase 1 tooling restoration baseline
+
+### Restored files
+
+```text
+.github/workflows/ci.yml
+.github/workflows/smoke-test.yml
+.github/workflows/deploy-mkdocs.yml
+.pre-commit-config.yaml
+.gitlint
+.gitattributes
+.vscode/extensions.json
+.vscode/settings.json
+ml_platform.code-workspace
+pyproject.toml
+requirements-dev.txt
+```
+
+### Tool install result
+
+```text
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+Result: success
+
+Installed/restored dev tools:
+- ruff 0.15.20
+- pre-commit 4.6.0
+- gitlint 0.19.1
+- radon 6.0.1
+- import-linter 2.12
+```
+
+This install was project-local to `.venv`. It was done because Phase 1 restored
+the current requirements-based dev tooling. This is not the R02 uv migration.
+
+`ty` was not installed or configured in this phase; keep as
+`needs_confirmation` for R01.
+
+### Verification results
+
+```text
+.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts
+Result: success
+
+.\.venv\Scripts\python.exe -m pytest
+Result: success; 89 passed
+
+.\.venv\Scripts\python.exe -m ruff check .
+Result: failed
+Summary:
+- E402 in clearml/app.py, clearml/pipelines.py, clearml/templates.py, scripts/local_run.py
+- F841 in pkgs/tabular/src/ml_platform_tabular/infer.py
+- F401 in pkgs/tabular/src/ml_platform_tabular/pipeline.py
+Classification:
+- restored tool found existing code issues
+- do not fix in Phase 1
+- route E402 to R16/R17 and unused-symbol cleanup to later type/config cleanup
+
+.\.venv\Scripts\python.exe -m ruff format --check .
+Result: failed
+Summary: 20 files would be reformatted
+Classification: formatting baseline debt; do not mass-format implementation code in Phase 1.
+
+.\.venv\Scripts\python.exe -m pre_commit run --all-files
+Result: failed
+Summary:
+- initial run failed on MkDocs Python YAML tag and deploy multi-document YAML
+- mutating hooks touched out-of-scope source/historical docs; those changes were reverted
+- after config adjustment, exact command still fails because `ruff` executable is not on PATH when `.venv` is not activated
+
+$env:PATH = (Resolve-Path .\.venv\Scripts).Path + ';' + $env:PATH; .\.venv\Scripts\python.exe -m pre_commit run --all-files
+Result: failed
+Summary:
+- basic hooks pass
+- Ruff check and Ruff format hooks fail on the existing Ruff issues listed above
+
+.\.venv\Scripts\python.exe -m radon cc clearml pkgs scripts -s -a
+Result: success
+Summary:
+- 378 blocks analyzed
+- average complexity: B (5.341269841269841)
+- high-complexity findings include clearml/adapter.py apply_ui_params F(60),
+  clearml/pipelines.py _build_training_plan D(28), clearml/reports.py
+  _report_prediction_plots D(27), and pkgs/tabular pipeline/data/stage functions.
+
+.\.venv\Scripts\python.exe -m lint_imports --config pyproject.toml
+Result: failed
+Summary: No module named lint_imports
+Classification: invocation issue; import-linter exposes a console script.
+
+.\.venv\Scripts\lint-imports.exe --config pyproject.toml
+Result: success
+Summary: 1 contract kept, 0 broken.
+
+.\.venv\Scripts\python.exe -m pre_commit run check-yaml --files .github/workflows/ci.yml .github/workflows/smoke-test.yml .github/workflows/deploy-mkdocs.yml .pre-commit-config.yaml
+Result: success
+
+.\.venv\Scripts\python.exe -m pre_commit run check-json --files .vscode/settings.json .vscode/extensions.json ml_platform.code-workspace
+Result: success
+
+git diff --check
+Result: success; Git printed CRLF-to-LF warnings for modified review docs.
+```
+
+### PATH python / console script notes
+
+```text
+python --version
+Result: failed; Windows Store execution alias
+
+python -m ruff --version
+Result: failed; Windows Store execution alias
+
+.\.venv\Scripts\python.exe -m gitlint --version
+Result: failed; gitlint has no module entrypoint
+
+.\.venv\Scripts\gitlint.exe --version
+Result: success; gitlint, version 0.19.1
+```
+
+Use `.venv\Scripts\python.exe` or activate `.venv` locally. CI can use
+`python` after `actions/setup-python`.
+
+### Manual verification required
+
+- R13 runner set: `arc-runner-set-spdml-ml-pipeline` availability requires GitHub repository/organization confirmation.
+- R23 GitHub Pages: repository Pages settings and deployment target require confirmation.
+- ClearML localhost UI: manual verification required.
+- ClearML remote execution: manual verification required.
+- Kubernetes / ClearML remote target cluster: manual verification required.

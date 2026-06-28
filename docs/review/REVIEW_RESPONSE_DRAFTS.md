@@ -4,6 +4,18 @@
 
 Prompt 0-B確認: R01〜R27の返信雛形はすべて `draft / not yet applied` のまま維持します。実装修正の完了扱いはまだ行いません。
 
+## Prompt 1-A investigation update
+
+Status: draft / investigation recorded / not yet applied
+
+```text
+Phase 1対象のR01/R13/R14/R21/R22/R23/R24/R25について、現repo履歴と現在ファイルを確認しました。
+復旧候補として見つかったのは `.github/workflows/ci.yml` のみで、`647bcdf` と `6637119` を確認済みです。
+`.pre-commit-config.yaml`, `.gitlint`, `.gitattributes`, `.vscode/*`, `*.code-workspace`, `smoke-test.yml`, `deploy-mkdocs.yml` の元内容は現repo履歴からは確認できませんでした。
+現在の `ci.yml` は旧task configを参照しているため、Prompt 1-Bで共通CIと現行task用smoke workflowを分離する予定です。
+runner setとMkDocs deploy先はこのrepoだけでは確定できないため、needs_confirmationとして扱います。
+```
+
 
 ## R01 - ruff / ty / radon / import-linter 等の静的解析を復旧
 
@@ -516,3 +528,20 @@ Planned files:
 ```text
 pkgs/core/src/ml_platform_core/registry.py
 ```
+
+## Prompt 1-B reviewer reply draft update
+
+Status: draft / implementation prepared / pending commit
+
+```text
+Phase 1では、R01/R13/R14/R21/R22/R23/R24/R25 を対象に、実装コードのリファクタは行わず、CI・静的解析・pre-commit/gitlint・gitattributes・VS Code共有設定・code-workspace・MkDocs workflow を最小復旧しました。
+```
+
+- R01 draft: Ruff, radon, and import-linter were restored and now run locally. `ty` remains unresolved and is kept as `needs_confirmation`. Ruff currently reports existing E402/F841/F401 and format debt; those are not hidden and are routed to later cleanup phases.
+- R13 draft: Workflows keep `ubuntu-latest` and include TODO comments because `arc-runner-set-spdml-ml-pipeline` cannot be confirmed from the local repository.
+- R14 draft: `ci.yml` is restored as common package CI, and product smoke execution is split into `smoke-test.yml` using only existing `tabular_pipeline.yaml` and `tabular_infer.yaml`.
+- R21 draft: `.pre-commit-config.yaml` and `.gitlint` are restored with minimal rules. Basic hooks pass when `.venv` is active; Ruff hooks expose existing code issues.
+- R22 draft: `.gitattributes` is restored with conservative text and binary handling.
+- R23 draft: MkDocs build/deploy workflow is restored, but GitHub Pages deployment target remains `needs_confirmation`.
+- R24 draft: `.vscode` shared settings/extensions are restored without personal paths or secrets.
+- R25 draft: `ml_platform.code-workspace` is restored with relative folders for repo root, `pkgs/core`, and `pkgs/tabular`.
