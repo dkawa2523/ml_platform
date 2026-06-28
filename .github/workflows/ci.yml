@@ -6,26 +6,29 @@ on:
   pull_request:
 
 jobs:
-  smoke:
-    env:
-      OMP_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
+  package-ci:
+    # TODO(R13): confirm whether arc-runner-set-spdml-ml-pipeline is available for this repository.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e pkgs/core -e pkgs/tabular -r requirements-dev.txt
-      - run: python scripts/make_sample_data.py
-      - run: python scripts/local_run.py --task config/tasks/tabular_train.yaml --profile config/profiles/local.yaml
-      - run: python scripts/local_run.py --task config/tasks/tabular_eval.yaml --profile config/profiles/local.yaml
-      - run: python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-      - run: >-
-          python scripts/local_run.py
-          --task config/tasks/tabular_pipeline.yaml
-          --profile config/profiles/local.yaml
-          --set 'model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]'
-      - run: python scripts/local_run.py --task config/tasks/tabular_1d_output.yaml --profile config/profiles/local.yaml
-      - run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
+      - name: Install project and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e pkgs/core -e pkgs/tabular -r requirements-dev.txt
+      - name: Compile Python sources
+        run: python -m compileall clearml pkgs scripts
+      - name: Run tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest
+      - name: Ruff check
+        run: python -m ruff check .
+      - name: Ruff format check
+        run: python -m ruff format --check .
+      - name: Radon complexity report
+        run: python -m radon cc clearml pkgs scripts -s -a
+      - name: Import boundary check
+        run: lint-imports --config pyproject.toml
