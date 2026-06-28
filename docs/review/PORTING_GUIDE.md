@@ -81,3 +81,102 @@ Rxx対応:
 2. そのレビューの意図を `source/pr28_review_consolidated.md` で確認する。
 3. コード差分だけでなく、`PR28_REVIEW_MAP.md` の `Porting note` を更新する。
 4. 仕様判断が必要なら `needs_confirmation` にして、推測で確定しない。
+
+## Final integration branch porting plan - 2026-06-29
+
+Source branch:
+
+```bash
+review/pr28-complete-response
+```
+
+Kubernetes / K8 verification is intentionally out of scope for this repository
+cleanup. Do not port R04 as part of this cleanup. Do not run or add `kubectl`,
+`kustomize`, `helm`, rollout checks, cluster verification, or Kubernetes
+manifest changes when applying this review-response branch.
+
+### Recommended cherry-pick order
+
+Use this order when histories are close enough for direct cherry-pick:
+
+```bash
+git cherry-pick -x 9faea03   # docs: initialize review response workspace
+git cherry-pick -x 1728f08   # chore: restore review safety and developer tooling
+git cherry-pick -x 86cbb1a   # build: normalize dependency and runtime import setup
+git cherry-pick -x ba51813   # refactor: tighten adapter and core utility contracts
+git cherry-pick -x f4fe03a   # feat: add runtime contracts and tabular manifest scaffold
+git cherry-pick -x 0301d0e   # test: characterize tabular outputs before module split
+git cherry-pick -x b96f622   # refactor: split tabular plotting responsibilities
+git cherry-pick -x e5eda0a   # refactor: split tabular inference responsibilities
+git cherry-pick -x 50c607a   # refactor: split tabular pipeline responsibilities
+```
+
+After applying the implementation commits, add the final integration docs
+commit from `review/pr28-complete-response` with message:
+
+```text
+docs: finalize review response evidence without k8 scope
+```
+
+Do not cherry-pick a `review/r07-clearml-k8s-evidence` branch from this repo:
+that branch was not available in the local or fetched branch set during final
+integration.
+
+### Conflict resolution order
+
+Resolve conflicts in this order:
+
+1. Review docs and ADR scaffolding.
+2. Tooling and CI files.
+3. `pyproject.toml`, `uv.lock`, and requirements compatibility notes.
+4. ClearML adapter/import/runtime entrypoint files.
+5. Core config models, contracts, stage and IO helpers.
+6. Tabular manifest/policy.
+7. Tabular characterization tests.
+8. Tabular plotting, inference, and training module split.
+9. Final review docs.
+
+Keep review-external improvements out of this sequence. If target-only changes
+are needed, make them in a separate commit after the review-response commits.
+
+### Format-patch option
+
+Use this when histories are distant or when the target repo is maintained in a
+separate clone:
+
+```bash
+git format-patch main..review/pr28-complete-response -o ../pr28-review-response-patches
+
+# In the target repo:
+git am --3way ../pr28-review-response-patches/*.patch
+```
+
+If a patch conflicts, stop and resolve by review ID, not by broad file area.
+Update the target repo's `docs/review/PR28_REVIEW_MAP.md` porting note if a
+behavior differs.
+
+### Target repo first checks
+
+Before relying on the ported branch, check:
+
+- PATH `python` behavior. This source environment needs `uv run python ...`
+  because `python` is the Windows Store alias.
+- `uv --version` and lock resolution on the target OS.
+- GitHub runner availability. `arc-runner-set-spdml-ml-pipeline` is still
+  `needs_confirmation`.
+- GitHub Pages settings/environment for MkDocs deploy. This is still
+  `needs_confirmation`.
+- ClearML SDK version, template entrypoint paths, and remote Agent working
+  directory before deleting `clearml/_entrypoint_bootstrap.py`.
+- ClearML localhost UI and remote execution for the R18 renderer boundary.
+- External imports of `ml_platform_core.registry` or `set_dotted_path`; if the
+  target repo has them, add a deprecation shim instead of deleting immediately.
+- External imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`,
+  and `ml_platform_tabular.pipeline`; compatibility facades are intentionally
+  kept and should not be removed during porting.
+
+### Exclusions
+
+R04 is excluded from this cleanup and from target-repo porting. Record it as
+`not_applicable` or handle it in a separate operational/Kubernetes evidence
+branch owned by the deployment environment.

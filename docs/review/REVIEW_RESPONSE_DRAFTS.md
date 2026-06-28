@@ -684,6 +684,136 @@ now uses the new responsibility boundaries.
 - Known environment issue: prompt-style `python -m ...` still hits the Windows
   Store alias; `uv run python ...` is the verified project execution path.
 
+## Final PR response summary - 2026-06-29, Kubernetes verification excluded
+
+Status: final draft / integration branch `review/pr28-complete-response`
+
+```text
+R01-R27 と TABULAR-SPLIT について、Kubernetes / K8 実機検証を除外した
+最終検証を行いました。コード基盤整理として対応済みの項目、外部設定のため
+確認待ちの項目、今回スコープ外の項目を分けて記録しています。
+```
+
+### 対応済み
+
+```text
+R02, R05, R06, R07, R09, R10, R11, R12, R14, R19, R20, R21,
+R22, R24, R25, R27, TABULAR-SPLIT は対応済みです。
+```
+
+- R02: `pyproject.toml` / uv workspace / `uv.lock` を正本にし、requirements
+  は Docker/ClearML/legacy pip 互換ファイルとして残しました。
+- R05/R06/R07/R09/R10/R11/R12/R15: ClearML adapter の型、命名、stage、
+  dataset helper、runtime parameter 語彙を段階的に整理しました。
+- R14/R21/R22/R24/R25: CI、smoke workflow、pre-commit/gitlint、
+  `.gitattributes`、VS Code settings、workspace を復旧しました。
+- R19/R20/R27: table suffix 判定、未使用 alias、未使用 Registry を整理しました。
+- TABULAR-SPLIT: 分割前 characterization tests を追加したうえで、
+  plotting / inference / training pipeline を責務別 module に分割し、
+  `plots.py`, `infer.py`, `pipeline.py` の互換 facade を残しました。
+
+検証:
+
+```text
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+```
+
+結果:
+
+```text
+compileall: passed
+pytest: 117 passed
+ruff check: passed
+```
+
+### 確認待ち / 段階対応
+
+```text
+R01, R03, R08, R13, R15, R16, R17, R18, R23, R26 は
+追加確認または段階移行として残しています。
+```
+
+- R01: Ruff/radon/import-linter/pre-commit/gitlint は復旧済みです。`ty` は
+  採用方針未確定のため未導入です。Ruff format debt は別途整理対象です。
+- R03: 共通 Python code の thread env 設定を検索し、`clearml/app.py`,
+  `scripts/local_run.py`, `scripts/make_sample_data.py` に残存を確認しました。
+  実行環境側へ移す作業は今回の cleanup から deferred とします。
+- R08/R17: local script bootstrap は削減済みですが、ClearML direct entrypoint
+  互換のため `clearml/_entrypoint_bootstrap.py` と SDK shadow guard は残しています。
+  ClearML remote template 実行確認後に削除判断します。
+- R13: self-hosted runner `arc-runner-set-spdml-ml-pipeline` はローカル repo から
+  利用可否を確認できないため、workflow は `ubuntu-latest` のまま TODO を残しました。
+- R15: 内部語彙は `runtime_params` / `connected_params` 側へ寄せましたが、
+  互換 wrapper と既存 tests には `ui_*` 名を残しています。
+- R16: Ruff check は通過しています。ClearML direct-entrypoint files だけは
+  bootstrap 互換のため import 順例外を明示しています。
+- R18: runtime/package manifest boundary と ClearML renderer 化は実装済みです。
+  ClearML localhost UI、remote Agent 実行、実 ClearML server 上の挙動は manual
+  verification required です。
+- R23: MkDocs build/deploy workflow は復旧済みですが、GitHub Pages 設定と
+  deployment target は repository settings の確認が必要です。
+- R26: typed config boundary は追加済みです。下流の `dict[str, Any]` 互換は
+  段階移行のため残しています。
+
+### R04 / Kubernetes scope
+
+```text
+今回のレビュー対応ではKubernetes実機検証は対象外とし、コード基盤整理から除外しました。
+```
+
+この cleanup branch では `kubectl`, `kustomize`, `helm`, Kubernetes manifest
+変更、cluster rollout 確認、deploy/overlays 配下の実機検証を実行していません。
+R04 は `not_applicable` として記録し、Kubernetes / K8 verification is
+intentionally out of scope for this repository cleanup と明記しました。
+
+### Known verification failures
+
+```text
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m pre_commit run --all-files
+```
+
+上記の prompt-style command はこの Windows 環境では PATH `python` が Windows
+Store alias のため失敗します。project environment では `uv run python ...` を
+使って検証しました。
+
+```text
+uv run python -m ruff format --check .
+uv run python -m pre_commit run --all-files
+```
+
+これらは Ruff format debt により失敗します。対象は既存 16 files の整形差分で、
+`ruff check` と pytest は通過しています。
+
+### R18 response text
+
+```text
+ご指摘の runtime への tabular 固有知識集中について、core contracts と
+tabular manifest / policy を追加し、ClearML runtime は DomainPipelinePlan を
+PipelineController に render する責務へ寄せました。tabular model suite,
+quality preset, runtime parameter defaults, candidate/ensemble policy,
+training graph construction は tabular 側へ移しています。ClearML SDK 操作、
+queue/project/tag、task draft lifecycle、script metadata、artifact reference
+wiring は runtime 側に残しています。ClearML 実機確認は manual verification
+required として残しています。
+```
+
+### TABULAR-SPLIT response text
+
+```text
+分割前に characterization tests を追加し、artifact/table/plot/metric keys,
+leaderboard/summary schema, prediction frame columns, schema summary,
+prediction manifest を固定しました。その後、plotting, inference, training
+pipeline を責務別 package に分割し、既存 runner/import path を壊さないよう
+compatibility facade を残しました。最終検証では 117 tests と Ruff check が
+通過しています。
+```
+
 ## Prompt 6 TABULAR-SPLIT inference split reviewer reply draft
 
 Status: draft / inference split implemented / pending commit

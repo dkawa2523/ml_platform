@@ -919,3 +919,91 @@
   - Compatibility facades remain for `plots.py`, `infer.py`, and `pipeline.py`; removing them is intentionally deferred until external imports and ClearML runner paths are migrated.
 - Next action:
   - Commit the Phase 6 module split after reviewing the combined plots/infer/pipeline diff. Later cleanup can migrate `stage.py` and tests to public `training.*` imports, reduce private helper re-exports, and handle broad formatting debt separately.
+
+## 2026-06-29 - Final validation without K8 scope
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: Final validation for R01-R27 and TABULAR-SPLIT while excluding
+  Kubernetes / K8 verification from this cleanup.
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/review/PORTING_GUIDE.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+- Review IDs:
+  - R01-R27
+  - TABULAR-SPLIT
+  - R04 recorded as Kubernetes / K8 scope excluded
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 40`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `uv run python -m pre_commit run --all-files`
+  - `rg -n "ui_params|ui_value|default_ui_params|pipeline_ui_params" clearml pkgs scripts tests docs`
+  - `rg -n "sys\\.path|_entrypoint_bootstrap|add_clearml_entrypoint_paths" clearml pkgs scripts tests docs`
+  - `rg -n "getattr\\(" clearml pkgs scripts tests`
+  - `rg -n "dict\\[str, Any\\]|dict\\\\\\[str, Any\\\\\\]" pkgs/core/src clearml pkgs/tabular/src tests`
+  - `rg -n "set_dotted_path|class Registry" .`
+  - `rg -n "OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS" clearml pkgs scripts .github docs`
+- Results:
+  - Working tree was clean before final docs edits.
+  - Current branch was `review/pr28-complete-response`.
+  - Integration branch contains R00-R06 merges. `review/r07-clearml-k8s-evidence`
+    was not available locally or after fetch and was not merged.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+  - `set_dotted_path` and `class Registry` remain only in review source/docs and
+    the smoke assertion proving the alias is absent from code.
+  - R04 was recorded as `not_applicable` with this implementation note:
+    Kubernetes / K8 verification is intentionally out of scope for this
+    repository cleanup.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands fail on this machine because PATH
+    `python` is the Windows Store alias.
+  - `uv run python -m ruff format --check .` failed because 16 files would be
+    reformatted:
+    - `clearml/adapter.py`
+    - `clearml/app.py`
+    - `clearml/reports.py`
+    - `clearml/templates.py`
+    - `pkgs/core/src/ml_platform_core/config.py`
+    - `pkgs/core/src/ml_platform_core/config_models.py`
+    - `pkgs/core/src/ml_platform_core/io.py`
+    - `pkgs/tabular/src/ml_platform_tabular/data_quality.py`
+    - `pkgs/tabular/src/ml_platform_tabular/ensemble.py`
+    - `pkgs/tabular/src/ml_platform_tabular/features.py`
+    - `pkgs/tabular/src/ml_platform_tabular/models.py`
+    - `pkgs/tabular/src/ml_platform_tabular/stage.py`
+    - `scripts/make_sample_data.py`
+    - `scripts/sync_clearml_templates.py`
+    - `tests/test_config_overrides.py`
+    - `tests/test_pipeline_smoke.py`
+  - `uv run python -m pre_commit run --all-files` failed only at the Ruff
+    format check hook for the same formatting debt.
+  - R03 residual search found BLAS/OpenMP env defaults still in Python code:
+    `clearml/app.py`, `scripts/local_run.py`, and `scripts/make_sample_data.py`.
+    This is deferred to an operational environment pass.
+  - R13 runner set availability remains `needs_confirmation`.
+  - R17 ClearML direct-entrypoint bootstrap removal remains
+    `needs_confirmation`.
+  - R18 ClearML localhost UI / remote Agent execution remains
+    `needs_confirmation`.
+  - R23 GitHub Pages deployment target remains `needs_confirmation`.
+  - R26 downstream `dict[str, Any]` consumers remain staged after the typed
+    config boundary.
+  - Kubernetes / K8 commands and manifest checks were intentionally not run.
+- Next action:
+  - Commit the final documentation evidence if desired.
+  - Keep R04 out of this cleanup branch. Handle Kubernetes evidence in a
+    separate operational branch/repository.
