@@ -38,6 +38,11 @@ Migrate incrementally. Add contracts and manifests first, keep current ClearML
 behavior compatible, then move tabular constants and policy behind the manifest.
 Do not use this ADR as permission for a full rewrite.
 
+Phase 2 dependency/import normalization keeps the current `clearml/` entrypoint
+paths for template compatibility. Local scripts should move to uv
+workspace-installed imports first; removal of `clearml/_entrypoint_bootstrap.py`
+is gated on direct-entrypoint and remote Agent verification.
+
 ## Consequences
 
 - `pkgs/core` stays free of runtime-vendor knowledge.
