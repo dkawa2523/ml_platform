@@ -265,3 +265,147 @@
   - `ty` was not added; availability and policy remain `needs_confirmation` under R01.
   - Runner set `arc-runner-set-spdml-ml-pipeline` and GitHub Pages deployment target remain `needs_confirmation`.
 - Next action: Commit Phase 1 tooling restoration, then continue Phase 2 for dependency/import normalization and R16/R17 import cleanup.
+
+## 2026-06-29 - Prompt 2-A dependency and import investigation
+
+- Branch: `review/r02-dependency-import-runtime`
+- Worker: Codex
+- Purpose: Investigate dependency management, uv workspace readiness, ClearML SDK shadow risk, dynamic import helpers, and manual `sys.path` bootstrap before Phase 2 implementation.
+- Review IDs: R02, R08, R16, R17
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python --version`
+  - `python -m pip --version`
+  - `uv --version`
+  - `.\.venv\Scripts\python.exe --version`
+  - `.\.venv\Scripts\python.exe -m pip --version`
+  - content inspections for `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `pkgs/core/pyproject.toml`, `pkgs/tabular/pyproject.toml`
+  - `ls` / `Test-Path` checks for `uv.lock`
+  - file inspections under `clearml/`, `scripts/`, `deploy/base/`, `config/profiles/`, `docs/SPEC.md`, and tests that load ClearML entrypoints
+  - `rg` searches for `sys.path`, `_entrypoint_bootstrap`, `add_clearml_entrypoint_paths`, `import_clearml_sdk`, `_without_repo_clearml_shadow`, `spec_from_file_location`, sibling imports, and `ui_*` parameters
+  - `.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts`
+  - `.\.venv\Scripts\python.exe -m pytest`
+  - `.\.venv\Scripts\python.exe -m ruff check .`
+  - `.\.venv\Scripts\python.exe -m ruff format --check .`
+  - `.venv` import probe for `ml_platform_core`, `ml_platform_tabular`, and `clearml`
+  - `uv sync --all-extras --dev --dry-run`
+  - `uv sync --all-extras --dev --check`
+- Results:
+  - Worktree was clean before recording investigation.
+  - Current branch is `review/r02-dependency-import-runtime`.
+  - PATH `python` still fails because it resolves to the Windows Store execution alias.
+  - Project `.venv` Python is available: Python 3.13.12 with pip 25.3.
+  - `uv` is available: 0.11.16.
+  - Root `pyproject.toml` currently has no runtime dependencies; actual dependencies are split across requirements files and package pyprojects.
+  - `uv.lock` is absent.
+  - `requirements.txt` is still used by Docker/ClearML remote paths, so it should remain as a compatibility file when uv becomes the source of truth.
+  - Manual `sys.path` bootstrap remains in `clearml/_entrypoint_bootstrap.py` and `scripts/_bootstrap.py`.
+  - `clearml/app.py`, `clearml/pipelines.py`, `clearml/templates.py`, and `scripts/local_run.py` import after bootstrap, which explains Ruff E402 findings.
+  - Current `.venv` resolves `import clearml` to the official SDK in `.venv\Lib\site-packages\clearml\__init__.py`, but the local `clearml/` directory remains a shadow risk for direct execution and remote templates.
+  - `compileall` succeeded.
+  - `pytest` passed: 89 passed.
+  - Import probe succeeded for `ml_platform_core`, `ml_platform_tabular`, and official ClearML SDK.
+  - `uv sync --all-extras --dev --dry-run` succeeded without mutation and reported that it would create `uv.lock` and alter installed packages.
+- Failures / unknowns:
+  - One initial search pattern needed correction because PowerShell quoting did not preserve the intended regex; rerun with `rg` patterns succeeded.
+  - `ruff check .` failed on existing issues: E402 in ClearML/script bootstrap entrypoints, F841 in `pkgs/tabular/src/ml_platform_tabular/infer.py`, and F401 in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `ruff format --check .` failed because 20 files would be reformatted.
+  - `uv sync --all-extras --dev --check` failed because the environment is outdated and a lockfile would be created.
+  - Actual `uv sync` was not run because it would mutate `.venv` and create `uv.lock`; this is deferred to Prompt 2-B.
+  - Full removal of `clearml/_entrypoint_bootstrap.py` is `needs_confirmation` until direct script execution, `spec_from_file_location` tests, synced ClearML templates, and ClearML remote execution are verified.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action: Prompt 2-B should introduce uv workspace/lock metadata, keep requirements as compatibility files, reduce local script bootstrap reliance, normalize ClearML SDK import helpers without renaming `clearml/`, and then rerun compileall, pytest, Ruff, import-linter, and local pipeline smoke checks.
+
+## 2026-06-29 - Prompt 2-B dependency and runtime import setup
+
+- Branch: `review/r02-dependency-import-runtime`
+- Worker: Codex
+- Purpose: Implement minimal Phase 2 changes for uv workspace dependency management, local script bootstrap removal, and safer ClearML SDK import handling without renaming the ClearML runtime directory.
+- Review IDs: R02, R08, R16, R17
+- Changed files:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `requirements.txt`
+  - `requirements-dev.txt`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/smoke-test.yml`
+  - `.github/workflows/deploy-mkdocs.yml`
+  - `clearml/adapter.py`
+  - `scripts/local_run.py`
+  - `scripts/sync_clearml_templates.py`
+  - `scripts/clearml_pipeline.py`
+  - `scripts/_bootstrap.py` (deleted)
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python --version`
+  - `uv --version`
+  - required document inspections for AGENTS, review map/log/baseline/source, and ADR
+  - code inspections for `pyproject.toml`, requirements files, workflows, ClearML entrypoints, scripts, and tests
+  - `uv lock` (failed twice while gitlint was in uv dev group)
+  - `uv lock` (passed after leaving gitlint in requirements compatibility file only)
+  - `uv sync --all-extras --dev`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `uv run lint-imports --config pyproject.toml`
+  - `uv run python scripts/make_sample_data.py`
+  - `uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"`
+  - `uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml`
+  - `uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run`
+  - `uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run`
+  - PowerShell import probe piped into `uv run python -`
+  - `uv run gitlint --version`
+  - `git diff --check`
+  - `rg -n "from _bootstrap|add_repo_paths|scripts/_bootstrap|scripts\\_bootstrap" scripts clearml tests`
+  - `uv run python -m ruff check clearml scripts`
+  - `uv run python -m pre_commit run check-yaml --files .github/workflows/ci.yml .github/workflows/smoke-test.yml .github/workflows/deploy-mkdocs.yml`
+  - `uv run python -m pre_commit run check-toml --files pyproject.toml`
+  - `uv run python -m pre_commit run check-added-large-files --files uv.lock`
+  - `uv run python -m pre_commit run end-of-file-fixer --files <changed text files>`
+- Results:
+  - Added uv workspace members for `pkgs/core` and `pkgs/tabular`.
+  - Added root uv sources, `clearml` and `gbm` extras, dev dependency group, docs dependency group, and `uv.lock`.
+  - Updated CI, smoke, and MkDocs workflows to use `uv sync --frozen` and `uv run`.
+  - Kept `requirements.txt` and `requirements-dev.txt` as compatibility files with explanatory comments.
+  - Removed `scripts/_bootstrap.py` and removed its callers from local scripts.
+  - `scripts/local_run.py` now relies on installed workspace packages and still sets local thread defaults before importing tabular runtime inside `main()`.
+  - `clearml/_entrypoint_bootstrap.py` remains for direct ClearML template entrypoints.
+  - `clearml/adapter.py` now distinguishes missing ClearML SDK, missing SDK dependencies, and other import errors more clearly.
+  - `uv lock` succeeded and `uv sync --all-extras --dev` succeeded.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 89 passed.
+  - `uv run lint-imports --config pyproject.toml` passed: 1 contract kept, 0 broken.
+  - Local pipeline smoke and inference smoke passed via `uv run python scripts/local_run.py`.
+  - ClearML template sync dry-run and pipeline dry-run passed via `uv run`.
+  - Import probe resolved official ClearML SDK to `.venv\Lib\site-packages\clearml\__init__.py` and workspace packages to `pkgs/*/src`.
+  - Ruff E402 findings are gone after removing local script bootstrap and adding documented per-file E402 ignores for ClearML direct-entrypoint files.
+  - No `scripts/_bootstrap.py` callers remain in `scripts`, `clearml`, or `tests`.
+  - `uv run python -m ruff check clearml scripts` passed.
+  - Targeted workflow YAML, pyproject TOML, added-large-file, EOF, and `git diff --check` checks passed. Git printed a CRLF-to-LF warning for the ADR file only.
+- Failures / unknowns:
+  - PATH `python -m ...` commands still fail due Windows Store execution alias.
+  - First `uv lock` failed because `gitlint` depends on `gitlint-core`, which pins `sh==1.14.3`; that package imports `fcntl` during build metadata generation on Windows.
+  - Adding a direct `sh>=2.3.0` constraint was unsatisfiable because `gitlint-core` pins `sh==1.14.3`.
+  - `gitlint` remains in `requirements-dev.txt` for compatibility, but is not in the uv dev group. `uv run gitlint --version` fails because the console script is not installed after uv sync.
+  - `uv run python -m ruff check .` still fails on out-of-scope F841 in `infer.py` and F401 in `pipeline.py`; no Phase 2 fix attempted.
+  - `uv run python -m ruff format --check .` still fails because 19 files would be reformatted; broad formatting is deferred.
+  - A bash-style heredoc import probe failed in PowerShell; reran using a PowerShell here-string and succeeded.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+  - Full removal of `clearml/_entrypoint_bootstrap.py` remains `needs_confirmation` until synced template and remote Agent direct-entrypoint behavior is verified.
+- Next action: Phase 3 should handle typed config/adapter cleanup, including remaining Ruff F841/F401, `Any`/`getattr` reductions, stage typing, parameter naming cleanup, and compatibility tests before larger tabular module work.
