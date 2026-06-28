@@ -3,10 +3,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from _bootstrap import add_repo_paths
-
-add_repo_paths()
-
 
 def load_pipeline_main():
     repo_root = Path(__file__).resolve().parents[1]
