@@ -739,3 +739,183 @@
   - Numeric model-score exactness, optional GBM behavior, ClearML server/UI, ClearML remote execution, and Kubernetes execution remain out of scope for this characterization phase.
 - Next action:
   - Phase 6 should split tabular modules in this order: `plots.py` first, `infer.py` second, typed result/artifact helper boundaries third, then `pipeline.py` orchestration into training, ensemble, evaluation, ranking, summary, recommendation, and artifact-writing helpers.
+
+## 2026-06-29 - Prompt 6 plots module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split tabular plotting responsibilities while preserving the existing `ml_platform_tabular.plots` public import path.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/plots.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/common.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/feature.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/prediction.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/candidate.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/leaderboard.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/summary.py`
+  - `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/metrics.py`
+  - `tests/test_tabular_plots.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `rg -n "ml_platform_tabular\\.plots|from .*plots import|import .*plots" .`
+  - `rg -n "^(def|PALETTE)" pkgs/tabular/src/ml_platform_tabular/plots.py`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/plotting pkgs/tabular/src/ml_platform_tabular/plots.py pkgs/tabular/src/ml_platform_tabular/pipeline.py pkgs/tabular/src/ml_platform_tabular/infer.py pkgs/tabular/src/ml_platform_tabular/metrics.py tests/test_tabular_plots.py`
+  - `uv run python -m pytest tests/test_tabular_characterization.py tests/test_tabular_plots.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.plotting` as the new implementation package.
+  - Split common drawing helpers and generic plots into `plotting.common`.
+  - Split feature summary and feature importance helpers into `plotting.feature`.
+  - Split prediction-vs-actual and residual diagnostics into `plotting.prediction`.
+  - Split candidate comparison diagnostics and candidate metrics table writing into `plotting.candidate`.
+  - Split leaderboard table/panel/pareto helpers into `plotting.leaderboard`.
+  - Split inference prediction summary tables and distribution plots into `plotting.summary`.
+  - Replaced `ml_platform_tabular.plots` with a compatibility facade that re-exports the existing public API.
+  - Updated internal tabular imports to use `ml_platform_tabular.plotting`.
+  - Added a test proving the new `plotting` package export works while existing `plots` imports continue to pass.
+  - Removed the unused `numpy` import from `pipeline.py` and the unused `data_cfg` assignment from `infer.py`, both in files touched by this split.
+  - Targeted characterization/plot tests passed: 5 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 116 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - `infer.py` and `pipeline.py` are not split yet; only their plot imports and tiny lint leftovers changed.
+- Next action:
+  - Split `infer.py` next, starting with resolver, metadata loading, schema validation, prediction frame construction, prediction writing, and runner orchestration while keeping the existing `infer.py` public entrypoint as a compatibility facade.
+
+## 2026-06-29 - Prompt 6 inference module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split tabular inference responsibilities while preserving the existing `ml_platform_tabular.infer:run_infer` runner path and output contracts.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/resolver.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/metadata.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/schema.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/prediction_frame.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/prediction_writer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/runner.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `sed`/`Get-Content` equivalent for `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `rg -n "ml_platform_tabular\\.infer|from .*infer import|run_infer" .`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `uv run python -m compileall pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `uv run python -m pytest tests/test_infer_schema_check.py tests/test_tabular_characterization.py tests/test_tabular_smoke.py tests/test_pipeline_smoke.py`
+  - `uv run python -m ruff check pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py tests/test_infer_schema_check.py tests/test_tabular_characterization.py tests/test_tabular_smoke.py tests/test_pipeline_smoke.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.inference` as the new implementation package.
+  - Split model source/path resolution into `inference.resolver`.
+  - Split model info, feature spec, preprocess bundle, target, and feature preset loading into `inference.metadata`.
+  - Split feature selection support and schema check table/summary writing into `inference.schema`.
+  - Split prediction schema constants, artifact id calculation, and slim prediction frame construction into `inference.prediction_frame`.
+  - Split chunk-size parsing and CSV/chunked prediction writing into `inference.prediction_writer`.
+  - Moved orchestration into `inference.runner`.
+  - Replaced `ml_platform_tabular.infer` with a compatibility facade that preserves `run_infer` and current private helper imports used by tests.
+  - Existing runner paths remain stable: `ml_platform_tabular.infer:run_infer`.
+  - Targeted inference/characterization/smoke tests passed: 22 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 116 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - `pipeline.py` is not split yet; training/evaluation orchestration remains the largest tabular module boundary.
+- Next action:
+  - Split `pipeline.py` after the current characterization and facade-backed `plots`/`infer` splits are committed. Suggested order: result/artifact helpers, training stage helpers, candidate evaluation, ensemble/evaluation, ranking/summary/recommendation, and final orchestrator facade.
+
+## 2026-06-29 - Prompt 6 pipeline module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split the large tabular training pipeline module while preserving `ml_platform_tabular.pipeline:run_pipeline`, stage runner compatibility, artifact names, and characterization contracts.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/artifacts.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/preprocessing.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/candidate_training.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/ensemble.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/ranking.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/summary.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/recommendation.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/orchestrator.py`
+  - `tests/test_decision_summary.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/review/EXTRA_REVIEW_NOTES.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `Get-Content pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `rg -n "ml_platform_tabular\\.pipeline|from .*pipeline import|run_pipeline|evaluate_models" .`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `uv run python -m compileall pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py pkgs/tabular/src/ml_platform_tabular/stage.py`
+  - `uv run python -m pytest tests/test_decision_summary.py tests/test_tabular_characterization.py tests/test_pipeline_smoke.py tests/test_tabular_smoke.py tests/test_stage_smoke.py`
+  - `uv run python -m ruff check pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.training` as the new training implementation package.
+  - Split preprocess/data-quality/feature artifacts into `training.preprocessing`.
+  - Split single candidate fitting and candidate ref/metrics files into `training.candidate_training`.
+  - Split ensemble construction and ensemble artifact collection into `training.ensemble`.
+  - Split ranking helpers into `training.ranking`.
+  - Split decision summary payload/markdown and best-vs-ensemble summary helpers into `training.summary`.
+  - Split inference recommendation payload generation into `training.recommendation`.
+  - Split evaluate-models artifact/table/plot generation into `training.evaluation`.
+  - Added `EvaluationResult` in `training.artifacts`; `evaluate_model_candidates()` returns it, while `_evaluate_models()` still returns the legacy dict payload for stage compatibility.
+  - Moved pipeline orchestration to `training.orchestrator`.
+  - Replaced `ml_platform_tabular.pipeline` with a compatibility facade for `run_pipeline` and existing private helper imports used by `stage.py` and tests.
+  - Added `tests/test_decision_summary.py::test_evaluation_result_keeps_dict_compatibility`.
+  - Targeted decision/characterization/pipeline/stage tests passed: 22 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 117 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - Compatibility facades remain for `plots.py`, `infer.py`, and `pipeline.py`; removing them is intentionally deferred until external imports and ClearML runner paths are migrated.
+- Next action:
+  - Commit the Phase 6 module split after reviewing the combined plots/infer/pipeline diff. Later cleanup can migrate `stage.py` and tests to public `training.*` imports, reduce private helper re-exports, and handle broad formatting debt separately.

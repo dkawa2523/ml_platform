@@ -15,6 +15,29 @@ typed result/artifact helper boundaries third, then `pipeline.py` orchestration.
 Exact numeric model scores, optional GBM behavior, ClearML UI, ClearML remote,
 and Kubernetes execution remain separate verification items.
 
+## A12. TABULAR-SPLIT implementation notes after Phase 6
+
+Phase 6 now keeps compatibility facades for the old public module paths:
+
+- `ml_platform_tabular.plots`
+- `ml_platform_tabular.infer`
+- `ml_platform_tabular.pipeline`
+
+The implementation has moved behind those facades:
+
+- plotting behavior: `ml_platform_tabular.plotting.*`
+- inference behavior: `ml_platform_tabular.inference.*`
+- training behavior: `ml_platform_tabular.training.*`
+
+`EvaluationResult` is the explicit typed boundary for evaluate-models outputs.
+`evaluate_model_candidates()` returns this dataclass, while `_evaluate_models()`
+continues returning the legacy dict so `stage.py` and existing tests can remain
+unchanged during this compatibility-preserving split.
+
+Future cleanup should migrate internal imports from private facade helpers to
+public package functions, then remove private re-exports only after ClearML
+runner paths and external import users are confirmed.
+
 # Extra reviewer notes
 
 この文書は、R01〜R27の公式レビューとは別に、現在repoをレビューワー視点で見たときに追加で検討したい改善点です。

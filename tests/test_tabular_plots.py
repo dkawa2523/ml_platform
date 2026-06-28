@@ -11,6 +11,7 @@ from ml_platform_tabular.plots import (
     write_residual_histogram,
     write_residual_vs_predicted_plot,
 )
+from ml_platform_tabular.plotting import write_leaderboard_table as write_leaderboard_table_from_package
 
 
 def test_tabular_plot_writers_create_csv_and_png(tmp_path):
@@ -67,3 +68,13 @@ def test_tabular_plot_writers_create_csv_and_png(tmp_path):
     assert leaderboard.exists()
     assert tables["prediction_summary"].exists()
     assert tables["prediction_preview"].exists()
+
+
+def test_tabular_plotting_package_exports_new_split_boundary(tmp_path):
+    path = write_leaderboard_table_from_package(
+        [{"rank": 1, "model_name": "ridge", "rmse": 0.2}],
+        tmp_path / "leaderboard_from_package.csv",
+    )
+
+    assert path.exists()
+    assert path.suffix == ".csv"
