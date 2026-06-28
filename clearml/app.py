@@ -27,15 +27,16 @@ from ml_platform_tabular import run_task
 
 from adapter import (
     ClearMLAdapter,
-    apply_ui_params,
-    as_list,
+    apply_runtime_params,
     as_bool,
+    as_str_list,
     clearml_projects,
     clearml_stage_project,
     clearml_tags,
-    default_ui_params,
+    default_runtime_params,
     prefixed_task_name,
     stage_task_label,
+    validate_clearml_runtime,
 )
 from reports import report_result
 
@@ -48,7 +49,7 @@ def _ensemble_method(cfg: dict) -> str | None:
     ensemble_cfg = cfg.get("model", {}).get("ensemble", {}) or {}
     if not isinstance(ensemble_cfg, dict):
         return None
-    methods = as_list(ensemble_cfg.get("methods")) or []
+    methods = as_str_list(ensemble_cfg.get("methods")) or []
     if methods:
         return str(methods[0])
     method = ensemble_cfg.get("method")
@@ -135,6 +136,7 @@ def main() -> None:
     clearml_cfg = cfg.get("clearml", {})
     project_name, task_name, tags, comment = _initial_clearml_target(cfg)
 
+    validate_clearml_runtime()
     adapter = ClearMLAdapter.init(
         project_name=project_name,
         task_name=task_name,
@@ -143,8 +145,8 @@ def main() -> None:
         comment=comment,
     )
     try:
-        connected = adapter.connect_params(default_ui_params(cfg))
-        metadata_cfg = apply_ui_params(cfg, connected)
+        connected = adapter.connect_params(default_runtime_params(cfg))
+        metadata_cfg = apply_runtime_params(cfg, connected)
         runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(metadata_cfg)
         adapter.apply_metadata(
             project_name=runtime_project,
@@ -163,8 +165,8 @@ def main() -> None:
                 connected.get("Input/local_path"),
                 dataset_file=dataset_file,
             )
-        cfg = apply_ui_params(cfg, connected, resolved_local_path=resolved_local_path)
-        task_id = getattr(adapter.task, "id", None)
+        cfg = apply_runtime_params(cfg, connected, resolved_local_path=resolved_local_path)
+        task_id = adapter.task.id
         if task_id:
             cfg.setdefault("runtime", {})["clearml_task_id"] = task_id
         if cfg.get("task") == "tabular_infer":

@@ -25,11 +25,12 @@ from adapter import (
     clearml_projects,
     clearml_tags,
     clearml_template_name,
-    default_ui_params,
+    default_runtime_params,
     import_clearml_sdk,
+    validate_clearml_runtime,
 )
 from ml_platform_core.config import load_run_config, load_yaml
-from pipelines import build_pipeline_plan, pipeline_ui_params, sync_pipeline_draft
+from pipelines import build_pipeline_plan, pipeline_runtime_params, sync_pipeline_draft
 
 
 TASK_TEMPLATES = [
@@ -130,8 +131,8 @@ def _remote_packages() -> list[str]:
     return packages
 
 
-def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
-    params = default_ui_params(cfg)
+def _task_runtime_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    params = default_runtime_params(cfg)
     clearml_cfg = cfg.get("clearml", {}) or {}
     if task_name == "tabular_infer_template" and cfg.get("runtime", {}).get("use_clearml"):
         params["Model/source_type"] = "task_id"
@@ -142,6 +143,11 @@ def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
             params["Input/clearml_dataset_id"] = dataset_id
             params["Input/dataset_file"] = params.get("Input/dataset_file") or dataset_file
     return params
+
+
+def _task_ui_params(task_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    """Deprecated compatibility wrapper for `_task_runtime_params`."""
+    return _task_runtime_params(task_name, cfg)
 
 
 def _set_script_with_compat(
@@ -252,8 +258,8 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
     if dry_run:
         for task_name, task_config, task_type_name in TASK_TEMPLATES:
             cfg = load_run_config(task_config, profile_path)
-            ui_params = _task_ui_params(task_name, cfg)
-            params = ", ".join(ui_params)
+            runtime_params = _task_runtime_params(task_name, cfg)
+            params = ", ".join(runtime_params)
             entry_point = _entry_point(task_name)
             display_name = clearml_template_name(task_name)
             print(
@@ -272,9 +278,9 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
                 f"note=\"{_template_note(task_name, execution_image)}\""
             )
         for task_name, task_config, task_type_name in PIPELINE_TEMPLATES:
-            ui_params = pipeline_ui_params(task_config, profile_path)
-            plan = build_pipeline_plan(task_path=task_config, profile_path=profile_path, ui_params=ui_params)
-            params = ", ".join(ui_params)
+            runtime_params = pipeline_runtime_params(task_config, profile_path)
+            plan = build_pipeline_plan(task_path=task_config, profile_path=profile_path, ui_params=runtime_params)
+            params = ", ".join(runtime_params)
             steps = " -> ".join(step["name"] for step in plan["steps"])
             display_name = clearml_template_name(task_name)
             print(
@@ -295,13 +301,14 @@ def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
             )
         return
 
+    validate_clearml_runtime()
     clearml_sdk = import_clearml_sdk()
     Task = clearml_sdk.Task
 
     for task_name, task_config, task_type_name in TASK_TEMPLATES:
         cfg = load_run_config(task_config, profile_path)
         entry_point = _entry_point(task_name)
-        params = _task_ui_params(task_name, cfg)
+        params = _task_runtime_params(task_name, cfg)
         display_name = clearml_template_name(task_name)
         task = _sync_template_task(
             Task,

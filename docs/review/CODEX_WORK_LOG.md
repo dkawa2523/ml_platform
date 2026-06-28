@@ -409,3 +409,173 @@
   - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
   - Full removal of `clearml/_entrypoint_bootstrap.py` remains `needs_confirmation` until synced template and remote Agent direct-entrypoint behavior is verified.
 - Next action: Phase 3 should handle typed config/adapter cleanup, including remaining Ruff F841/F401, `Any`/`getattr` reductions, stage typing, parameter naming cleanup, and compatibility tests before larger tabular module work.
+
+## 2026-06-29 - Prompt 3-A adapter/config cleanup investigation
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Investigate and classify Phase 3 review rows for adapter typing, config typing, ClearML parameter naming, table suffix validation, compatibility aliases, and unused registry code before implementation.
+- Review IDs: R05, R06, R07, R09, R10, R11, R12, R15, R19, R20, R26, R27
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python -m compileall clearml pkgs scripts`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/CODEX_WORK_LOG.md`, and `docs/review/source/pr28_review_consolidated.md`
+  - code inspections for `clearml/adapter.py`, `clearml/app.py`, `clearml/templates.py`, `clearml/pipelines.py`, `pkgs/core/src/ml_platform_core/io.py`, `pkgs/core/src/ml_platform_core/config.py`, and `pkgs/core/src/ml_platform_core/registry.py`
+  - `rg -n "\bAny\b" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "getattr\(" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "stage: str|stage ==" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "clearml_dataset_exists" .`
+  - `rg -n "as_list|_ui_value|ui_params|default_ui_params|pipeline_ui_params" .`
+  - `rg -n "TABLE_SUFFIXES" .`
+  - `rg -n "set_dotted_path|Registry" .`
+  - `rg -n "load_run_config|apply_overrides|dict\[str, Any\]|dict\\[str, Any\\]" pkgs clearml scripts tests`
+  - `rg --files tests pkgs clearml | Sort-Object | Select-String -Pattern "test_|_test"`
+  - `rg -n "clearml_stage_project|clearml_dataset_exists|as_list|load_run_config|find.*table|Registry|set_dotted_path|TABLE_SUFFIXES" tests pkgs clearml`
+  - `rg -n "class .*Protocol|Protocol|TypedDict|StrEnum|Literal\[" clearml pkgs/core/src pkgs/tabular/src tests`
+- Results:
+  - Current branch is `review/r03-types-config-adapter`.
+  - Worktree was clean before recording this investigation.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `Any` remains broad: ClearML SDK task/logger/artifact surfaces, Plotly/report payloads, model estimator objects, and config dictionaries.
+  - No `Protocol`, `TypedDict`, `StrEnum`, or `Literal[...]` stage typing exists yet.
+  - `getattr` calls cluster into two groups: ClearML SDK compatibility guards and sklearn/model optional attribute probes. Only the stable/fake-tested subset should be converted first.
+  - Stage strings are hard-coded in `clearml/adapter.py`, `clearml/app.py`, `clearml/pipelines.py`, and `pkgs/tabular/src/ml_platform_tabular/stage.py`.
+  - `clearml_dataset_exists` is not present in implementation code; it only appears in review source docs. The closest current behavior is `ClearMLAdapter.resolve_dataset()`.
+  - `as_list()` means string-list coercion and is used from `clearml/adapter.py`, `clearml/app.py`, and `clearml/pipelines.py`.
+  - `_ui_value()` serializes list/dict values for ClearML parameter transport. `ui_params`, `default_ui_params`, and `pipeline_ui_params` remain in runtime/test naming.
+  - `TABLE_SUFFIXES` is currently applied to recursive discovery candidates only; direct file paths and `preferred_name` candidates are not suffix-validated.
+  - `set_dotted_path` alias is only found in `config.py` and review docs; it is not exported by `ml_platform_core.__init__`.
+  - `Registry` is only found in `registry.py` and docs; it is not exported by `ml_platform_core.__init__`.
+  - Existing tests relevant to Phase 3 include `tests/test_clearml_mapping.py`, `tests/test_config_overrides.py`, `tests/test_core_smoke.py`, and smoke tests for pipeline/stage/tabular flows.
+- Classification:
+  - quick_fix: R10, R11, R12, R19, R20, R27.
+  - needs_tests_first: R05, R06, R07, R10, R11, R12, R15, R19, R27.
+  - needs_design: R05, R07, R15, R26.
+  - blocked / needs_confirmation: R09, because the reviewed `clearml_dataset_exists()` function is absent here and ClearML localhost/remote verification remains manual.
+- Failures / unknowns:
+  - `python -m compileall clearml pkgs scripts` failed because PATH `python` still resolves to the Windows Store execution alias.
+  - `rg -n "class .*Protocol|Protocol|TypedDict|StrEnum|Literal\[" ...` returned no matches; this is an expected no-current-typing result, not a command problem.
+  - The intended R09 behavior needs confirmation because the exact reviewed helper does not exist in the current implementation.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Prompt 3-B: implement small, test-backed cleanup for R10/R11/R12/R19/R20/R27 and safe parts of R05/R06/R07/R15.
+  - Prompt 3-C: introduce typed config/plan boundaries for R26 and broader stage/config typing, preserving YAML and ClearML parameter key compatibility.
+
+## 2026-06-29 - Prompt 3-B adapter/core small fixes
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Implement small, test-backed Phase 3 cleanup while leaving R26 typed config modeling for Prompt 3-C.
+- Review IDs: R05, R06, R07, R09, R10, R11, R12, R15, R19, R20, R27
+- Changed files:
+  - `clearml/adapter.py`
+  - `clearml/app.py`
+  - `clearml/pipelines.py`
+  - `clearml/templates.py`
+  - `pkgs/core/src/ml_platform_core/config.py`
+  - `pkgs/core/src/ml_platform_core/io.py`
+  - `pkgs/core/src/ml_platform_core/stages.py`
+  - `pkgs/tabular/src/ml_platform_tabular/stage.py`
+  - `pkgs/core/src/ml_platform_core/registry.py` (deleted)
+  - `tests/test_clearml_mapping.py`
+  - `tests/test_core_smoke.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/CODEX_WORK_LOG.md`, and `docs/review/source/pr28_review_consolidated.md`
+  - `rg "clearml_dataset_exists|as_list|_ui_value|default_ui_params|pipeline_ui_params|set_dotted_path|Registry" -n .`
+  - `rg "getattr\\(" -n clearml pkgs tests`
+  - code inspections for ClearML runtime files, core IO/config, tabular stage runner, and relevant tests
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check clearml pkgs/core/src tests/test_clearml_mapping.py tests/test_core_smoke.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ClearMLExecutionTask` Protocol and narrowed `apply_execution_image()` from `Any`.
+  - Replaced the stable `set_base_docker` `getattr` path with direct API calls plus legacy `docker_cmd` fallback.
+  - Added shared `StageName` Literal and `as_stage_name()` validator, then used it in adapter/pipeline/stage routing.
+  - Added `validate_clearml_runtime()` near ClearML entrypoints and added a narrow `clearml_dataset_exists(dataset_id: str)` helper.
+  - Added `as_str_list()` and moved ClearML runtime callers to it while keeping `as_list()` as a deprecated wrapper.
+  - Renamed ClearML parameter transport helpers to runtime wording: `default_runtime_params`, `grouped_runtime_params`, `apply_runtime_params`, `pipeline_runtime_params`, and `_task_runtime_params`; UI-named wrappers remain for compatibility.
+  - Added `is_supported_table_file()` and applied `TABLE_SUFFIXES` consistently to direct file, preferred file, and directory discovery paths.
+  - Removed unused `set_dotted_path` alias and deleted unused `ml_platform_core.registry`.
+  - Added tests for execution image compatibility, dataset existence, stage validation, runtime/UI wrapper compatibility, table suffix handling, and removed alias/registry surface.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 97 passed.
+  - Targeted Ruff check on changed ClearML/core/test files passed.
+- Failures / unknowns:
+  - `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope Ruff findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports 19 files would be reformatted; broad formatting is deferred.
+  - R09 remains `needs_confirmation` for ClearML localhost UI / remote behavior because those checks were not executed in this phase.
+  - R15 remains `in_progress` because public UI-named compatibility wrappers remain intentionally.
+  - R26 remains deferred to Prompt 3-C.
+- Next action:
+  - Prompt 3-C should introduce typed config/plan boundaries for `dict[str, Any]` config and decide whether to handle the remaining small Ruff F841/F401 cleanup there or as a focused lint cleanup.
+
+## 2026-06-29 - Prompt 3-C typed run config boundary
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Address R26 by introducing a typed external config boundary without rewriting all downstream dict consumers.
+- Review IDs: R26
+- Changed files:
+  - `pkgs/core/src/ml_platform_core/config_models.py`
+  - `pkgs/core/src/ml_platform_core/config.py`
+  - `tests/test_config_models.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/source/pr28_review_consolidated.md`, and `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `rg -n "load_run_config|load_yaml|apply_overrides|set_by_dotted_path|config\\[|cfg\\[" clearml pkgs scripts tests`
+  - code inspections for `pkgs/core/src/ml_platform_core/config.py`, root/package pyproject files, task YAML, profile YAML, and existing config tests
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest tests/test_config_models.py tests/test_config_overrides.py tests/test_core_smoke.py`
+  - `uv run python -m ruff check pkgs/core/src/ml_platform_core/config.py pkgs/core/src/ml_platform_core/config_models.py tests/test_config_models.py`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+- Results:
+  - Chose dataclasses plus explicit validation instead of Pydantic because Pydantic was not already a dependency and R26 can start at the boundary without adding runtime weight.
+  - Added `ConfigValidationError`.
+  - Added typed models: `RuntimeConfig`, `RunSectionConfig`, `DataConfig`, `SplitConfig`, `MetricsConfig`, `FeaturesConfig`, `EnsembleConfig`, `ModelConfig`, `OutputConfig`, `BaseTaskConfig`, and `RunConfig`.
+  - Added `parse_run_config(raw)` and `load_typed_run_config(...)`.
+  - Kept `load_run_config(...)` returning a plain dict for compatibility, but it now calls `parse_run_config(cfg)` so invalid known sections fail during config load.
+  - Unknown top-level and section keys are preserved as `extras` and round-trip through `RunConfig.to_dict()`.
+  - Added tests for minimal parse/defaults, wrong known-section types, unknown key preservation, override parsing after merge, and `load_run_config()` dict compatibility.
+  - Targeted config tests passed: 12 passed.
+  - Targeted Ruff for `config.py`, `config_models.py`, and new tests passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 102 passed.
+- Failures / unknowns:
+  - Initial targeted test run failed because invalid stage validation raised `ValueError` from `as_stage_name()` instead of `ConfigValidationError`; fixed by wrapping it in `RunSectionConfig.parse()`.
+  - PATH `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope F841 in `infer.py` and F401 in `pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt: 20 files would be reformatted after adding `config_models.py`.
+  - Downstream ClearML/tabular runtime still consumes dict configs; typed access migration remains incremental follow-up work.
+- Next action:
+  - Phase 4 should move runtime/package manifest boundary work forward (R18), using the new typed config boundary as the core-side contract starting point.

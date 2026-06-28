@@ -14,6 +14,7 @@ from typing import Any
 from ml_platform_core.artifacts import prepare_run_dir, update_latest, write_config_snapshot, write_manifest
 from ml_platform_core.io import load_joblib, read_json, read_table
 from ml_platform_core.result import RunResult
+from ml_platform_core.stages import StageName, as_stage_name
 
 from .pipeline import (
     _build_ensemble,
@@ -27,7 +28,7 @@ from .pipeline import (
 )
 
 
-def _run_dir(cfg: dict[str, Any], stage: str) -> Path:
+def _run_dir(cfg: dict[str, Any], stage: StageName | str) -> Path:
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
     run_name = cfg.get("run", {}).get("name") or stage
     return prepare_run_dir(output_dir, run_name)
@@ -344,9 +345,10 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
 
 
 def run_stage(cfg: dict[str, Any]) -> RunResult:
-    stage = str(cfg.get("run", {}).get("stage") or "").strip()
-    if not stage:
+    raw_stage = str(cfg.get("run", {}).get("stage") or "").strip()
+    if not raw_stage:
         raise ValueError("run.stage is required for tabular_stage.")
+    stage = as_stage_name(raw_stage)
     if stage == "preprocess_features":
         return _run_preprocess(cfg)
     if stage == "train_model":
@@ -355,7 +357,4 @@ def run_stage(cfg: dict[str, Any]) -> RunResult:
         return _run_build_ensemble(cfg)
     if stage == "evaluate_models":
         return _run_evaluate_models(cfg)
-    raise ValueError(
-        "Unsupported tabular stage: "
-        f"{stage}. Available: preprocess_features, train_model, build_ensemble, evaluate_models."
-    )
+    raise AssertionError(f"Unhandled tabular stage: {stage}")

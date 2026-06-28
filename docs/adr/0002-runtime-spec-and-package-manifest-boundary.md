@@ -43,6 +43,12 @@ paths for template compatibility. Local scripts should move to uv
 workspace-installed imports first; removal of `clearml/_entrypoint_bootstrap.py`
 is gated on direct-entrypoint and remote Agent verification.
 
+Phase 3 introduces the first typed config boundary in `pkgs/core` via
+dataclass-based models and `parse_run_config()`. Existing dict-returning
+`load_run_config()` remains compatible while validating known sections early;
+downstream runtime and tabular consumers should migrate to typed accessors
+incrementally.
+
 ## Consequences
 
 - `pkgs/core` stays free of runtime-vendor knowledge.
