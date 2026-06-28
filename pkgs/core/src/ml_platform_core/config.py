@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+from .config_models import RunConfig, parse_run_config
+
 OverrideInput = list[str] | dict[str, Any] | None
 
 
@@ -68,10 +70,6 @@ def set_by_dotted_path(mapping: dict[str, Any], dotted_path: str, value: Any) ->
     cursor[parts[-1]] = value
 
 
-# Backward-compatible alias used by ClearML app tests/Codex snippets.
-set_dotted_path = set_by_dotted_path
-
-
 def parse_overrides(overrides: list[str] | None) -> dict[str, Any]:
     """Parse CLI overrides into a nested dict.
 
@@ -126,4 +124,15 @@ def load_run_config(task_path: str | Path, profile_path: str | Path, *, override
         "profile_config": str(profile_path),
         "overrides": parse_overrides(overrides) if isinstance(overrides, list) else (overrides or {}),
     }
+    parse_run_config(cfg)
     return cfg
+
+
+def load_typed_run_config(
+    task_path: str | Path,
+    profile_path: str | Path,
+    *,
+    overrides: OverrideInput = None,
+) -> RunConfig:
+    """Load, merge, override, and parse a run config into the typed boundary."""
+    return parse_run_config(load_run_config(task_path, profile_path, overrides=overrides))

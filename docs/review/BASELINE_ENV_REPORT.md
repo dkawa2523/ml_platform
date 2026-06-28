@@ -940,3 +940,126 @@ Result: success
 - ClearML remote execution of `clearml/app.py` and `clearml/pipelines.py`: manual verification required.
 - Kubernetes / ClearML remote target cluster: manual verification required.
 - Removal of `clearml/_entrypoint_bootstrap.py`: needs confirmation after remote/template compatibility checks.
+
+## 2026-06-29 Prompt 3-B verification update
+
+Branch: `review/r03-types-config-adapter`
+
+Scope:
+- Phase 3-B small fixes for R05/R06/R07/R09/R10/R11/R12/R15/R19/R20/R27.
+- R26 typed config modeling remains deferred to Prompt 3-C.
+
+Changed behavior / structure:
+- Added shared stage typing in `pkgs/core/src/ml_platform_core/stages.py`.
+- Added narrow ClearML task Protocol for execution image handling.
+- Added runtime parameter helper names while keeping deprecated UI-named wrappers.
+- Added `clearml_dataset_exists(dataset_id: str)` and entrypoint-adjacent ClearML runtime validation.
+- Applied `TABLE_SUFFIXES` consistently in core table discovery.
+- Removed unused `set_dotted_path` alias and unused `ml_platform_core.registry` module.
+
+Command results:
+
+```text
+uv run python -m compileall clearml pkgs scripts
+Result: success
+
+uv run python -m pytest
+Result: success; 97 passed
+
+uv run python -m ruff check clearml pkgs/core/src tests/test_clearml_mapping.py tests/test_core_smoke.py
+Result: success
+
+python -m compileall clearml pkgs scripts
+Result: failed; Windows Store execution alias
+
+python -m pytest
+Result: failed; Windows Store execution alias
+
+python -m ruff check .
+Result: failed; Windows Store execution alias
+
+python -m ruff format --check .
+Result: failed; Windows Store execution alias
+
+uv run python -m ruff check .
+Result: failed
+Summary:
+- F841 local variable data_cfg assigned but never used in pkgs/tabular/src/ml_platform_tabular/infer.py
+- F401 numpy imported but unused in pkgs/tabular/src/ml_platform_tabular/pipeline.py
+Classification:
+- pre-existing/out of Prompt 3-B scope; route to Prompt 3-C or a focused lint cleanup
+
+uv run python -m ruff format --check .
+Result: failed
+Summary:
+- 19 files would be reformatted
+Classification:
+- broad formatting debt; do not mix into Phase 3-B
+```
+
+Manual verification required:
+- ClearML localhost UI: manual verification required.
+- ClearML remote execution of `clearml/app.py` and `clearml/pipelines.py`: manual verification required.
+- Kubernetes / ClearML remote target cluster: manual verification required.
+
+## 2026-06-29 Prompt 3-C verification update
+
+Branch: `review/r03-types-config-adapter`
+
+Scope:
+- R26 typed config boundary.
+- No broad downstream rewrite; existing `load_run_config()` dict compatibility is preserved.
+
+Changed behavior / structure:
+- Added dataclass-based config models in `pkgs/core/src/ml_platform_core/config_models.py`.
+- Added `ConfigValidationError`, `parse_run_config(raw)`, and `load_typed_run_config(...)`.
+- Existing `load_run_config(...)` still returns `dict[str, Any]`, but now validates the merged config through the typed boundary before returning.
+- Unknown keys are preserved in typed model `extras` and `RunConfig.to_dict()`.
+
+Command results:
+
+```text
+uv run python -m compileall clearml pkgs scripts
+Result: success
+
+uv run python -m pytest tests/test_config_models.py tests/test_config_overrides.py tests/test_core_smoke.py
+Result: success; 12 passed
+
+uv run python -m ruff check pkgs/core/src/ml_platform_core/config.py pkgs/core/src/ml_platform_core/config_models.py tests/test_config_models.py
+Result: success
+
+uv run python -m pytest
+Result: success; 102 passed
+
+uv run python -m ruff check .
+Result: failed
+Summary:
+- F841 local variable data_cfg assigned but never used in pkgs/tabular/src/ml_platform_tabular/infer.py
+- F401 numpy imported but unused in pkgs/tabular/src/ml_platform_tabular/pipeline.py
+Classification:
+- pre-existing/out of R26 typed config boundary scope
+
+uv run python -m ruff format --check .
+Result: failed
+Summary:
+- 20 files would be reformatted
+Classification:
+- broad formatting debt; do not mix into R26
+
+python -m compileall clearml pkgs scripts
+Result: failed; Windows Store execution alias
+
+python -m pytest
+Result: failed; Windows Store execution alias
+
+python -m ruff check .
+Result: failed; Windows Store execution alias
+
+python -m ruff format --check .
+Result: failed; Windows Store execution alias
+```
+
+Manual verification required:
+- ClearML localhost UI: manual verification required.
+- ClearML remote execution: manual verification required.
+- Kubernetes / ClearML remote target cluster: manual verification required.

@@ -130,6 +130,89 @@ def test_clearml_execution_image_is_applied_to_task():
     assert task.params["Execution/docker_image"] == "registry/image:tag"
 
 
+def test_clearml_execution_image_keeps_legacy_sdk_fallback():
+    adapter = load_clearml_adapter_module()
+
+    class FakeLegacyTask:
+        def __init__(self):
+            self.base_docker = None
+            self.params = {}
+
+        def set_base_docker(self, docker_cmd=None, **kwargs):
+            if "docker_image" in kwargs:
+                raise TypeError("legacy SDK does not accept docker_image")
+            self.base_docker = docker_cmd
+
+        def update_parameters(self, params):
+            self.params.update(params)
+
+    task = FakeLegacyTask()
+    adapter.apply_execution_image(task, "legacy/image:tag")
+
+    assert task.base_docker == "legacy/image:tag"
+    assert task.params["Execution/docker_image"] == "legacy/image:tag"
+
+
+def test_clearml_dataset_exists_uses_dataset_api(monkeypatch):
+    adapter = load_clearml_adapter_module()
+    seen = []
+
+    class FakeDataset:
+        @staticmethod
+        def get(dataset_id):
+            seen.append(dataset_id)
+            if dataset_id == "missing":
+                raise RuntimeError("missing dataset")
+            return object()
+
+    def fake_symbol(symbol):
+        assert symbol == "Dataset"
+        return FakeDataset
+
+    monkeypatch.setattr(adapter, "import_clearml_symbol", fake_symbol)
+
+    assert adapter.clearml_dataset_exists(" dataset-id ") is True
+    assert adapter.clearml_dataset_exists("missing") is False
+    assert seen == ["dataset-id", "missing"]
+    with pytest.raises(ValueError, match="dataset_id must not be empty"):
+        adapter.clearml_dataset_exists("")
+
+
+def test_clearml_stage_names_are_validated():
+    adapter = load_clearml_adapter_module()
+    projects = {
+        "preprocess": "Preprocess",
+        "train": "Train",
+        "ensemble": "Ensemble",
+        "evaluate": "Evaluate",
+    }
+
+    assert adapter.clearml_stage_project(projects, "train_model") == "Train"
+    assert adapter.stage_task_label("build_ensemble", ensemble_method="weighted") == "build_ensemble_weighted"
+    with pytest.raises(ValueError, match="Unsupported tabular stage"):
+        adapter.clearml_stage_project(projects, "unknown")
+
+
+def test_clearml_runtime_param_names_keep_compatibility():
+    adapter = load_clearml_adapter_module()
+    pipelines = load_clearml_pipelines_module()
+    cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
+
+    assert adapter.default_runtime_params(cfg) == adapter.default_ui_params(cfg)
+    assert adapter.grouped_runtime_params({"Run/name": "demo"}) == adapter.grouped_ui_params({"Run/name": "demo"})
+    assert adapter.apply_runtime_params(cfg, {"Run/seed": 11}) == adapter.apply_ui_params(cfg, {"Run/seed": 11})
+    assert adapter.as_str_list('["a", 2]') == ["a", "2"]
+    assert adapter.as_str_list("a,b") == ["a", "b"]
+    assert adapter.as_list("a,b") == ["a", "b"]
+    assert pipelines.pipeline_runtime_params(
+        "config/tasks/tabular_pipeline.yaml",
+        "config/profiles/clearml-dev.yaml",
+    ) == pipelines.pipeline_ui_params(
+        "config/tasks/tabular_pipeline.yaml",
+        "config/profiles/clearml-dev.yaml",
+    )
+
+
 def test_clearml_app_routes_primary_tasks_to_named_projects():
     app = load_clearml_app_module()
     base_clearml = {
