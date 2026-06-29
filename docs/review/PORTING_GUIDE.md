@@ -323,3 +323,61 @@ the target PR reply base. For per-review evidence, use
 R04 is excluded from this cleanup and from target-repo porting. Record it as
 `not_applicable` or handle it in a separate operational/Kubernetes evidence
 branch owned by the deployment environment.
+
+## Lean cleanup porting plan - 2026-06-29
+
+Source branch:
+
+```bash
+cleanup/s00-lean-codebase-audit
+```
+
+Port the Lean cleanup after the PR review-response commits. These commits are
+not Kubernetes / K8 work and should not be mixed with cluster verification.
+
+Recommended cherry-pick order:
+
+```bash
+git cherry-pick -x 562fecc   # docs: add lean codebase simplification audit
+git cherry-pick -x f37b856   # chore: remove confirmed unused code and stale compatibility
+git cherry-pick -x b73cd7c   # refactor: simplify runtime contract surface
+git cherry-pick -x 38c95de   # refactor: simplify diagnostics and error handling
+git cherry-pick -x de61cdb   # refactor: simplify module facades and file responsibilities
+git cherry-pick -x 8d3b726   # docs: prune obsolete setup and architecture notes
+git cherry-pick -x <final-lean-completion-commit>
+```
+
+Lean cleanup conflict order:
+
+1. `docs/review/SIMPLIFICATION_*` and `docs/adr/0003-lean-codebase-guidelines.md`.
+2. Confirmed stale wrapper removals in `clearml/adapter.py`,
+   `clearml/pipelines.py`, and `clearml/templates.py`.
+3. Runtime contract simplification in `pkgs/core/src/ml_platform_core/contracts.py`
+   and `pkgs/tabular/src/ml_platform_tabular/manifest.py`.
+4. Diagnostics cleanup in `clearml/adapter.py` and `clearml/reports.py`.
+5. Tabular facade/import cleanup in `stage.py`, `infer.py`, `pipeline.py`,
+   `plotting`, `inference`, `training`, and related tests.
+6. Active docs setup and architecture notes.
+7. Final Lean completion docs.
+
+Target repo checks before deleting more code:
+
+- Search for external or target-only imports of
+  `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
+  `ml_platform_tabular.pipeline`.
+- Verify ClearML remote Agent execution before deleting
+  `clearml/_entrypoint_bootstrap.py` or renaming the `clearml/` directory.
+- Verify Docker, ClearML remote setup, docs setup, and legacy pip usage before
+  deleting `requirements*.txt` compatibility files.
+- Run or temporarily install `vulture` before broad unused-code deletion.
+- Run or temporarily install `deptry` before dependency pruning.
+- Keep ruff formatting-only changes in a separate commit from behavior cleanup.
+
+Do not port as part of Lean cleanup:
+
+```text
+Kubernetes / K8 verification
+kubectl / kustomize / helm output
+cluster rollout evidence
+docs/review/source rewrites or deletions
+```

@@ -547,3 +547,99 @@ CLEAN-FINAL should:
 2. Record remaining `ruff format --check` debt.
 3. Decide whether to add temporary dependency-audit tooling.
 4. Confirm no active docs point users to obsolete setup commands.
+
+## 2026-06-29 - CLEAN-FINAL lean codebase completion judgment
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: lean codebase final completion judgment without new implementation,
+  code deletion, or Kubernetes / K8 work.
+
+## Commands
+
+```powershell
+git status --short
+git branch --show-current
+git log --oneline --decorate -n 50
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m pre_commit run --all-files
+python -m radon cc clearml pkgs scripts -s -a
+python -m vulture clearml pkgs scripts tests --min-confidence 80
+python -m deptry .
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+uv run python -m pre_commit run --all-files
+uv run python -m radon cc clearml pkgs scripts -s -a
+uv run python -m radon mi clearml pkgs scripts -s
+uv run python -m vulture clearml pkgs scripts tests --min-confidence 80
+uv run python -m deptry .
+rg -n "TODO|FIXME|deprecated|Backward-compatible|compat|legacy|temporary|workaround" clearml pkgs scripts tests docs
+rg -n "ui_params|ui_value|default_ui_params|pipeline_ui_params" clearml pkgs scripts tests docs
+rg -n "sys\\.path|_entrypoint_bootstrap|add_clearml_entrypoint_paths" clearml pkgs scripts tests docs
+rg -n "Registry|set_dotted_path" .
+rg -n "print\\(" clearml pkgs scripts tests
+```
+
+## Results
+
+- Starting status: clean.
+- Branch: `cleanup/s00-lean-codebase-audit`.
+- Bare `python -m ...` commands failed because `python` resolves to the
+  Windows Store alias on this workstation.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m radon cc clearml pkgs scripts -s -a`: ran, average
+  complexity A (4.98).
+- `uv run python -m radon mi clearml pkgs scripts -s`: ran; remaining C
+  maintainability modules are `clearml/adapter.py`, `clearml/pipelines.py`,
+  `clearml/reports.py`, and `pkgs/core/src/ml_platform_core/config_models.py`.
+- `uv run python -m ruff format --check .`: failed on known 11-file formatting
+  debt outside this completion docs update.
+- `uv run python -m pre_commit run --all-files`: failed only on the same ruff
+  format-check debt; other hooks passed and the worktree was unchanged.
+- `uv run python -m vulture ...`: failed because `vulture` is not installed.
+- `uv run python -m deptry .`: failed because `deptry` is not installed.
+- Residual searches found expected compatibility surfaces:
+  - ClearML `ui_params` argument names in pipeline helpers and tests.
+  - ClearML direct-entrypoint bootstrap and SDK shadow guard.
+  - Public tabular compatibility facades.
+  - Operator-facing `print()` calls in scripts and ClearML dry-run/sync code.
+  - `Registry` and `set_dotted_path` only in docs/review history, tests, and
+    future-scope wording, not live removed code.
+
+## Completion
+
+`pass_with_notes`
+
+The Lean cleanup is complete for this repository scope. Code behavior checks
+pass through the uv-managed interpreter, and the remaining items are documented
+as external confirmation or isolated formatting/tooling work.
+
+## Remaining Items
+
+- S01 remains `needs_confirmation`: broad unused-code deletion needs `vulture`
+  or equivalent tooling.
+- S02 remains `needs_confirmation`: public facades and ClearML compatibility
+  paths require target-import and remote/template confirmation.
+- S06 remains `needs_confirmation`: dependency pruning needs `deptry` or manual
+  dependency proof.
+- S08 remains `needs_confirmation`: ClearML remote Agent execution must be
+  verified before removing `_entrypoint_bootstrap.py` or renaming `clearml/`.
+- Ruff format debt remains in 11 pre-existing files and should be handled in a
+  standalone no-behavior formatting commit.
+- Kubernetes / K8 verification remains excluded.
+
+## Next Action
+
+Commit the final completion docs, then either:
+
+1. Port Lean cleanup commits to the target repo in the documented order.
+2. Run optional `vulture` / `deptry` tooling in a separate cleanup branch.
+3. Address ruff formatting debt in an isolated formatting-only commit.

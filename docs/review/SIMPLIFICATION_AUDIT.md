@@ -500,3 +500,94 @@ Verification:
    proven.
 6. Address ruff formatting debt in a standalone no-behavior commit.
 7. Re-run full tests and porting checks.
+
+## Final Lean Completion Summary
+
+Date: 2026-06-29
+
+Completion: `pass_with_notes`
+
+Main removals:
+
+- Removed confirmed stale one-line UI-named wrappers:
+  `as_list`, `default_ui_params`, `grouped_ui_params`, `apply_ui_params`,
+  `pipeline_ui_params`, and `_task_ui_params`.
+- Removed the unused `ml_platform_core.runtime_types` Protocol scaffold.
+- Removed descriptive-only contract fields that were not consumed by runtime,
+  manifest validation, artifacts, or tests.
+- Removed private helper re-exports from `ml_platform_tabular.infer` and
+  `ml_platform_tabular.pipeline`.
+- Removed duplicated `spec_from_file_location()` bootstrap loader functions
+  from ClearML direct entrypoints.
+
+Main simplifications:
+
+- Tabular internals now import canonical implementation modules under
+  `training`, `inference`, and `plotting` instead of private helpers from old
+  facade modules.
+- ClearML reporting now separates best-effort artifact parsing from ClearML
+  logger runtime failures.
+- Active setup and architecture docs now use `uv sync` / `uv run` and describe
+  the current package layout.
+- Requirements files are documented as compatibility inputs rather than the
+  primary dependency source of truth.
+
+Compatibility layers intentionally retained:
+
+- `ml_platform_tabular.infer:run_infer`
+- `ml_platform_tabular.pipeline:run_pipeline`
+- `ml_platform_tabular.pipeline:evaluate_model_candidates`
+- `ml_platform_tabular.pipeline:EvaluationResult`
+- `ml_platform_tabular.plots`
+- ClearML direct entrypoints: `clearml/app.py`, `clearml/pipelines.py`, and
+  `clearml/templates.py`
+- `clearml/_entrypoint_bootstrap.py`
+- ClearML SDK shadow guard and script metadata compatibility helpers
+- `requirements*.txt` compatibility files
+
+Reasons retained:
+
+- External imports were not audited outside this repository.
+- ClearML remote Agent/template execution was not verified in this cleanup.
+- Docker, ClearML remote setup, docs-only setup, and legacy pip environments may
+  still use requirements files.
+- Existing ClearML artifact names, parameter keys, runner paths, and prediction
+  output contracts must remain stable.
+
+Future deletion candidates after confirmation:
+
+- Public tabular facade modules after target repositories migrate to
+  `training`, `inference`, and `plotting` imports.
+- `clearml/_entrypoint_bootstrap.py` after remote template execution no longer
+  depends on direct file execution.
+- Requirements compatibility files after Docker/ClearML/docs setup no longer
+  consumes them.
+- Additional unused code after `vulture` or equivalent tooling is available.
+- Dependency entries after `deptry` or manual import proof is available.
+
+Final verification:
+
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run python -m radon cc clearml pkgs scripts -s -a`: passed; average
+  complexity A.
+- `uv run python -m ruff format --check .`: failed on known 11-file formatting
+  debt.
+- `uv run python -m pre_commit run --all-files`: failed only on the same ruff
+  format-check debt.
+- `uv run python -m vulture ...`: unavailable.
+- `uv run python -m deptry .`: unavailable.
+- Bare `python -m ...` commands failed because this workstation resolves
+  `python` to the Windows Store alias.
+
+Target repo porting notes:
+
+- Port Lean cleanup commits after the PR review-response commits.
+- Keep compatibility facades unless target import searches prove they are
+  unused.
+- Keep ClearML direct entrypoints and `_entrypoint_bootstrap.py` until remote
+  template execution is verified in the target environment.
+- Keep requirements compatibility files unless target Docker/ClearML/docs setup
+  has fully moved to uv groups.
+- Do not include Kubernetes / K8 verification in this Lean cleanup port.
