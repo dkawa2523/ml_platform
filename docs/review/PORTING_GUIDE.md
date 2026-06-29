@@ -289,6 +289,10 @@ Before relying on the ported branch, check:
 - Existing GitHub workflows and required checks before replacing CI files.
 - PATH `python` behavior. This source environment needs `uv run python ...`
   because `python` is the Windows Store alias.
+- Active docs now use `uv sync --group dev`, `uv sync --group docs`, and
+  `uv run python ...`. Keep `requirements*.txt` files only as compatibility
+  inputs unless the target Docker/ClearML/docs setup has also migrated away
+  from them.
 - `uv --version` and lock resolution on the target OS.
 - GitHub runner availability. `arc-runner-set-spdml-ml-pipeline` is still
   `needs_confirmation`.

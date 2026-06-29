@@ -15,13 +15,13 @@
 ## 実行コマンド
 
 ```powershell
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python -m pytest -q
 ```
 
 Linux / macOS:
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
+uv run python -m pytest -q
 ```
 
 ## テストで守るべきこと
@@ -49,7 +49,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
 
 ```powershell
 python clearml/pipelines.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 ## Manual ClearML 検証

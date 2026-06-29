@@ -377,6 +377,43 @@ S04 verification:
 - `ruff format --check` debt should be fixed in an isolated formatting cleanup,
   not mixed with simplification or behavior changes.
 
+CLEAN-5 dependency decision:
+
+- No dependencies were removed because `deptry` is not installed in the current
+  uv environment.
+- `requirements.txt`, `requirements-dev.txt`, and
+  `docs/ml_platform_mkdocs/requirements-docs.txt` remain compatibility files for
+  Docker, ClearML remote setup, docs-only environments, and legacy pip flows.
+- Active setup docs now present `uv sync --group dev`, `uv sync --group docs`,
+  and `uv run python ...` as the default commands.
+
+## Active Docs Cleanup
+
+CLEAN-5 pruned current-facing docs outside `docs/review/source`:
+
+- Replaced old direct `python scripts/...` and `pytest -q` examples with
+  `uv run python ...` commands.
+- Replaced the old MkDocs setup command with `uv sync --group docs` and
+  `uv run --group docs python -m mkdocs ...`.
+- Rewrote the MkDocs repository-structure, development-guidelines,
+  add-model, add-feature-or-metric, model-reference, and environment pages to
+  describe the current `training`, `inference`, and `plotting` package layout.
+- Shortened `clearml/README.md` and `docs/CODEX_HANDOFF.md` so active docs no
+  longer explain low-level `sys.path` mechanics.
+- Kept review evidence and historical review-response docs intact.
+
+Verification:
+
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict`:
+  passed.
+- `uv run python -m deptry .`: failed because `deptry` is not installed, so
+  dependency deletion remains `needs_confirmation`.
+- `uv run python -m ruff format --check .`: failed on known formatting debt
+  outside this docs cleanup.
+
 ## Deletion Possibility
 
 Removed or narrowed in CLEAN-4:
@@ -456,8 +493,10 @@ Verification:
 1. Confirm unused-code tooling approach and run it without committing tool churn.
 2. Keep public facades and ClearML direct-entrypoint bootstrap until external
    imports and remote Agent execution are confirmed.
-3. Split ClearML adapter/reporting responsibilities behind existing behavior.
-4. Simplify manifest/policy/contracts only where a real multi-domain boundary is
+3. Confirm dependency pruning with `deptry` or equivalent before deleting any
+   dependency files or package entries.
+4. Split ClearML adapter/reporting responsibilities behind existing behavior.
+5. Simplify manifest/policy/contracts only where a real multi-domain boundary is
    proven.
-5. Address ruff formatting debt in a standalone no-behavior commit.
-6. Re-run full tests and porting checks.
+6. Address ruff formatting debt in a standalone no-behavior commit.
+7. Re-run full tests and porting checks.

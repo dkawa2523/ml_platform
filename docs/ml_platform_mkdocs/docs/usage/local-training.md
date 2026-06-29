@@ -19,13 +19,13 @@ Local 学習では、`config/tasks/tabular_pipeline.yaml` と `config/profiles/l
 ## 実行例
 
 ```powershell
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml
 ```
 
 GBM 系パッケージを入れていない場合は、依存不要モデルに絞ります。
 
 ```powershell
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
 ```
 
 ## 処理の流れ

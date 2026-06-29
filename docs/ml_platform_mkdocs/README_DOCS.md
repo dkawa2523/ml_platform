@@ -1,34 +1,17 @@
-# ml_platform MkDocs ドキュメント一式
+# MkDocs Notes
 
-このディレクトリは、`dkawa2523/ml_platform` に追加できる MkDocs 形式のドキュメント一式です。
+This directory contains the MkDocs site for `ml_platform`.
 
-## 配置方法
-
-リポジトリルートへ以下を配置してください。
-
-```text
-mkdocs.yml
-requirements-docs.txt
-docs/
-```
-
-既存 `docs/` をそのまま上書きせず、必要に応じて既存ファイルを退避または統合してください。
-
-## プレビュー
+Use the root `pyproject.toml` docs dependency group as the source of truth:
 
 ```powershell
-uv pip install -r requirements-docs.txt
-mkdocs serve
+uv sync --group docs
+uv run --group docs python -m mkdocs serve --config-file docs\ml_platform_mkdocs\mkdocs.yml
+uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict
 ```
 
-## HTML ビルド
+`requirements-docs.txt` remains only as a compatibility file for environments
+that cannot use uv dependency groups yet.
 
-```powershell
-mkdocs build --strict
-```
-
-## 注意
-
-- Mermaid 図は MkDocs Material の `pymdownx.superfences` 設定を前提にしています。
-- 数式は MathJax を利用します。外部 CDN が使えない環境では、`docs/javascripts/mathjax.js` と `mkdocs.yml` の `extra_javascript` を社内配布の MathJax に差し替えてください。
-- 既存の `docs/SPEC.md`、`docs/CLEARML_UI_SPEC.md`、`docs/ROADMAP.md` の内容と整合するように構成していますが、実リポジトリへ適用する際は既存 docs との重複整理を行ってください。
+Generated HTML is written to `docs/ml_platform_mkdocs/site/` and should not be
+committed.

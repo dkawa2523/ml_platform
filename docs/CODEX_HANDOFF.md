@@ -49,10 +49,10 @@ Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 Use dependency-free candidates unless GBM extras are installed locally:
 
 ```powershell
-python scripts/make_sample_data.py
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python scripts/make_sample_data.py
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+uv run python -m pytest -q
 ```
 
 ## ClearML Checks
@@ -60,14 +60,14 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
 Dry-run:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 Real sync:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
 Template sync intentionally recreates the Pipeline draft. ClearML stores the
@@ -92,12 +92,10 @@ Old ClearML tasks may remain on the server until manually archived.
 
 ## Import Safety Notes
 
-The repository keeps a top-level `clearml/` operations directory for now because
-synced templates execute `clearml/app.py` and `clearml/pipelines.py` directly.
-Those entrypoints use `clearml/_entrypoint_bootstrap.py` only to locate sibling
-operations modules and editable package source roots. Official SDK imports must
-continue to go through `adapter.import_clearml_sdk()`, which temporarily removes
-the repo root from `sys.path` to avoid local-directory shadowing.
+The repository keeps a top-level `clearml/` operations directory because synced
+templates execute `clearml/app.py` and `clearml/pipelines.py` directly. Official
+SDK imports must continue to go through `adapter.import_clearml_sdk()` so the
+local operations directory does not shadow the external `clearml` package.
 
 Do not rename `clearml/` in a small maintenance change. A safe future migration
 should add new script/module entrypoints first, sync templates to the new

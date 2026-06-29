@@ -441,3 +441,109 @@ CLEAN-5 should focus on one of:
    or dev dependencies.
 3. S10: run final lean validation and update porting notes after the remaining
    cleanup batch.
+
+## 2026-06-29 - CLEAN-S06/S07 docs and dependency setup cleanup
+
+- Date: 2026-06-29
+- Branch: `cleanup/s00-lean-codebase-audit`
+- Worker: Codex
+- Purpose: prune obsolete active setup and architecture docs, clarify
+  requirements-file compatibility, and leave dependency deletion gated by
+  dependency-audit tooling.
+
+## Changed Files
+
+- `README.md`
+- `clearml/README.md`
+- `docs/CODEX_HANDOFF.md`
+- `docs/ml_platform_mkdocs/README_DOCS.md`
+- `docs/ml_platform_mkdocs/docs/architecture/repository-structure.md`
+- `docs/ml_platform_mkdocs/docs/development/add-feature-or-metric.md`
+- `docs/ml_platform_mkdocs/docs/development/add-model.md`
+- `docs/ml_platform_mkdocs/docs/development/guidelines.md`
+- `docs/ml_platform_mkdocs/docs/development/testing.md`
+- `docs/ml_platform_mkdocs/docs/operations/checklist.md`
+- `docs/ml_platform_mkdocs/docs/reference/models.md`
+- `docs/ml_platform_mkdocs/docs/setup/clearml-preparation.md`
+- `docs/ml_platform_mkdocs/docs/setup/environment.md`
+- `docs/ml_platform_mkdocs/docs/setup/index.md`
+- `docs/ml_platform_mkdocs/docs/setup/local-run.md`
+- `docs/ml_platform_mkdocs/docs/usage/local-training.md`
+- `docs/review/PORTING_GUIDE.md`
+- `docs/review/SIMPLIFICATION_AUDIT.md`
+- `docs/review/SIMPLIFICATION_FIX_MAP.md`
+- `docs/review/SIMPLIFICATION_WORK_LOG.md`
+
+## Commands
+
+```powershell
+git status --short
+rg -n "ui_params|ui_value|_entrypoint_bootstrap|sys\\.path|requirements\\.txt|pip install -r|plots\\.py|infer\\.py|pipeline\\.py|Registry|Kubernetes|k8s|kubectl|kustomize" README.md docs clearml pkgs scripts tests --glob "!docs/review/source/**"
+Get-Content -Raw pyproject.toml
+Get-Content -Raw requirements.txt
+Get-Content -Raw requirements-dev.txt
+uv run python -m deptry .
+rg -n "python scripts/|pytest -q|pip install -r|uv pip install -r|pipeline\\.py|infer\\.py|plots\\.py|_entrypoint_bootstrap|sys\\.path|ui_params" README.md docs/CODEX_HANDOFF.md docs/ml_platform_mkdocs docs/SPEC.md docs/CLEARML_UI_SPEC.md docs/ROADMAP.md clearml/README.md --glob "!docs/review/source/**"
+rg -n "uv pip install|requirements-dev|requirements-docs|requirements\\.txt|pip install" README.md docs/CODEX_HANDOFF.md docs/ml_platform_mkdocs clearml/README.md docs/SPEC.md --glob "!docs/review/source/**"
+python -m compileall clearml pkgs scripts
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m deptry .
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+uv run python -m deptry .
+uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict
+git diff --check
+```
+
+## Results
+
+- No dependency was removed because `deptry` is not installed.
+- Active setup commands now prefer:
+  - `uv sync --group dev`
+  - `uv sync --group docs`
+  - `uv run python ...`
+  - `uv run --group docs python -m mkdocs ...`
+- `requirements.txt`, `requirements-dev.txt`, and
+  `docs/ml_platform_mkdocs/requirements-docs.txt` remain as compatibility
+  files.
+- MkDocs active architecture/development/reference pages now describe
+  `training`, `inference`, and `plotting` as the implementation packages.
+- `infer.py`, `pipeline.py`, and `plots.py` are documented as compatibility
+  facades where they remain relevant.
+- Bare `python -m ...` verification commands failed on this workstation because
+  `python` resolves to the Windows Store alias. The canonical `uv run python`
+  checks below were used for this cleanup.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run python -m pytest`: passed, 120 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict`:
+  passed; generated `docs/ml_platform_mkdocs/site/` output was removed after
+  the check.
+- `git diff --check`: passed, with only the existing CRLF normalization warning
+  for `docs/review/PORTING_GUIDE.md`.
+- `docs/review/source/*` was not changed.
+- Kubernetes / K8 work was not performed.
+
+## Failures / Unknowns
+
+- `uv run python -m deptry .` failed because `deptry` is not installed.
+- Bare `python -m compileall`, `python -m pytest`, `python -m ruff ...`, and
+  `python -m deptry .` failed because `python` resolves to the Windows Store
+  alias in this workstation.
+- `uv run python -m ruff format --check .` failed on known formatting debt in
+  11 pre-existing files outside this docs cleanup.
+- Dependency deletion remains `needs_confirmation`.
+- Review history and response draft docs still mention old states by design.
+
+## Next Action
+
+CLEAN-FINAL should:
+
+1. Re-run full compile, test, ruff, and docs checks.
+2. Record remaining `ruff format --check` debt.
+3. Decide whether to add temporary dependency-audit tooling.
+4. Confirm no active docs point users to obsolete setup commands.

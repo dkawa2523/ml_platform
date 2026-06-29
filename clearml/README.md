@@ -53,5 +53,5 @@ the only worker slot.
 
 Because this operations directory is named `clearml`, code here must import the
 official SDK through `adapter.import_clearml_sdk()` or
-`adapter.import_clearml_symbol()`. Those helpers temporarily remove the repo root
-from `sys.path` before importing the external package.
+`adapter.import_clearml_symbol()`. Do not import the SDK directly from new
+runtime code.

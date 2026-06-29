@@ -5,7 +5,7 @@ Local 実行は、ClearML に依存せず、手元のデータと設定だけで
 ## サンプルデータ作成
 
 ```powershell
-python scripts/make_sample_data.py
+uv run python scripts/make_sample_data.py
 ```
 
 標準では次のようなサンプルファイルが作成されます。
@@ -20,7 +20,7 @@ python scripts/make_sample_data.py
 GBM 系 optional dependency を入れていない環境では、依存不要モデルだけで実行します。
 
 ```powershell
-python scripts/local_run.py \
+uv run python scripts/local_run.py \
   --task config/tasks/tabular_pipeline.yaml \
   --profile config/profiles/local.yaml \
   --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
@@ -29,7 +29,7 @@ python scripts/local_run.py \
 PowerShell では 1 行で実行しても構いません。
 
 ```powershell
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
 ```
 
 ## 推論を実行する
@@ -37,7 +37,7 @@ python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile 
 学習後、標準設定の推論 Task を Local で実行できます。
 
 ```powershell
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
 ```
 
 `tabular_infer.yaml` の `model.source_type` が `local_path` の場合、明示的な `local_model_path` がなければ `outputs/latest_training_pipeline` などの最新学習成果物からモデル解決を試みます。
@@ -86,11 +86,11 @@ outputs/
 ## テスト
 
 ```powershell
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python -m pytest -q
 ```
 
 CI や Linux shell では次のように実行します。
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
+uv run python -m pytest -q
 ```
