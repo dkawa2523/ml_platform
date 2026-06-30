@@ -136,21 +136,11 @@ class PackageManifest:
         _require_text(self.domain, "PackageManifest.domain")
         _require_text(self.version, "PackageManifest.version")
         object.__setattr__(self, "tags", _tuple_text(tuple(self.tags), "PackageManifest.tags"))
-        stage_keys = tuple(stage.key for stage in self.stages)
-        task_keys = tuple(task.key for task in self.tasks)
-        pipeline_keys = tuple(pipeline.key for pipeline in self.pipelines)
+        stage_keys, task_keys, pipeline_keys = _manifest_key_sets(self)
         _unique(stage_keys, "PackageManifest.stages")
         _unique(task_keys, "PackageManifest.tasks")
         _unique(pipeline_keys, "PackageManifest.pipelines")
-        known_stages = set(stage_keys)
-        for task in self.tasks:
-            missing = [key for key in task.stage_keys if key not in known_stages]
-            if missing:
-                raise ValueError(f"TaskSpec {task.key!r} references unknown stage keys: {missing}.")
-        for pipeline in self.pipelines:
-            missing = [key for key in pipeline.stage_keys if key not in known_stages]
-            if missing:
-                raise ValueError(f"PipelineSpec {pipeline.key!r} references unknown stage keys: {missing}.")
+        _validate_manifest_reference_keys(self, set(stage_keys))
 
     def stage(self, key: str) -> StageSpec:
         return self._lookup(self.stages, key, "stage")
@@ -167,6 +157,27 @@ class PackageManifest:
             if item.key == key:
                 return item
         raise KeyError(f"Unknown {kind}: {key}")
+
+
+def _manifest_key_sets(manifest: PackageManifest) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    return (
+        tuple(stage.key for stage in manifest.stages),
+        tuple(task.key for task in manifest.tasks),
+        tuple(pipeline.key for pipeline in manifest.pipelines),
+    )
+
+
+def _validate_manifest_reference_keys(manifest: PackageManifest, known_stages: set[str]) -> None:
+    for task in manifest.tasks:
+        _require_known_stage_keys(task.stage_keys, known_stages, f"TaskSpec {task.key!r}")
+    for pipeline in manifest.pipelines:
+        _require_known_stage_keys(pipeline.stage_keys, known_stages, f"PipelineSpec {pipeline.key!r}")
+
+
+def _require_known_stage_keys(stage_keys: tuple[str, ...], known_stages: set[str], owner: str) -> None:
+    missing = [key for key in stage_keys if key not in known_stages]
+    if missing:
+        raise ValueError(f"{owner} references unknown stage keys: {missing}.")
 
 
 @dataclass(frozen=True)

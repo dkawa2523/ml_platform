@@ -738,7 +738,7 @@
   - `uv run python -m ruff format --check .` still reports broad formatting debt in existing files.
   - Numeric model-score exactness, optional GBM behavior, ClearML server/UI, ClearML remote execution, and Kubernetes execution remain out of scope for this characterization phase.
 - Next action:
-  - Phase 6 should split tabular modules in this order: `plots.py` first, `infer.py` second, typed result/artifact helper boundaries third, then `pipeline.py` orchestration into training, ensemble, evaluation, ranking, summary, recommendation, and artifact-writing helpers.
+  - Phase 6 should split tabular modules in this order: `plots.py` first, `infer.py` second, typed result/artifact helper boundaries third, then `pipeline.py` orchestration into training, ensemble, evaluation, ranking, summary, and artifact-writing helpers.
 
 ## 2026-06-29 - Prompt 6 plots module split
 
@@ -854,7 +854,7 @@
   - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
   - `pipeline.py` is not split yet; training/evaluation orchestration remains the largest tabular module boundary.
 - Next action:
-  - Split `pipeline.py` after the current characterization and facade-backed `plots`/`infer` splits are committed. Suggested order: result/artifact helpers, training stage helpers, candidate evaluation, ensemble/evaluation, ranking/summary/recommendation, and final orchestrator facade.
+  - Split `pipeline.py` after the current characterization and facade-backed `plots`/`infer` splits are committed. Suggested order: result/artifact helpers, training stage helpers, candidate evaluation, ensemble/evaluation, ranking/summary, and final orchestrator facade.
 
 ## 2026-06-29 - Prompt 6 pipeline module split
 
@@ -872,7 +872,6 @@
   - `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py`
   - `pkgs/tabular/src/ml_platform_tabular/training/ranking.py`
   - `pkgs/tabular/src/ml_platform_tabular/training/summary.py`
-  - `pkgs/tabular/src/ml_platform_tabular/training/recommendation.py`
   - `pkgs/tabular/src/ml_platform_tabular/training/orchestrator.py`
   - `tests/test_decision_summary.py`
   - `docs/review/PR28_REVIEW_MAP.md`
@@ -903,9 +902,9 @@
   - Split ensemble construction and ensemble artifact collection into `training.ensemble`.
   - Split ranking helpers into `training.ranking`.
   - Split decision summary payload/markdown and best-vs-ensemble summary helpers into `training.summary`.
-  - Split inference recommendation payload generation into `training.recommendation`.
+  - Kept inference decision fields in the decision summary payload.
   - Split evaluate-models artifact/table/plot generation into `training.evaluation`.
-  - Added `EvaluationResult` in `training.artifacts`; `evaluate_model_candidates()` returns it, while `_evaluate_models()` still returns the legacy dict payload for stage compatibility.
+  - Added `EvaluationResult` in `training.artifacts`; `evaluate_model_candidates()` returns it for both pipeline and stage execution.
   - Moved pipeline orchestration to `training.orchestrator`.
   - Replaced `ml_platform_tabular.pipeline` with a compatibility facade for `run_pipeline` and existing private helper imports used by `stage.py` and tests.
   - Added `tests/test_decision_summary.py::test_evaluation_result_keeps_dict_compatibility`.

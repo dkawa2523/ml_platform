@@ -174,19 +174,28 @@ def write_candidate_residual_histogram(
 
 
 def write_metrics_by_candidate_table(metrics_by_candidate: dict[str, Any], path: Path) -> Path:
-    rows = []
-    for name, payload in metrics_by_candidate.items():
-        metrics = payload.get("metrics", payload) if isinstance(payload, dict) else {}
-        row = {
-            "model_name": name,
-            "artifact_kind": payload.get("artifact_kind") if isinstance(payload, dict) else None,
-            "ensemble_method": payload.get("ensemble_method") if isinstance(payload, dict) else None,
-            "selection_metric": payload.get("selection_metric") if isinstance(payload, dict) else None,
-            "selection_value": payload.get("selection_value") if isinstance(payload, dict) else None,
-        }
-        if isinstance(metrics, dict):
-            for metric_name, value in metrics.items():
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
-                    row[str(metric_name)] = float(value)
-        rows.append(row)
+    rows = [_metrics_by_candidate_row(name, payload) for name, payload in metrics_by_candidate.items()]
     return write_table(pd.DataFrame(rows), path)
+
+
+def _metrics_by_candidate_row(name: str, payload: Any) -> dict[str, Any]:
+    payload_dict = payload if isinstance(payload, dict) else {}
+    row = {
+        "model_name": name,
+        "artifact_kind": payload_dict.get("artifact_kind"),
+        "ensemble_method": payload_dict.get("ensemble_method"),
+        "selection_metric": payload_dict.get("selection_metric"),
+        "selection_value": payload_dict.get("selection_value"),
+    }
+    row.update(_numeric_metrics(payload_dict.get("metrics", payload_dict)))
+    return row
+
+
+def _numeric_metrics(metrics: Any) -> dict[str, float]:
+    if not isinstance(metrics, dict):
+        return {}
+    return {
+        str(metric_name): float(value)
+        for metric_name, value in metrics.items()
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+    }

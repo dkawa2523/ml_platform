@@ -1,66 +1,74 @@
-# ClearML 境界
+# ClearML Boundary
 
-本リポジトリの保守性において最も重要な設計方針は、ClearML SDK 依存を処理本体へ広げないことです。
+ClearML-specific behavior lives under `clearml/`. The packages under
+`pkgs/core` and `pkgs/tabular` remain ClearML-free so they can run locally,
+inside tests, or under another runtime.
 
-## 境界の全体像
+## Runtime Shape
 
 ```mermaid
 graph TB
   A[ClearML SDK] --> B[clearml/adapter.py]
   B --> C[clearml/app.py]
   B --> D[clearml/pipelines.py]
-  C --> E[ml_platform_tabular.run_task]
-  D --> F[PipelineController]
-  E --> G[RunResult]
-  G --> H[clearml/reports.py]
-  H --> A
+  C --> E[ml_platform_tabular.stage / inference / training]
+  D --> F[clearml/pipeline_plan.py]
+  D --> G[clearml/pipeline_controller.py]
+  G --> H[PipelineController]
+  E --> I[RunResult]
+  I --> J[clearml/reports.py]
+  J --> A
 ```
 
-## ClearML 依存層
+## ClearML Runtime Files
 
-| ファイル | ClearML との接点 |
+| File | Role |
 | --- | --- |
-| `clearml/app.py` | Task 初期化、UI params 接続、実行 target の更新 |
-| `clearml/pipelines.py` | PipelineController、Pipeline parameter、Stage step 定義 |
-| `clearml/adapter.py` | SDK import、Dataset 取得、Artifact path 解決、Task metadata |
-| `clearml/reports.py` | RunResult を ClearML Scalars/Tables/Plots/Artifacts へ報告 |
+| `clearml/adapter.py` | SDK import, Task/Dataset/StorageManager/Logger wrapper. |
+| `clearml/source_resolution.py` | Inference source task and artifact resolution. |
+| `clearml/app.py` | Direct stage and inference task entrypoint. |
+| `clearml/pipelines.py` | Direct pipeline CLI entrypoint. |
+| `clearml/pipeline_plan.py` | Pipeline runtime parameters and stage graph rendering. |
+| `clearml/pipeline_controller.py` | PipelineController draft sync, step registration, and metadata. |
+| `clearml/templates.py` | User-facing and internal template sync. |
+| `clearml/reports.py` | ClearML reporting orchestration for `RunResult`. |
+| `clearml/reporting_scalars.py` | Scalar extraction from metrics artifacts and tables. |
+| `clearml/reporting_targets.py` | Table/plot report names and duplicate suppression. |
 
-## ClearML 非依存層
+## Package Boundary
 
-| パッケージ | 理由 |
+| Package | Role |
 | --- | --- |
-| `pkgs/core` | Local / test / ClearML 共通の基礎機能であるため |
-| `pkgs/tabular` | 学習・評価・推論の本体であり、ClearML なしでも検証できる必要があるため |
+| `pkgs/core` | Config, IO, artifact, result, and runtime-neutral contracts. |
+| `pkgs/tabular` | Tabular data, features, training, inference, plotting, manifest, and domain plan. |
 
-## Adapter の役割
+`pkgs/tabular/manifest.py` stays declarative. Pipeline step expansion belongs in
+`pkgs/tabular/domain_plan.py`, and stage input/path resolution belongs in
+`pkgs/tabular/stage_inputs.py`.
 
-Adapter は、ClearML の概念を package code に直接渡さないための変換層です。
+## Adapter Role
 
-| Adapter 処理 | package code へ渡す形 |
+The adapter converts ClearML concepts into package-level values without leaking
+the SDK into package code.
+
+| ClearML side | Package side |
 | --- | --- |
-| Dataset ID の取得 | local path |
-| Artifact URL の解決 | local file path |
-| UI parameter | dict config |
+| Dataset ID | Local file path |
+| Artifact URL | Local file path |
+| Task parameters | Dict config |
 | Task ID | `runtime.clearml_task_id` |
-| source_task_id 推論 | model artifact path / info path |
+| Source task / selector | Model artifact path and info path |
 
-## 重要な注意点
+## Notes
 
-トップレベルに `clearml/` ディレクトリがあるため、公式 `clearml` SDK と import 名が衝突しやすい構造です。このリポジトリでは、adapter helper が import path を調整して公式 SDK を読むようにしています。
+The directory is still named `clearml/` for synced template entrypoint
+compatibility. New runtime code should import the official SDK through
+`adapter.import_clearml_sdk()` or `adapter.import_clearml_symbol()` so the local
+directory does not shadow the external package.
 
-将来的に `clearml/` ディレクトリを rename する場合は、次の順番が安全です。
+Before renaming `clearml/`, create replacement entrypoints, update synced
+templates, rebuild existing Pipeline drafts, verify remote Agent training and
+inference, archive old tasks, then remove the old entrypoint references.
 
-1. 新しい entrypoint を追加する。
-2. テンプレート同期で新 entrypoint を使う。
-3. 既存 Pipeline draft を再作成する。
-4. 旧 entrypoint を一定期間残す。
-5. 古い Task を archive する。
-6. 旧ディレクトリ参照を削除する。
-
-## 改修時の禁止事項
-
-- `pkgs/tabular` から `clearml` SDK を import しない。
-- モデルごとに ClearML template を増やさない。
-- Dataset 固有のテンプレートを作らない。
-- ClearML UI に未実装の future 設定を出さない。
-- adapter 内の型変換を処理本体へ重複実装しない。
+Do not add model-specific, dataset-specific, or ensemble-specific ClearML
+templates. Keep those choices in task parameters and the tabular domain plan.

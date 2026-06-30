@@ -6,10 +6,10 @@ import importlib.util
 import pytest
 
 from ml_platform_core.contracts import ArtifactSpec, PackageManifest, ParameterSpec
+from ml_platform_tabular.domain_plan import build_tabular_domain_plan
 from ml_platform_tabular.manifest import (
     TABULAR_PREPROCESS_STAGE,
     TABULAR_STAGE_TASK,
-    build_tabular_domain_plan,
     get_tabular_manifest,
 )
 from ml_platform_tabular.policy import model_suite_candidates, quality_model_params
@@ -52,8 +52,12 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
     preprocess = manifest.stage("preprocess_features")
     target = next(parameter for parameter in preprocess.parameters if parameter.name == "Input/target_column")
     train = manifest.stage("train_model")
+    evaluate = manifest.stage("evaluate_models")
+    infer = manifest.stage("infer")
+    source_type = next(parameter for parameter in infer.parameters if parameter.name == "Model/source_type")
 
     assert target.required is True
+    assert source_type.choices == ("task_id", "local_path")
     assert {artifact.name for artifact in preprocess.output_artifacts} >= {
         "preprocess_bundle",
         "feature_spec",
@@ -65,6 +69,15 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
         "model_info",
         "metrics",
         "validation_predictions",
+    }
+    assert {artifact.name for artifact in evaluate.output_artifacts} >= {
+        "decision_summary",
+        "decision_summary_json",
+        "leaderboard",
+        "best_model",
+        "metrics",
+        "evaluation_predictions",
+        "candidate_predictions",
     }
 
 
@@ -95,6 +108,9 @@ def test_runtime_contract_surface_stays_minimal():
     plan = build_tabular_domain_plan(candidates=("ridge",), include_ensemble=False)
 
     assert importlib.util.find_spec("ml_platform_core.runtime_types") is None
+    assert importlib.util.find_spec("ml_platform_tabular.infer") is None
+    assert importlib.util.find_spec("ml_platform_tabular.pipeline") is None
+    assert importlib.util.find_spec("ml_platform_tabular.plots") is None
     assert not hasattr(stage, "supports_local_run")
     assert not hasattr(stage, "supports_remote_run")
     assert not hasattr(task, "runtime_features")
@@ -152,7 +168,7 @@ def test_tabular_domain_plan_carries_runtime_neutral_overrides():
         ensemble_methods=("weighted",),
         selection_metric="mae",
         preprocess_overrides={"Input/target_column": "target"},
-        stage_common_overrides={"Output/report_plots": False},
+        stage_common_overrides={"Output/upload_plots": False},
         ensemble_top_k=2,
     )
 
@@ -160,7 +176,7 @@ def test_tabular_domain_plan_carries_runtime_neutral_overrides():
     ensemble = plan.steps[2]
     evaluate = plan.steps[3]
     assert train.parameter_overrides == {
-        "Output/report_plots": False,
+        "Output/upload_plots": False,
         "Model/name": "ridge",
         "Model/params": {"alpha": 2.0},
         "Model/selection_metric": "mae",
@@ -168,7 +184,7 @@ def test_tabular_domain_plan_carries_runtime_neutral_overrides():
     assert ensemble.parameter_overrides["Model/ensemble_methods"] == ["weighted"]
     assert ensemble.parameter_overrides["Model/ensemble_top_k"] == 2
     assert evaluate.parameter_overrides == {
-        "Output/report_plots": False,
+        "Output/upload_plots": False,
         "Model/selection_metric": "mae",
     }
 

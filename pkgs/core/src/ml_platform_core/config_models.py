@@ -104,10 +104,9 @@ class RuntimeConfig:
     def parse(cls, raw: Mapping[str, object]) -> RuntimeConfig:
         output_dir = _optional_str(raw.get("output_dir"), "runtime.output_dir") or "outputs"
         use_clearml = _optional_bool(raw.get("use_clearml"), "runtime.use_clearml")
-        return cls(output_dir=output_dir, use_clearml=bool(use_clearml), extras=_extras(raw, {"output_dir", "use_clearml"}))
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"output_dir": self.output_dir, "use_clearml": self.use_clearml, **deepcopy(self.extras)}
+        return cls(
+            output_dir=output_dir, use_clearml=bool(use_clearml), extras=_extras(raw, {"output_dir", "use_clearml"})
+        )
 
 
 @dataclass(frozen=True)
@@ -131,16 +130,6 @@ class RunSectionConfig:
             extras=_extras(raw, {"name", "seed", "stage"}),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        if self.name is not None:
-            data["name"] = self.name
-        if self.seed is not None:
-            data["seed"] = self.seed
-        if self.stage is not None:
-            data["stage"] = self.stage
-        return data
-
 
 @dataclass(frozen=True)
 class DataConfig:
@@ -163,17 +152,19 @@ class DataConfig:
             feature_columns=_str_list_or_none(raw.get("feature_columns"), "data.feature_columns"),
             id_columns=_str_list_or_none(raw.get("id_columns", []), "data.id_columns") or [],
             base_dir=_optional_str(raw.get("base_dir"), "data.base_dir"),
-            extras=_extras(raw, {"local_path", "clearml_dataset_id", "dataset_file", "target_column", "feature_columns", "id_columns", "base_dir"}),
+            extras=_extras(
+                raw,
+                {
+                    "local_path",
+                    "clearml_dataset_id",
+                    "dataset_file",
+                    "target_column",
+                    "feature_columns",
+                    "id_columns",
+                    "base_dir",
+                },
+            ),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        for key in ("local_path", "clearml_dataset_id", "dataset_file", "target_column", "feature_columns", "base_dir"):
-            value = getattr(self, key)
-            if value is not None:
-                data[key] = deepcopy(value)
-        data["id_columns"] = list(self.id_columns)
-        return data
 
 
 @dataclass(frozen=True)
@@ -198,19 +189,11 @@ class SplitConfig:
             time_column=_optional_str(raw.get("time_column"), "split.time_column"),
             valid_filter_column=_optional_str(raw.get("valid_filter_column"), "split.valid_filter_column"),
             valid_filter_value=_optional_str(raw.get("valid_filter_value"), "split.valid_filter_value"),
-            extras=_extras(raw, {"method", "valid_size", "group_column", "time_column", "valid_filter_column", "valid_filter_value"}),
+            extras=_extras(
+                raw,
+                {"method", "valid_size", "group_column", "time_column", "valid_filter_column", "valid_filter_value"},
+            ),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "method": self.method,
-            "valid_size": self.valid_size,
-            "group_column": self.group_column,
-            "time_column": self.time_column,
-            "valid_filter_column": self.valid_filter_column,
-            "valid_filter_value": self.valid_filter_value,
-            **deepcopy(self.extras),
-        }
 
 
 @dataclass(frozen=True)
@@ -224,14 +207,12 @@ class MetricsConfig:
         if names is not None and not isinstance(names, str | list | tuple):
             raise ConfigValidationError("metrics.names must be a list, comma string, or null.")
         parsed_names: list[str] | str | None
-        parsed_names = names if isinstance(names, str) else (_str_list_or_none(names, "metrics.names") if names is not None else None)
+        parsed_names = (
+            names
+            if isinstance(names, str)
+            else (_str_list_or_none(names, "metrics.names") if names is not None else None)
+        )
         return cls(names=parsed_names, extras=_extras(raw, {"names"}))
-
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        if self.names is not None:
-            data["names"] = deepcopy(self.names)
-        return data
 
 
 @dataclass(frozen=True)
@@ -250,12 +231,20 @@ class FeaturesConfig:
     def parse(cls, raw: Mapping[str, object]) -> FeaturesConfig:
         return cls(
             preset=_optional_str(raw.get("preset"), "features.preset") or "basic",
-            numeric_impute_strategy=_optional_str(raw.get("numeric_impute_strategy"), "features.numeric_impute_strategy") or "median",
-            categorical_impute_strategy=_optional_str(raw.get("categorical_impute_strategy"), "features.categorical_impute_strategy") or "missing_token",
-            categorical_encoder=_optional_str(raw.get("categorical_encoder"), "features.categorical_encoder") or "onehot",
+            numeric_impute_strategy=_optional_str(
+                raw.get("numeric_impute_strategy"), "features.numeric_impute_strategy"
+            )
+            or "median",
+            categorical_impute_strategy=_optional_str(
+                raw.get("categorical_impute_strategy"), "features.categorical_impute_strategy"
+            )
+            or "missing_token",
+            categorical_encoder=_optional_str(raw.get("categorical_encoder"), "features.categorical_encoder")
+            or "onehot",
             scaling=_optional_str(raw.get("scaling"), "features.scaling") or "standard",
             drop_columns=_str_list_or_none(raw.get("drop_columns", []), "features.drop_columns") or [],
-            passthrough_columns=_str_list_or_none(raw.get("passthrough_columns", []), "features.passthrough_columns") or [],
+            passthrough_columns=_str_list_or_none(raw.get("passthrough_columns", []), "features.passthrough_columns")
+            or [],
             params=_mapping_or_empty(raw.get("params"), "features.params"),
             extras=_extras(
                 raw,
@@ -271,19 +260,6 @@ class FeaturesConfig:
                 },
             ),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "preset": self.preset,
-            "numeric_impute_strategy": self.numeric_impute_strategy,
-            "categorical_impute_strategy": self.categorical_impute_strategy,
-            "categorical_encoder": self.categorical_encoder,
-            "scaling": self.scaling,
-            "drop_columns": list(self.drop_columns),
-            "passthrough_columns": list(self.passthrough_columns),
-            "params": deepcopy(self.params),
-            **deepcopy(self.extras),
-        }
 
 
 @dataclass(frozen=True)
@@ -306,15 +282,6 @@ class EnsembleConfig:
             top_k=3 if top_k is None else top_k,
             extras=_extras(raw, {"enabled", "methods", "method", "top_k"}),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "enabled": self.enabled,
-            "methods": list(self.methods),
-            "method": self.method,
-            "top_k": self.top_k,
-            **deepcopy(self.extras),
-        }
 
 
 @dataclass(frozen=True)
@@ -371,34 +338,12 @@ class ModelConfig:
             extras=_extras(raw, known),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        for key in (
-            "name",
-            "selection_metric",
-            "source_type",
-            "source_task_id",
-            "model_selector",
-            "local_model_path",
-            "artifact_path",
-            "info_path",
-            "feature_spec_path",
-            "preprocess_bundle_path",
-        ):
-            value = getattr(self, key)
-            if value is not None:
-                data[key] = value
-        data["params"] = deepcopy(self.params)
-        data["candidates"] = deepcopy(self.candidates)
-        data["ensemble"] = self.ensemble.to_dict()
-        return data
-
 
 @dataclass(frozen=True)
 class OutputConfig:
     prediction_name: str | None = None
     chunk_size: int | None = None
-    report_plots: bool | None = None
+    upload_plots: bool | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -406,19 +351,9 @@ class OutputConfig:
         return cls(
             prediction_name=_optional_str(raw.get("prediction_name"), "output.prediction_name"),
             chunk_size=_optional_int(raw.get("chunk_size"), "output.chunk_size"),
-            report_plots=_optional_bool(raw.get("report_plots"), "output.report_plots"),
-            extras=_extras(raw, {"prediction_name", "chunk_size", "report_plots"}),
+            upload_plots=_optional_bool(raw.get("upload_plots"), "output.upload_plots"),
+            extras=_extras(raw, {"prediction_name", "chunk_size", "upload_plots"}),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        if self.prediction_name is not None:
-            data["prediction_name"] = self.prediction_name
-        if self.chunk_size is not None:
-            data["chunk_size"] = self.chunk_size
-        if self.report_plots is not None:
-            data["report_plots"] = self.report_plots
-        return data
 
 
 @dataclass(frozen=True)
@@ -461,39 +396,6 @@ class RunConfig:
     @property
     def run(self) -> RunSectionConfig:
         return self.base.run
-
-    def to_dict(self) -> dict[str, Any]:
-        data = deepcopy(self.extras)
-        data["task"] = self.task
-        if "profile" in self.present_sections or self.profile is not None:
-            data["profile"] = self.profile
-        if "runtime" in self.present_sections:
-            data["runtime"] = self.runtime.to_dict()
-        if "run" in self.present_sections:
-            data["run"] = self.run.to_dict()
-        if "data" in self.present_sections:
-            data["data"] = self.data.to_dict()
-        if "split" in self.present_sections:
-            data["split"] = self.split.to_dict()
-        if "metrics" in self.present_sections:
-            data["metrics"] = self.metrics.to_dict()
-        if "features" in self.present_sections:
-            data["features"] = self.features.to_dict()
-        if "model" in self.present_sections:
-            data["model"] = self.model.to_dict()
-        if "output" in self.present_sections:
-            data["output"] = self.output.to_dict()
-        if "clearml" in self.present_sections:
-            data["clearml"] = deepcopy(self.clearml)
-        if "logging" in self.present_sections:
-            data["logging"] = deepcopy(self.logging)
-        if "basic" in self.present_sections:
-            data["basic"] = deepcopy(self.basic)
-        if "stage_inputs" in self.present_sections:
-            data["stage_inputs"] = deepcopy(self.stage_inputs)
-        if "_meta" in self.present_sections:
-            data["_meta"] = deepcopy(self.meta)
-        return data
 
 
 def parse_run_config(raw: Mapping[str, object]) -> RunConfig:

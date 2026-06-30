@@ -34,7 +34,7 @@ Optional primary parameters:
 - `Model/ensemble_enabled`
 - `Model/ensemble_methods`
 - `Model/ensemble_top_k`
-- `Output/report_plots`
+- `Output/upload_plots`
 - `Split/method`
 - `Split/valid_size`
 - `Split/group_column`
@@ -118,7 +118,7 @@ The Pipeline template params include:
 - `Model/ensemble_enabled`
 - `Model/ensemble_methods`
 - `Model/ensemble_top_k`
-- `Output/report_plots`
+- `Output/upload_plots`
 
 The Pipeline template params do not include:
 
@@ -148,13 +148,13 @@ rg -n "pipeline_mode|Model/search_|Model/max_trials|Model/ensemble_method" clear
 ## Result
 
 - Template dry-run: pass.
-- Pipeline stage overrides carry `Model/evaluation_metrics`, `Output/report_plots`,
+- Pipeline stage overrides carry `Model/evaluation_metrics`, `Output/upload_plots`,
   `Split/valid_size`, and `Features/*`.
 - `Basic/model_suite` changes generated `train_<model>` steps while preserving
   direct `Model/candidates` control for `custom` and default detailed use.
 - `Basic/use_ensemble=false` removes ensemble steps unless
   `Model/ensemble_enabled` is explicitly set.
-- `Output/report_plots=false` skips ClearML plot reporting while preserving
+- `Output/upload_plots=false` skips ClearML plot media upload while preserving
   plot artifact upload, tables, and scalars.
 - Tests: `89 passed`.
 - Static search: primary Pipeline UI does not expose pipeline mode or

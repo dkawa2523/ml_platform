@@ -261,9 +261,6 @@ pkgs/core/src/ml_platform_core/io.py
 pkgs/core/src/ml_platform_core/stages.py
 pkgs/tabular/src/ml_platform_tabular/manifest.py
 pkgs/tabular/src/ml_platform_tabular/policy.py
-pkgs/tabular/src/ml_platform_tabular/plots.py
-pkgs/tabular/src/ml_platform_tabular/infer.py
-pkgs/tabular/src/ml_platform_tabular/pipeline.py
 pkgs/tabular/src/ml_platform_tabular/plotting/*
 pkgs/tabular/src/ml_platform_tabular/inference/*
 pkgs/tabular/src/ml_platform_tabular/training/*
@@ -304,11 +301,11 @@ Before relying on the ported branch, check:
 - External imports of `ml_platform_core.registry` or `set_dotted_path`; if the
   target repo has them, add a deprecation shim instead of deleting immediately.
 - External imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`,
-  and `ml_platform_tabular.pipeline`; compatibility facades are intentionally
-  kept and should not be removed during porting.
-- Repo-internal imports should target `ml_platform_tabular.plotting`,
-  `ml_platform_tabular.inference.*`, and `ml_platform_tabular.training.*`
-  rather than private helpers re-exported from compatibility facades.
+  and `ml_platform_tabular.pipeline`; migrate them before deleting the old
+  modules in a target repo.
+- Repo-internal imports and runner paths should target
+  `ml_platform_tabular.plotting`, `ml_platform_tabular.inference`, and
+  `ml_platform_tabular.training`.
 
 ### PR response text reference
 
@@ -355,16 +352,17 @@ Lean cleanup conflict order:
 3. Runtime contract simplification in `pkgs/core/src/ml_platform_core/contracts.py`
    and `pkgs/tabular/src/ml_platform_tabular/manifest.py`.
 4. Diagnostics cleanup in `clearml/adapter.py` and `clearml/reports.py`.
-5. Tabular facade/import cleanup in `stage.py`, `infer.py`, `pipeline.py`,
-   `plotting`, `inference`, `training`, and related tests.
+5. Tabular runner path migration and facade deletion, plus related
+   `plotting`, `inference`, `training`, and test imports.
 6. Active docs setup and architecture notes.
 7. Final Lean completion docs.
 
 Target repo checks before deleting more code:
 
-- Search for external or target-only imports of
-  `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
-  `ml_platform_tabular.pipeline`.
+- Before porting tabular facade deletion, search for external or target-only
+  imports of `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
+  `ml_platform_tabular.pipeline`, then migrate them to `plotting`,
+  `inference`, or `training`.
 - Verify ClearML remote Agent execution before deleting
   `clearml/_entrypoint_bootstrap.py` or renaming the `clearml/` directory.
 - Verify Docker, ClearML remote setup, docs setup, and legacy pip usage before
@@ -381,3 +379,78 @@ kubectl / kustomize / helm output
 cluster rollout evidence
 docs/review/source rewrites or deletions
 ```
+
+## Second review response porting plan - 2026-06-30
+
+Source branch:
+
+```bash
+cleanup/s00-lean-codebase-audit
+```
+
+Port the additional reviewer response after the PR28 response and Lean cleanup
+commits. These are tracked separately as `SR01` through `SR10` and should not be
+mixed back into the original `R01` through `R27` map.
+
+Recommended cherry-pick order, once the commits exist:
+
+```bash
+git cherry-pick -x <second-review-map-commit>       # docs: add second review response map
+git cherry-pick -x <sr01-params-commit>             # refactor: extract clearml parameter transport mapping
+git cherry-pick -x <sr02-evaluation-writers-commit> # refactor: split tabular evaluation artifact writers
+git cherry-pick -x <sr03-reporting-commit>          # refactor: report existing tabular plot artifacts in clearml runtime
+git cherry-pick -x <sr05-config-compat-commit>      # refactor: move legacy config serialization out of RunConfig
+git cherry-pick -x <sr06-optional-deps-commit>      # fix: narrow optional dependency import exceptions
+git cherry-pick -x <second-review-final-commit>     # docs: finalize second review response evidence
+```
+
+If these changes are squashed before porting, preserve the order above inside
+the squashed patch review: parameter transport first, evaluation writers second,
+ClearML reporting after plot artifacts exist, config compatibility after typed
+config is present, optional dependency exception narrowing independently, and
+final docs last.
+
+Second review conflict order:
+
+1. `docs/review/SECOND_REVIEW_*` tracking files.
+2. `clearml/params.py`, `clearml/adapter.py`, `clearml/pipelines.py`, and
+   `tests/test_clearml_mapping.py` for SR01.
+3. `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py` plus
+   `leaderboard_artifacts.py`, `prediction_artifacts.py`,
+   `best_model_artifacts.py`, `decision_artifacts.py`, and
+   `tests/test_evaluation_artifact_writers.py` for SR02.
+4. `clearml/reports.py` and ClearML reporting tests for SR03.
+5. `pkgs/core/src/ml_platform_core/config_models.py`,
+   `pkgs/core/src/ml_platform_core/config_compat.py`, and
+   `tests/test_config_models.py` for SR05.
+6. `pkgs/tabular/src/ml_platform_tabular/models.py` and
+   `tests/test_tabular_smoke.py` for SR06.
+7. ADR and final response evidence docs.
+
+Second review deferred items:
+
+- SR04: do not delete `clearml/_entrypoint_bootstrap.py` until ClearML Remote
+  Agent training and inference templates run successfully without direct
+  entrypoint path injection.
+- SR07: port tabular import and runner path migration before deleting
+  `ml_platform_tabular.plots`, `ml_platform_tabular.infer`, and
+  `ml_platform_tabular.pipeline` in a target repo.
+- SR08: do not delete `requirements.txt` or `requirements-dev.txt` until Docker,
+  ClearML remote setup, docs setup, CI, and onboarding paths are confirmed
+  uv/pyproject-only.
+- SR10: do not perform broad unused-code or dependency deletion until
+  vulture/deptry have been run and false positives are recorded.
+
+Second review validation baseline:
+
+```powershell
+uv run python -m compileall clearml pkgs scripts
+uv run python -m pytest
+uv run python -m ruff check .
+uv run python -m ruff format --check .
+uv run python -m pre_commit run --all-files
+```
+
+In this source environment, bare `python` resolves to the Windows Store alias.
+Use `uv run python ...` as the canonical validation command unless the target
+repo confirms a working `python` executable on PATH.

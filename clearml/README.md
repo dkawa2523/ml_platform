@@ -6,13 +6,18 @@ and inference logic belongs in `pkgs/tabular`.
 Files:
 
 ```text
-app.py        task entrypoint
-adapter.py    ClearML Task, Dataset, StorageManager, Logger wrapper
+app.py                  task entrypoint
+adapter.py              ClearML Task, Dataset, StorageManager, Logger wrapper
+source_resolution.py    inference source task and artifact resolution
+reports.py              RunResult reporting orchestration
+reporting_scalars.py    scalar extraction from metrics artifacts and tables
+reporting_targets.py    table/plot report names and duplicate suppression
+pipeline_plan.py        ClearML pipeline defaults and stage graph rendering
+pipeline_controller.py  PipelineController draft sync and run orchestration
+pipelines.py            direct pipeline entrypoint
+templates.py            template sync
 _entrypoint_bootstrap.py
-              local/remote entrypoint import bootstrap
-reports.py    RunResult -> ClearML Scalars, Tables, Plots, Artifacts
-templates.py  template sync and Pipeline-tab draft sync
-pipelines.py  stage-based training PipelineController
+                        local/remote entrypoint import bootstrap
 ```
 
 Current sync targets:

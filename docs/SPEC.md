@@ -82,7 +82,7 @@ that can be compared in `evaluate_models`.
 
 - `leaderboard.csv`
 - `leaderboard_topk.csv`
-- `leaderboard_decision_summary.csv`
+- `evaluation_summary.csv`
 - `best_vs_ensemble_summary.csv`
 - `metrics_by_candidate.json` and `.csv`
 - `best_model.json`
@@ -91,7 +91,6 @@ that can be compared in `evaluate_models`.
 - `candidate_predictions.csv`
 - `decision_summary.md` / `decision_summary.json` as the canonical inference
   decision note
-- `recommendation.json` as a compatibility machine-readable recommendation
 - `manifest.json`
 
 ClearML PLOTS should focus on readable leaderboard views: table, top-k score
@@ -146,7 +145,7 @@ The following items are intentionally not implemented in the current release and
 are tracked in `docs/ROADMAP.md`:
 
 - HPO / hyperparameter optimization behind a small Basic-level control.
-- Model Registry flow from `evaluate_models` recommendations to approved model
+- Model Registry flow from `evaluate_models` decision summaries to approved model
   registration.
 - Drift / monitoring from accumulated inference summaries.
 - Task Registry for non-scalar outputs such as 1D/2D output or mode

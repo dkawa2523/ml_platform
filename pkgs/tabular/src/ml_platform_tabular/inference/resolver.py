@@ -88,22 +88,37 @@ def _selector_candidates(directory: Path, selector: str) -> list[Path]:
 
 
 def _resolve_directory_model_path(directory: Path, selector: str, *, strict: bool = True) -> Path | None:
+    is_ensemble, _ = _ensemble_selector_parts(selector)
     for candidate in _selector_candidates(directory, selector):
-        if not candidate.exists():
-            continue
-        is_ensemble, _ = _ensemble_selector_parts(selector)
-        if is_ensemble and candidate.name == "model.joblib" and candidate.parent == directory:
-            if not _info_says_ensemble(candidate):
-                continue
-        if selector != "best" and not is_ensemble and candidate.parent == directory:
-            info = _read_json_if_exists(candidate.parent / "model_info.json")
-            name = str(info.get("model_name") or info.get("best_model_name") or "")
-            if name and name != selector:
-                continue
-        return candidate
+        if _candidate_matches_selector(candidate, directory, selector, is_ensemble):
+            return candidate
     if strict:
         raise ValueError(f"Could not resolve model_selector={selector!r} under directory: {directory}")
     return None
+
+
+def _candidate_matches_selector(candidate: Path, directory: Path, selector: str, is_ensemble: bool) -> bool:
+    if not candidate.exists():
+        return False
+    if is_ensemble:
+        return _candidate_matches_ensemble(candidate, directory)
+    if selector == "best":
+        return True
+    return _candidate_matches_named_model(candidate, directory, selector)
+
+
+def _candidate_matches_ensemble(candidate: Path, directory: Path) -> bool:
+    if candidate.name == "model.joblib" and candidate.parent == directory:
+        return _info_says_ensemble(candidate)
+    return True
+
+
+def _candidate_matches_named_model(candidate: Path, directory: Path, selector: str) -> bool:
+    if candidate.parent != directory:
+        return True
+    info = _read_json_if_exists(candidate.parent / "model_info.json")
+    name = str(info.get("model_name") or info.get("best_model_name") or "")
+    return not name or name == selector
 
 
 def _path_from_value(value: Any, selector: str, *, strict: bool = True) -> Path | None:

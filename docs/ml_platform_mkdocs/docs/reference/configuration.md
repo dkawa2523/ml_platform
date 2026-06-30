@@ -77,7 +77,7 @@
 
 | 項目 | 型 | 説明 |
 | --- | --- | --- |
-| `output.report_plots` | bool | ClearML / Local でプロットを作るか |
+| `output.upload_plots` | bool | ClearML に Plot 画像をアップロードするか |
 | `output.prediction_name` | string | 推論出力ファイル名。通常 `predictions.csv` |
 | `output.chunk_size` | int/null | 推論時 chunk サイズ。未指定なら一括処理 |
 

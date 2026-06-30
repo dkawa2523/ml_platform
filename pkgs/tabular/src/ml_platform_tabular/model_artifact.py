@@ -3,23 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ml_platform_core.io import read_json, write_json
+from ml_platform_core.io import write_json
 
 
 def default_model_path(output_dir: str | Path) -> Path:
-    """Default model lookup path for downstream eval/infer tasks.
-
-    `outputs/latest` always means the latest run of any task. To avoid eval/infer
-    overwriting the trained model lookup, train also writes `outputs/latest_train`.
-    """
+    """Fallback model lookup path for local inference."""
     output_dir = Path(output_dir)
-    preferred = output_dir / "latest_train" / "model.joblib"
-    fallback = output_dir / "latest" / "model.joblib"
-    return preferred if preferred.exists() else fallback
-
-
-def model_info_path(model_path: str | Path) -> Path:
-    return Path(model_path).with_name("model_info.json")
+    return output_dir / "latest" / "model.joblib"
 
 
 def write_model_info(
@@ -47,10 +37,3 @@ def write_model_info(
     if extra:
         payload.update(extra)
     return write_json(payload, path)
-
-
-def load_model_info_for_model(model_path: str | Path) -> dict[str, Any]:
-    info_path = model_info_path(model_path)
-    if info_path.exists():
-        return read_json(info_path)
-    return {}

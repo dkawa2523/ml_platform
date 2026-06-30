@@ -53,7 +53,7 @@
 | --- | --- | --- |
 | Artifact/Table | `leaderboard.csv` | 全候補比較 |
 | Table | `leaderboard_topk.csv` | 上位候補 |
-| Table | `leaderboard_decision_summary.csv` | UI 表示用判断 summary |
+| Table | `evaluation_summary.csv` | 評価結果 summary |
 | Table | `best_vs_ensemble_summary.csv` | best 単体 vs ensemble |
 | Artifact | `metrics_by_candidate.json` | 候補別指標 |
 | Table | `metrics_by_candidate.csv` | 候補別指標 table |
@@ -64,7 +64,6 @@
 | Table | `candidate_predictions.csv` | 候補別予測 |
 | Artifact | `decision_summary.md` | 人間向け判断メモ |
 | Artifact | `decision_summary.json` | 構造化判断メモ |
-| Artifact | `recommendation.json` | 互換用推奨情報 |
 | Artifact | `manifest.json` | 出力一覧 |
 
 ## tabular_infer

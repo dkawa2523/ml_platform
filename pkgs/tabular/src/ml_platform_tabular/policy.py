@@ -4,6 +4,13 @@ from copy import deepcopy
 import json
 from typing import Any
 
+from ml_platform_core.value_coercion import (
+    as_bool as _as_bool,
+    as_candidates as _as_candidates,
+    as_dict as _as_dict,
+    as_str_list as _as_str_list,
+)
+
 from .models import DEPENDENCY_FREE_MODELS, OPTIONAL_DEPENDENCY_MODELS, SUPPORTED_MODELS, model_candidates
 
 TABULAR_MODEL_SUITES: dict[str, tuple[str, ...]] = {
@@ -108,80 +115,6 @@ def _json(value: object) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def _as_bool(value: object, *, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"", "none", "null"}:
-            return default
-        return text in {"1", "true", "yes", "y", "on"}
-    return bool(value)
-
-
-def _as_str_list(value: object) -> list[str] | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, list):
-        return [str(item) for item in value]
-    if isinstance(value, tuple):
-        return [str(item) for item in value]
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            parsed = json.loads(text)
-        except Exception:
-            parsed = None
-        if isinstance(parsed, list):
-            return [str(item) for item in parsed]
-        return [item.strip() for item in text.split(",") if item.strip()]
-    raise ValueError(f"Cannot convert value to list: {value!r}")
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    if value is None or value == "":
-        return {}
-    if isinstance(value, dict):
-        return dict(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return {}
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
-            raise ValueError(f"Expected JSON object, got: {value!r}")
-        return parsed
-    raise ValueError(f"Cannot convert value to dict: {value!r}")
-
-
-def _as_candidates(value: object) -> list[object]:
-    if value is None or value == "":
-        return []
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        value = json.loads(text)
-    if not isinstance(value, list):
-        raise ValueError(f"Expected JSON array for candidates, got: {value!r}")
-    candidates: list[object] = []
-    for index, item in enumerate(value):
-        if isinstance(item, str):
-            text = item.strip()
-            if not text:
-                raise ValueError(f"Model/candidates[{index}] must not be empty.")
-            candidates.append(text)
-        elif isinstance(item, dict):
-            candidates.append(dict(item))
-        else:
-            raise ValueError(f"Model/candidates[{index}] must be a model name or object.")
-    return candidates
-
-
 def _has_runtime_value(value: object) -> bool:
     return value is not None and not (isinstance(value, str) and value.strip() == "")
 
@@ -241,6 +174,18 @@ def model_cfg_for_runtime(
     model_cfg = deepcopy(pipeline_cfg.get("model", {}) or {})
     runtime_params = runtime_params or {}
     explicit_runtime_params = explicit_runtime_params or {}
+    _apply_runtime_model_overrides(model_cfg, runtime_params, explicit_runtime_params)
+    apply_runtime_model_suite(model_cfg, runtime_params)
+    apply_runtime_quality_mode(model_cfg, runtime_params, explicit_runtime_params)
+    _apply_runtime_ensemble_overrides(model_cfg, runtime_params)
+    return model_cfg
+
+
+def _apply_runtime_model_overrides(
+    model_cfg: dict[str, Any],
+    runtime_params: dict[str, Any],
+    explicit_runtime_params: dict[str, Any],
+) -> None:
     if "Model/candidates" in runtime_params:
         model_cfg["candidates"] = _as_candidates(runtime_params.get("Model/candidates"))
     if "Model/model_params_by_name" in explicit_runtime_params:
@@ -249,8 +194,9 @@ def model_cfg_for_runtime(
         model_cfg["params"] = _as_dict(runtime_params.get("Model/params"))
     if "Model/selection_metric" in runtime_params and runtime_params.get("Model/selection_metric"):
         model_cfg["selection_metric"] = runtime_params["Model/selection_metric"]
-    apply_runtime_model_suite(model_cfg, runtime_params)
-    apply_runtime_quality_mode(model_cfg, runtime_params, explicit_runtime_params)
+
+
+def _apply_runtime_ensemble_overrides(model_cfg: dict[str, Any], runtime_params: dict[str, Any]) -> None:
     if _has_runtime_value(runtime_params.get("Basic/use_ensemble")):
         model_cfg.setdefault("ensemble", {})["enabled"] = _as_bool(runtime_params.get("Basic/use_ensemble"))
     if _has_runtime_value(runtime_params.get("Model/ensemble_enabled")):
@@ -263,7 +209,6 @@ def model_cfg_for_runtime(
         model_cfg.setdefault("ensemble", {})["method"] = runtime_params["Model/ensemble_method"]
     if "Model/ensemble_top_k" in runtime_params and runtime_params.get("Model/ensemble_top_k") not in {None, ""}:
         model_cfg.setdefault("ensemble", {})["top_k"] = int(runtime_params["Model/ensemble_top_k"])
-    return model_cfg
 
 
 def validate_primary_training_graph(model_cfg: dict[str, Any]) -> None:
@@ -282,7 +227,7 @@ def training_model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]
     candidates = model_candidates(model_cfg)
     if not candidates:
         raise ValueError("Training pipeline requires at least one model candidate.")
-    return candidates
+    return [candidate.to_dict() for candidate in candidates]
 
 
 def ensemble_methods_from_config(ensemble_cfg: dict[str, Any]) -> list[str]:
@@ -315,6 +260,54 @@ def pipeline_runtime_defaults(
     ensemble = model.get("ensemble", {}) or {}
     if not isinstance(ensemble, dict):
         ensemble = {}
+    return {
+        **_basic_runtime_defaults(basic, run, ensemble),
+        **_split_runtime_defaults(split),
+        **_data_runtime_defaults(
+            data,
+            remote_default_dataset_id=remote_default_dataset_id,
+            remote_default_dataset_file=remote_default_dataset_file,
+            use_clearml=use_clearml,
+        ),
+        **_feature_runtime_defaults(features),
+        **_model_runtime_defaults(model, metrics, ensemble),
+        **_output_runtime_defaults(output),
+    }
+
+
+def _basic_runtime_defaults(
+    basic: dict[str, Any],
+    run: dict[str, Any],
+    ensemble: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "Basic/model_suite": basic.get("model_suite", "default"),
+        "Basic/quality_mode": basic.get("quality_mode", "standard"),
+        "Basic/use_ensemble": basic.get("use_ensemble", _as_bool(ensemble.get("enabled"), default=True)),
+        "Basic/notes": basic.get("notes") or run.get("description", ""),
+        "Run/name": run.get("name"),
+        "Run/seed": run.get("seed"),
+    }
+
+
+def _split_runtime_defaults(split: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "Split/method": split.get("method", "random"),
+        "Split/valid_size": split.get("valid_size", 0.2),
+        "Split/group_column": split.get("group_column"),
+        "Split/time_column": split.get("time_column"),
+        "Split/valid_filter_column": split.get("valid_filter_column"),
+        "Split/valid_filter_value": split.get("valid_filter_value"),
+    }
+
+
+def _data_runtime_defaults(
+    data: dict[str, Any],
+    *,
+    remote_default_dataset_id: object | None,
+    remote_default_dataset_file: object | None,
+    use_clearml: bool,
+) -> dict[str, Any]:
     clearml_dataset_id = data.get("clearml_dataset_id")
     dataset_file = data.get("dataset_file")
     local_path = data.get("local_path")
@@ -323,24 +316,17 @@ def pipeline_runtime_defaults(
         dataset_file = dataset_file or remote_default_dataset_file
         local_path = ""
     return {
-        "Basic/model_suite": basic.get("model_suite", "default"),
-        "Basic/quality_mode": basic.get("quality_mode", "standard"),
-        "Basic/use_ensemble": basic.get("use_ensemble", _as_bool(ensemble.get("enabled"), default=True)),
-        "Basic/notes": basic.get("notes") or run.get("description", ""),
-        "Run/name": run.get("name"),
-        "Run/seed": run.get("seed"),
-        "Split/method": split.get("method", "random"),
-        "Split/valid_size": split.get("valid_size", 0.2),
-        "Split/group_column": split.get("group_column"),
-        "Split/time_column": split.get("time_column"),
-        "Split/valid_filter_column": split.get("valid_filter_column"),
-        "Split/valid_filter_value": split.get("valid_filter_value"),
         "Input/local_path": local_path,
         "Input/clearml_dataset_id": clearml_dataset_id,
         "Input/dataset_file": dataset_file,
         "Input/target_column": data.get("target_column"),
         "Input/feature_columns": data.get("feature_columns") or [],
         "Input/id_columns": data.get("id_columns", []),
+    }
+
+
+def _feature_runtime_defaults(features: dict[str, Any]) -> dict[str, Any]:
+    return {
         "Features/preset": features.get("preset", "basic"),
         "Features/numeric_impute_strategy": features.get("numeric_impute_strategy", "median"),
         "Features/categorical_impute_strategy": features.get("categorical_impute_strategy", "missing_token"),
@@ -348,6 +334,15 @@ def pipeline_runtime_defaults(
         "Features/scaling": features.get("scaling", "standard"),
         "Features/drop_columns": _json(features.get("drop_columns", []) or []),
         "Features/passthrough_columns": _json(features.get("passthrough_columns", []) or []),
+    }
+
+
+def _model_runtime_defaults(
+    model: dict[str, Any],
+    metrics: dict[str, Any],
+    ensemble: dict[str, Any],
+) -> dict[str, Any]:
+    return {
         "Model/candidates": _json(SUPPORTED_MODELS),
         "Model/model_params_by_name": _json(model.get("params", {}) or {}),
         "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
@@ -355,5 +350,8 @@ def pipeline_runtime_defaults(
         "Model/ensemble_enabled": "",
         "Model/ensemble_methods": _json(ensemble.get("methods", [ensemble.get("method", "mean_topk")]) or []),
         "Model/ensemble_top_k": int(ensemble.get("top_k") or 3),
-        "Output/report_plots": _as_bool(output.get("report_plots"), default=True),
     }
+
+
+def _output_runtime_defaults(output: dict[str, Any]) -> dict[str, Any]:
+    return {"Output/upload_plots": _as_bool(output.get("upload_plots"), default=True)}

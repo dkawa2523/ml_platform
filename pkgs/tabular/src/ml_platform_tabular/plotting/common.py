@@ -74,6 +74,20 @@ def write_metrics_bar_plot(
     top_n: int = 20,
     sort: str = "abs_desc",
 ) -> Path:
+    pairs = _metric_pairs(items, sort=sort, top_n=top_n)
+    image, draw = _bar_plot_canvas(pairs, title=title, value_label=value_label)
+    if not pairs:
+        return _save(image, path)
+    _draw_bar_rows(draw, pairs, sort=sort)
+    return _save(image, path)
+
+
+def _metric_pairs(
+    items: Iterable[tuple[str, float]],
+    *,
+    sort: str,
+    top_n: int,
+) -> list[tuple[str, float]]:
     pairs = []
     for name, value in items:
         try:
@@ -82,17 +96,27 @@ def write_metrics_bar_plot(
             continue
         if np.isfinite(numeric):
             pairs.append((str(name), numeric))
+    _sort_metric_pairs(pairs, sort)
+    return pairs[:top_n] if top_n > 0 else pairs
+
+
+def _sort_metric_pairs(pairs: list[tuple[str, float]], sort: str) -> None:
     if sort == "input":
-        pass
-    elif sort == "value_asc":
+        return
+    if sort == "value_asc":
         pairs.sort(key=lambda item: item[1])
     elif sort == "value_desc":
         pairs.sort(key=lambda item: item[1], reverse=True)
     else:
         pairs.sort(key=lambda item: abs(item[1]), reverse=True)
-    if top_n > 0:
-        pairs = pairs[:top_n]
 
+
+def _bar_plot_canvas(
+    pairs: list[tuple[str, float]],
+    *,
+    title: str,
+    value_label: str,
+) -> tuple[Image.Image, ImageDraw.ImageDraw]:
     row_h = 24
     width = 800
     height = max(240, 92 + row_h * max(len(pairs), 1))
@@ -102,8 +126,12 @@ def write_metrics_bar_plot(
     draw.text((230, height - 28), value_label, fill="#596579", font=font)
     if not pairs:
         draw.text((70, 70), f"No {value_label} available", fill="#243042", font=font)
-        return _save(image, path)
+    return image, draw
 
+
+def _draw_bar_rows(draw: ImageDraw.ImageDraw, pairs: list[tuple[str, float]], *, sort: str) -> None:
+    font = _font()
+    row_h = 24
     left, top, plot_w = 230, 56, 500
     max_value = max(abs(value) for _, value in pairs) or 1.0
     for index, (name, value) in enumerate(pairs):
@@ -113,7 +141,6 @@ def write_metrics_bar_plot(
         draw.text((36, y + 4), _short_label(name), fill="#243042", font=font)
         draw.rectangle((left, y + 3, left + bar_w, y + 18), fill=fill)
         draw.text((left + bar_w + 6, y + 4), f"{value:.6g}", fill="#243042", font=font)
-    return _save(image, path)
 
 
 def write_histogram_plot(

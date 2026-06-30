@@ -21,7 +21,7 @@ graph TB
 | レイヤ | 主なディレクトリ | 役割 |
 | --- | --- | --- |
 | CLI / 操作 | `scripts/` | Local 実行、テンプレート同期、サンプル作成 |
-| ClearML integration | `clearml/` | Task 初期化、UI params 接続、Dataset/Artifact 解決、報告 |
+| ClearML integration | `clearml/` | Task 初期化、runtime params 接続、Dataset/Artifact 解決、報告 |
 | Core | `pkgs/core` | 設定、IO、Artifact 管理、RunResult |
 | Tabular domain | `pkgs/tabular` | データ、特徴量、モデル、評価、推論 |
 | Config | `config/` | task/profile 設定 |
@@ -33,7 +33,7 @@ graph TB
 
 ```mermaid
 graph LR
-  A[clearml/app.py] --> B[resolve Dataset and UI params]
+  A[clearml/app.py] --> B[resolve Dataset and runtime params]
   B --> C[ml_platform_tabular.run_task]
   C --> D[RunResult]
   D --> E[clearml/reports.py]
@@ -57,7 +57,7 @@ Stage 分割により、失敗箇所を ClearML UI で追いやすく、モデ�
 
 | 観点 | 効果 |
 | --- | --- |
-| 再現性 | task YAML、profile YAML、UI params、Artifact が残る |
+| 再現性 | task YAML、profile YAML、runtime params、Artifact が残る |
 | 運用性 | Project/Tag/Queue が規約化されている |
 | 拡張性 | 新モデルは `model.candidates` と `build_model` で追加できる |
 | 可読性 | ClearML 依存を `clearml/` に閉じ、処理本体は `pkgs/tabular` に集約 |

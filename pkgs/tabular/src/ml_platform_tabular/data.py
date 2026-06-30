@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ml_platform_core.io import read_table
+from ml_platform_core.value_coercion import as_str_list
 
 
 def resolve_data_path(cfg: dict[str, Any]) -> Path:
@@ -27,16 +28,6 @@ def load_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
     return read_table(resolve_data_path(cfg), preferred_name=data_cfg.get("dataset_file"))
 
 
-def _normalize_columns(value: Any) -> list[str] | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, str):
-        return [v.strip() for v in value.split(",") if v.strip()]
-    if isinstance(value, list):
-        return [str(v) for v in value]
-    raise ValueError(f"Column list must be null, string, or list: {value!r}")
-
-
 def select_features(
     df: pd.DataFrame,
     *,
@@ -46,40 +37,67 @@ def select_features(
     drop_columns: list[str] | str | None = None,
     passthrough_columns: list[str] | str | None = None,
 ) -> list[str]:
-    id_columns = _normalize_columns(id_columns) or []
-    feature_columns = _normalize_columns(feature_columns)
-    drop_columns = _normalize_columns(drop_columns) or []
-    passthrough_columns = _normalize_columns(passthrough_columns) or []
+    id_columns = as_str_list(id_columns) or []
+    feature_columns = as_str_list(feature_columns)
+    drop_columns = as_str_list(drop_columns) or []
+    passthrough_columns = as_str_list(passthrough_columns) or []
 
-    missing_drop = [col for col in drop_columns if col not in df.columns]
-    if missing_drop:
-        raise ValueError(f"features.drop_columns not found: {missing_drop}")
+    _validate_columns_exist(df, drop_columns, "features.drop_columns not found")
+    excluded = _excluded_feature_columns(id_columns, target_column, drop_columns)
+    if feature_columns:
+        return _select_explicit_features(df, feature_columns, drop_columns)
 
+    _validate_passthrough_columns(df, passthrough_columns, drop_columns, excluded)
+    return _select_default_features(df, excluded)
+
+
+def _validate_columns_exist(df: pd.DataFrame, columns: list[str], message: str) -> None:
+    missing = [col for col in columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"{message}: {missing}")
+
+
+def _excluded_feature_columns(
+    id_columns: list[str],
+    target_column: str | None,
+    drop_columns: list[str],
+) -> set[str]:
     excluded = set(id_columns)
     if target_column:
         excluded.add(target_column)
     excluded.update(drop_columns)
+    return excluded
 
-    if feature_columns:
-        missing = [col for col in feature_columns if col not in df.columns]
-        if missing:
-            raise ValueError(f"feature_columns not found: {missing}")
-        overlap = sorted(set(feature_columns) & set(drop_columns))
-        if overlap:
-            raise ValueError(f"features.drop_columns cannot overlap Input/feature_columns: {overlap}")
-        return feature_columns
 
+def _select_explicit_features(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    drop_columns: list[str],
+) -> list[str]:
+    _validate_columns_exist(df, feature_columns, "feature_columns not found")
+    overlap = sorted(set(feature_columns) & set(drop_columns))
+    if overlap:
+        raise ValueError(f"features.drop_columns cannot overlap Input/feature_columns: {overlap}")
+    return feature_columns
+
+
+def _validate_passthrough_columns(
+    df: pd.DataFrame,
+    passthrough_columns: list[str],
+    drop_columns: list[str],
+    excluded: set[str],
+) -> None:
     overlap = sorted(set(passthrough_columns) & set(drop_columns))
     if overlap:
         raise ValueError(f"features.drop_columns cannot overlap passthrough_columns: {overlap}")
-    missing_passthrough = [col for col in passthrough_columns if col not in df.columns]
-    if missing_passthrough:
-        raise ValueError(f"features.passthrough_columns not found: {missing_passthrough}")
+    _validate_columns_exist(df, passthrough_columns, "features.passthrough_columns not found")
     selected_passthrough = [col for col in passthrough_columns if col not in excluded]
     if len(selected_passthrough) != len(passthrough_columns):
         omitted = sorted(set(passthrough_columns) - set(selected_passthrough))
         raise ValueError(f"features.passthrough_columns must be selectable feature columns: {omitted}")
 
+
+def _select_default_features(df: pd.DataFrame, excluded: set[str]) -> list[str]:
     features = [col for col in df.columns if col not in excluded]
     if not features:
         raise ValueError("No feature columns were selected.")

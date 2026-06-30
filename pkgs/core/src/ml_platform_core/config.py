@@ -109,7 +109,9 @@ def apply_overrides(cfg: dict[str, Any], overrides: OverrideInput) -> dict[str, 
     return result
 
 
-def load_run_config(task_path: str | Path, profile_path: str | Path, *, overrides: OverrideInput = None) -> dict[str, Any]:
+def load_run_config(
+    task_path: str | Path, profile_path: str | Path, *, overrides: OverrideInput = None
+) -> dict[str, Any]:
     """Load profile then task config.
 
     Profile is environment information. Task is execution intent. Task values override

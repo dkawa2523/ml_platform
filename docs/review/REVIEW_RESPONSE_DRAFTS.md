@@ -654,9 +654,9 @@ module split is included in this step.
 
 - Tests added: `tests/test_tabular_characterization.py`.
 - Fixed contracts: training artifact/table/plot/metric keys; leaderboard,
-  candidate prediction, evaluation prediction, decision summary, recommendation,
-  inference prediction, schema summary, prediction summary, source summary, and
-  plot writer schemas.
+  candidate prediction, evaluation prediction, decision summary, inference
+  prediction, schema summary, prediction summary, source summary, and plot
+  writer schemas.
 - Remaining out of scope: exact numeric score goldens, optional GBM outputs,
   ClearML server/UI, ClearML remote execution, Kubernetes execution, and the
   actual module split.
@@ -866,8 +866,8 @@ Status: draft / pipeline split implemented / pending commit
 ```text
 I split the large tabular pipeline implementation into a new `training`
 package with focused modules for preprocessing, candidate training, ensemble
-construction, evaluation artifact generation, ranking, summary, recommendation,
-and orchestration. The existing `ml_platform_tabular.pipeline` module remains
+construction, evaluation artifact generation, ranking, summary, and
+orchestration. The existing `ml_platform_tabular.pipeline` module remains
 as a compatibility facade, so `ml_platform_tabular.pipeline:run_pipeline`,
 stage runner imports, and existing tests keep working while the implementation
 has clearer boundaries.
@@ -880,18 +880,17 @@ has clearer boundaries.
   - `ml_platform_tabular.training.evaluation`
   - `ml_platform_tabular.training.ranking`
   - `ml_platform_tabular.training.summary`
-  - `ml_platform_tabular.training.recommendation`
   - `ml_platform_tabular.training.artifacts`
   - `ml_platform_tabular.training.orchestrator`
 - New artifact boundary: `EvaluationResult` is the typed/dataclass boundary for
-  evaluate-models outputs. `evaluate_model_candidates()` returns it, while
-  `_evaluate_models()` remains a dict-returning compatibility wrapper.
+  evaluate-models outputs. `evaluate_model_candidates()` returns it, and both
+  pipeline and stage execution consume it directly.
 - Compatibility: `ml_platform_tabular.pipeline:run_pipeline` remains the local
   and ClearML runner path. `pipeline.py` re-exports the private helpers still
   used by `stage.py` and current tests.
 - Preserved contracts: training artifact/table/plot keys, leaderboard,
-  evaluation/candidate predictions, decision summary, recommendation payloads,
-  and manifest metrics remain covered by characterization and smoke tests.
+  evaluation/candidate predictions, decision summary, and manifest metrics
+  remain covered by characterization and smoke tests.
 - Verification: targeted decision/characterization/pipeline/stage tests passed
   22 tests; full pytest passed 117 tests; `uv run python -m ruff check .`
   passed.

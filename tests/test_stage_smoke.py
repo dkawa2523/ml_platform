@@ -57,21 +57,7 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     preprocess_cfg = _stage_cfg(tmp_path, "preprocess_features", train_path)
     preprocess = run_task(preprocess_cfg)
 
-    assert preprocess.artifacts["preprocess_bundle"].exists()
-    assert preprocess.artifacts["feature_spec"].exists()
-    assert preprocess.artifacts["feature_summary"].exists()
-    assert preprocess.artifacts["data_quality_summary"].exists()
-    assert preprocess.tables["feature_summary_table"].exists()
-    assert preprocess.tables["feature_summary"].exists()
-    assert preprocess.tables["missing_rate_by_column"].exists()
-    assert preprocess.tables["feature_missingness"].exists()
-    assert preprocess.tables["feature_type_counts"].exists()
-    assert preprocess.tables["data_quality_summary_table"].exists()
-    assert preprocess.tables["data_quality_warnings"].exists()
-    assert preprocess.tables["processed_train"].exists()
-    assert preprocess.tables["processed_valid"].exists()
-    assert "missing_rate_by_column_bar" in preprocess.plots
-    assert "feature_missingness_bar" in preprocess.plots
+    _assert_preprocess_stage_outputs(preprocess)
 
     train_results = []
     for model_name in ["linear", "ridge"]:
@@ -83,17 +69,7 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
         train_results.append((f"train_{model_name}", run_task(cfg)))
 
     for _, result in train_results:
-        assert result.artifacts["model"].exists()
-        assert result.artifacts["model_info"].exists()
-        assert result.artifacts["metrics"].exists()
-        assert result.tables["metrics_table"].exists()
-        assert result.tables["validation_predictions"].exists()
-        assert result.tables["feature_importance"].exists()
-        assert "validation_prediction_vs_actual" in result.plots
-        assert "validation_residual_histogram" in result.plots
-        assert "validation_residual_vs_predicted" in result.plots
-        assert "feature_importance" in result.plots
-        assert "feature_importance_bar" in result.plots
+        _assert_train_stage_outputs(result)
 
     model_refs = [_model_ref(stage, result) for stage, result in train_results]
     ensemble_cfg = _stage_cfg(tmp_path, "build_ensemble", train_path)
@@ -104,47 +80,113 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     ensemble_cfg["stage_inputs"]["model_refs"] = model_refs
     ensemble = run_task(ensemble_cfg)
 
-    assert ensemble.artifacts["model"].exists()
-    assert ensemble.artifacts["ensemble_info"].exists()
-    assert ensemble.tables["ensemble_metrics_table"].exists()
-    assert ensemble.tables["ensemble_predictions"].exists()
-    assert ensemble.tables["ensemble_members_mean_topk"].exists()
-    assert ensemble.tables["ensemble_weights_mean_topk"].exists()
-    assert "ensemble_metrics_bar" in ensemble.plots
+    _assert_ensemble_stage_outputs(ensemble)
 
     eval_cfg = _stage_cfg(tmp_path, "evaluate_models", train_path)
     eval_cfg["run"]["stage"] = "evaluate_models"
     eval_cfg["model"]["selection_metric"] = "rmse"
     eval_cfg["stage_inputs"]["model_refs"] = model_refs
-    eval_cfg["stage_inputs"]["ensemble_ref"] = {
-        "stage": "build_ensemble",
-        "model_name": "mean_topk",
-        "model": str(ensemble.artifacts["model"]),
-        "model_info": str(ensemble.artifacts["model_info"]),
-        "ensemble_info": str(ensemble.artifacts["ensemble_info"]),
-        "metrics": str(ensemble.artifacts["metrics"]),
-        "ensemble_predictions": str(ensemble.tables["ensemble_predictions"]),
-    }
+    eval_cfg["stage_inputs"]["ensemble_refs"] = [
+        {
+            "stage": "build_ensemble",
+            "model_name": "mean_topk",
+            "model": str(ensemble.artifacts["model"]),
+            "model_info": str(ensemble.artifacts["model_info"]),
+            "ensemble_info": str(ensemble.artifacts["ensemble_info"]),
+            "metrics": str(ensemble.artifacts["metrics"]),
+            "ensemble_predictions": str(ensemble.tables["ensemble_predictions"]),
+        }
+    ]
     evaluation = run_task(eval_cfg)
 
-    assert evaluation.tables["leaderboard"].exists()
-    assert evaluation.tables["leaderboard_topk"].exists()
-    assert evaluation.tables["metrics_by_candidate"].exists()
-    assert evaluation.tables["evaluation_summary"].exists()
-    assert evaluation.tables["leaderboard_decision_summary"].exists()
-    assert evaluation.tables["best_vs_ensemble_summary"].exists()
-    assert evaluation.tables["evaluation_predictions"].exists()
-    assert evaluation.tables["candidate_predictions"].exists()
-    assert evaluation.artifacts["model_refs"].exists()
-    assert evaluation.artifacts["metrics_by_model"].exists()
-    assert evaluation.artifacts["metrics_by_candidate"].exists()
-    assert evaluation.artifacts["best_model"].exists()
-    assert evaluation.artifacts["best_model_json"].exists()
-    assert evaluation.artifacts["evaluation_report"].exists()
-    assert evaluation.artifacts["recommendation"].exists()
-    assert evaluation.artifacts["decision_summary"].exists()
-    assert evaluation.artifacts["decision_summary_json"].exists()
-    assert evaluation.artifacts["manifest"].exists()
+    _assert_evaluation_stage_outputs(evaluation)
+
+
+def _assert_preprocess_stage_outputs(result):
+    _assert_stage_paths(
+        result.artifacts,
+        ["preprocess_bundle", "feature_spec", "feature_summary", "data_quality_summary"],
+    )
+    _assert_stage_paths(
+        result.tables,
+        [
+            "feature_summary_table",
+            "missing_rate_by_column",
+            "feature_type_counts",
+            "data_quality_summary_table",
+            "data_quality_warnings",
+            "processed_train",
+            "processed_valid",
+        ],
+    )
+    assert "missing_rate_by_column_bar" in result.plots
+
+
+def _assert_train_stage_outputs(result):
+    _assert_stage_paths(result.artifacts, ["model", "model_info", "metrics"])
+    _assert_stage_paths(result.tables, ["metrics_table", "validation_predictions", "feature_importance"])
+    assert {
+        "validation_prediction_vs_actual",
+        "validation_residual_histogram",
+        "validation_residual_vs_predicted",
+        "feature_importance",
+        "feature_importance_bar",
+    } <= set(result.plots)
+
+
+def _assert_ensemble_stage_outputs(result):
+    _assert_stage_paths(result.artifacts, ["model", "ensemble_info"])
+    _assert_stage_paths(
+        result.tables,
+        [
+            "ensemble_metrics_table",
+            "ensemble_predictions",
+            "ensemble_members_mean_topk",
+            "ensemble_weights_mean_topk",
+        ],
+    )
+    assert "ensemble_metrics_bar" in result.plots
+
+
+def _assert_evaluation_stage_outputs(evaluation):
+    _assert_evaluation_stage_tables(evaluation)
+    _assert_evaluation_stage_artifacts(evaluation)
+    _assert_evaluation_decision_summary(evaluation)
+    _assert_evaluation_plots(evaluation)
+
+
+def _assert_evaluation_stage_tables(evaluation):
+    _assert_stage_paths(
+        evaluation.tables,
+        [
+            "leaderboard",
+            "leaderboard_topk",
+            "metrics_by_candidate",
+            "evaluation_summary",
+            "best_vs_ensemble_summary",
+            "evaluation_predictions",
+            "candidate_predictions",
+        ],
+    )
+
+
+def _assert_evaluation_stage_artifacts(evaluation):
+    _assert_stage_paths(
+        evaluation.artifacts,
+        [
+            "model_refs",
+            "metrics_by_candidate",
+            "best_model",
+            "best_model_json",
+            "evaluation_report",
+            "decision_summary",
+            "decision_summary_json",
+            "manifest",
+        ],
+    )
+
+
+def _assert_evaluation_decision_summary(evaluation):
     decision_summary = read_json(evaluation.artifacts["decision_summary_json"])
     assert decision_summary["recommended_inference_settings"]["Model/source_type"] == "task_id"
     assert decision_summary["recommended_inference_settings"]["Model/model_selector"] == "best"
@@ -153,6 +195,9 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     assert decision_summary["best_single_model"]["artifact_kind"] == "model"
     assert decision_summary["best_ensemble"]["artifact_kind"] == "ensemble"
     assert evaluation.extra["report_schema_version"] == "leaderboard_dashboard_v2"
+
+
+def _assert_evaluation_plots(evaluation):
     assert "metrics_by_candidate_bar" in evaluation.plots
     assert "leaderboard_topk_score_bar" in evaluation.plots
     assert "leaderboard_metric_panel" in evaluation.plots
@@ -169,6 +214,11 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     evaluation_manifest = read_json(evaluation.artifacts["manifest"])
     assert "leaderboard_topk_score_bar" in evaluation_manifest["plots"]
     assert "best_prediction_vs_actual" in evaluation_manifest["plots"]
+
+
+def _assert_stage_paths(paths, names):
+    assert set(names) <= set(paths)
+    assert all(paths[name].exists() for name in names)
 
 
 def test_tabular_stage_runner_rejects_unsupported_stages(tmp_path):

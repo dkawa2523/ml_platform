@@ -59,7 +59,7 @@ Basic で足りない場合は、詳細項目を編集します。
 | Model | `Model/candidates` | `custom` 相当の直接指定。モデル名は対応表を参照 |
 | Model params | `Model/model_params_by_name` | 明示した場合は `Basic/quality_mode` より優先 |
 | Ensemble | `Model/ensemble_methods`, `Model/ensemble_top_k` | `mean_topk`, `weighted`, `median` を指定可能 |
-| Output | `Output/report_plots` | Plot 出力を抑制したい場合に `false` |
+| Output | `Output/upload_plots` | Plot 画像の ClearML アップロードを抑制したい場合に `false` |
 
 ## 実行後に見る場所
 

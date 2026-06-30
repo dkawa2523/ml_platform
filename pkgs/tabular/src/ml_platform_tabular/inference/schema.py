@@ -7,18 +7,13 @@ from typing import Any
 import pandas as pd
 
 from ml_platform_core.io import write_json, write_table
+from ml_platform_core.value_coercion import as_str_list
 
 from ..data import select_features
 
 
 def _as_list(value: Any) -> list[str]:
-    if value is None or value == "":
-        return []
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    if isinstance(value, list):
-        return [str(item) for item in value]
-    return [str(value)]
+    return as_str_list(value) or []
 
 
 def _estimator_feature_columns(estimator: Any) -> list[str] | None:
@@ -96,21 +91,29 @@ def _schema_check_table(summary: dict[str, Any]) -> pd.DataFrame:
 
 
 def _unseen_category_columns(df, preprocess_bundle: dict[str, Any]) -> list[str]:
+    category_levels, fill_values = _category_metadata(preprocess_bundle)
+    if category_levels is None:
+        return []
+    return [
+        str(column)
+        for column, levels in category_levels.items()
+        if column in df.columns and _has_unseen_categories(df[column], levels, fill_values.get(column, "__missing__"))
+    ]
+
+
+def _category_metadata(preprocess_bundle: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     transformer = preprocess_bundle.get("transformer")
     category_levels = getattr(transformer, "category_levels", None)
     if not isinstance(category_levels, dict):
-        return []
+        return None, {}
     fill_values = getattr(transformer, "categorical_fill_values", {})
-    unseen: list[str] = []
-    for column, levels in category_levels.items():
-        if column not in df.columns:
-            continue
-        known = {str(value) for value in levels}
-        fill_value = str(fill_values.get(column, "__missing__")) if isinstance(fill_values, dict) else "__missing__"
-        values = df[column].fillna(fill_value).astype(str)
-        if any(value not in known for value in values.unique().tolist()):
-            unseen.append(str(column))
-    return unseen
+    return category_levels, fill_values if isinstance(fill_values, dict) else {}
+
+
+def _has_unseen_categories(values: pd.Series, levels: Any, fill_value: Any) -> bool:
+    known = {str(value) for value in levels}
+    filled = values.fillna(str(fill_value)).astype(str)
+    return any(value not in known for value in filled.unique().tolist())
 
 
 def _schema_check_summary(
@@ -121,20 +124,10 @@ def _schema_check_summary(
     target_column: str | None,
     preprocess_bundle: dict[str, Any],
 ) -> dict[str, Any]:
-    existing_id_columns = [column for column in id_columns if column in df.columns]
-    missing_id_columns = [column for column in id_columns if column not in df.columns]
-    missing_features = [column for column in feature_columns if column not in df.columns]
-    allowed = set(feature_columns)
-    allowed.update(existing_id_columns)
-    if target_column:
-        allowed.add(target_column)
-    extra_columns = [column for column in df.columns if column not in allowed]
+    existing_id_columns, missing_id_columns = _id_column_status(df, id_columns)
+    missing_features = _missing_columns(df, feature_columns)
+    extra_columns = _extra_columns(df, feature_columns, existing_id_columns, target_column)
     unseen_columns = _unseen_category_columns(df, preprocess_bundle)
-    status = "ok"
-    if missing_features:
-        status = "error"
-    elif extra_columns or missing_id_columns or unseen_columns:
-        status = "warning"
     return {
         "required_feature_count": len(feature_columns),
         "provided_feature_count": len([column for column in feature_columns if column in df.columns]),
@@ -145,8 +138,44 @@ def _schema_check_summary(
         "row_count": int(len(df)),
         "unknown_or_unseen_category_warning": bool(unseen_columns),
         "unseen_category_columns": unseen_columns,
-        "status": status,
+        "status": _schema_status(missing_features, extra_columns, missing_id_columns, unseen_columns),
     }
+
+
+def _id_column_status(df: pd.DataFrame, id_columns: list[str]) -> tuple[list[str], list[str]]:
+    existing = [column for column in id_columns if column in df.columns]
+    missing = [column for column in id_columns if column not in df.columns]
+    return existing, missing
+
+
+def _missing_columns(df: pd.DataFrame, columns: list[str]) -> list[str]:
+    return [column for column in columns if column not in df.columns]
+
+
+def _extra_columns(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    existing_id_columns: list[str],
+    target_column: str | None,
+) -> list[str]:
+    allowed = set(feature_columns)
+    allowed.update(existing_id_columns)
+    if target_column:
+        allowed.add(target_column)
+    return [column for column in df.columns if column not in allowed]
+
+
+def _schema_status(
+    missing_features: list[str],
+    extra_columns: list[str],
+    missing_id_columns: list[str],
+    unseen_columns: list[str],
+) -> str:
+    if missing_features:
+        return "error"
+    if extra_columns or missing_id_columns or unseen_columns:
+        return "warning"
+    return "ok"
 
 
 def _write_schema_check(summary: dict[str, Any], run_dir: Path) -> tuple[Path, Path]:

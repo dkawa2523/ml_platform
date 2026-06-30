@@ -1,6 +1,7 @@
 import pytest
 
 from ml_platform_core.config import load_run_config, load_typed_run_config
+from ml_platform_core.config_compat import data_to_legacy_dict, get_present_sections, to_legacy_dict
 from ml_platform_core.config_models import ConfigValidationError, parse_run_config
 
 
@@ -41,9 +42,30 @@ def test_parse_run_config_preserves_unknown_keys_as_extras():
     assert cfg.extras == {"owner": "team-a"}
     assert cfg.runtime.extras == {"custom_runtime": 1}
     assert cfg.data.extras == {"custom_data": True}
-    assert cfg.to_dict()["owner"] == "team-a"
-    assert cfg.to_dict()["runtime"]["custom_runtime"] == 1
-    assert cfg.to_dict()["data"]["custom_data"] is True
+    legacy = to_legacy_dict(cfg)
+    assert legacy["owner"] == "team-a"
+    assert legacy["runtime"]["custom_runtime"] == 1
+    assert legacy["data"]["custom_data"] is True
+
+
+def test_config_compat_builds_legacy_dict_and_present_sections():
+    raw = {
+        "task": "tabular_pipeline",
+        "profile": "local",
+        "owner": "team-a",
+        "runtime": {"output_dir": "out", "custom_runtime": 1},
+        "run": {"name": "demo"},
+        "data": {"local_path": "train.csv", "id_columns": ["id"], "custom_data": True},
+        "model": {"name": "ridge", "ensemble": {"enabled": True}},
+        "_meta": {"task_config": "task.yaml"},
+    }
+    cfg = parse_run_config(raw)
+
+    assert get_present_sections(cfg) == frozenset(raw)
+    assert to_legacy_dict(cfg)["owner"] == "team-a"
+    assert to_legacy_dict(cfg)["runtime"]["custom_runtime"] == 1
+    assert to_legacy_dict(cfg)["data"]["id_columns"] == ["id"]
+    assert data_to_legacy_dict(cfg.data)["custom_data"] is True
 
 
 def test_load_typed_run_config_parses_after_overrides():

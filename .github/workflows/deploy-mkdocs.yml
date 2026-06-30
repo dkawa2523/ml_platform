@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    # TODO(R23): confirm GitHub Pages availability and deployment target for this repository.
+    # Build documentation on PRs; deploy the Pages artifact only from main.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

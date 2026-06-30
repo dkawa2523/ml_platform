@@ -8,7 +8,7 @@ on:
 
 jobs:
   local-product-smoke:
-    # TODO(R13): confirm whether arc-runner-set-spdml-ml-pipeline is available for this repository.
+    # Use a GitHub-hosted runner for portable PR validation.
     runs-on: ubuntu-latest
     env:
       OMP_NUM_THREADS: "1"

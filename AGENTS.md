@@ -7,7 +7,7 @@ structure.
 
 ## Product Boundary
 
-- `pkgs/core`: ClearML-free config, IO, result, registry, and artifact helpers.
+- `pkgs/core`: ClearML-free config, IO, result, and artifact helpers.
 - `pkgs/tabular`: ClearML-free tabular data, features, models, ensembles,
   metrics, plots, evaluation, and inference.
 - `clearml/`: ClearML SDK boundary: Task, Dataset, PipelineController,
@@ -103,10 +103,10 @@ A successful run is not enough. ClearML UI must show:
 For product-flow changes, run:
 
 ```powershell
-python scripts/make_sample_data.py
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python scripts/make_sample_data.py
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; uv run python -m pytest -q
 ```
 
 Boundary check:

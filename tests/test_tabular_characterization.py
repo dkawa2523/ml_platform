@@ -5,8 +5,7 @@ import pandas as pd
 
 from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
-from ml_platform_tabular.infer import run_infer
-from ml_platform_tabular.pipeline import run_pipeline
+from ml_platform_tabular.inference import run_infer
 from ml_platform_tabular.plotting import (
     write_feature_importance_plot_if_available,
     write_leaderboard_metric_panel,
@@ -15,6 +14,7 @@ from ml_platform_tabular.plotting import (
     write_metrics_by_candidate_table,
     write_prediction_summary_tables,
 )
+from ml_platform_tabular.training import run_pipeline
 
 
 def _write_characterization_data(tmp_path, *, rows: int = 36) -> tuple[pd.DataFrame, object, object]:
@@ -56,6 +56,17 @@ def _assert_all_paths_exist(paths: dict[str, object]) -> None:
 def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
     result, _ = _run_characterized_training(tmp_path)
 
+    _assert_characterized_training_keys(result)
+    _assert_all_paths_exist(result.artifacts)
+    _assert_all_paths_exist(result.tables)
+    _assert_all_paths_exist(result.plots)
+    _assert_characterized_training_extra(result)
+    _assert_characterized_leaderboard(result)
+    _assert_characterized_prediction_tables(result)
+    _assert_characterized_decision_and_manifest(result)
+
+
+def _assert_characterized_training_keys(result):
     assert sorted(result.artifacts) == [
         "best_model",
         "best_model_json",
@@ -72,7 +83,6 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "manifest",
         "metrics",
         "metrics_by_candidate",
-        "metrics_by_model",
         "metrics_linear",
         "metrics_ridge",
         "model_info_linear",
@@ -81,7 +91,6 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "model_refs",
         "model_ridge",
         "preprocess_bundle",
-        "recommendation",
     ]
     assert sorted(result.tables) == [
         "best_vs_ensemble_summary",
@@ -92,12 +101,9 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "evaluation_summary",
         "feature_importance_linear",
         "feature_importance_ridge",
-        "feature_missingness",
-        "feature_summary",
         "feature_summary_table",
         "feature_type_counts",
         "leaderboard",
-        "leaderboard_decision_summary",
         "leaderboard_topk",
         "metrics_by_candidate",
         "metrics_table_linear",
@@ -118,7 +124,6 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "feature_importance_bar_ridge",
         "feature_importance_linear",
         "feature_importance_ridge",
-        "feature_missingness_bar",
         "leaderboard_metric_panel",
         "leaderboard_pareto_rmse_r2",
         "leaderboard_topk_score_bar",
@@ -146,16 +151,17 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "rmse",
         "selection_metric",
     ]
-    _assert_all_paths_exist(result.artifacts)
-    _assert_all_paths_exist(result.tables)
-    _assert_all_paths_exist(result.plots)
 
+
+def _assert_characterized_training_extra(result):
     assert result.extra["pipeline_kind"] == "training"
     assert result.extra["stages"] == ["preprocess_features", "train_linear", "train_ridge", "evaluate_models"]
     assert result.extra["candidate_models"] == ["linear", "ridge"]
     assert result.extra["selection_metric"] == "rmse"
     assert result.extra["ensemble"] == {"enabled": False}
 
+
+def _assert_characterized_leaderboard(result):
     leaderboard = pd.read_csv(result.tables["leaderboard"])
     assert leaderboard.columns.tolist() == [
         "rank",
@@ -179,6 +185,8 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
     assert set(leaderboard["artifact_kind"]) == {"model"}
     assert leaderboard["infer_target"].tolist() == ["linear", "ridge"]
 
+
+def _assert_characterized_prediction_tables(result):
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert evaluation_predictions.columns.tolist() == [
         "x1",
@@ -216,6 +224,8 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
     assert evaluation_summary["model_name"].iloc[:2].tolist() == ["linear", "linear"]
     assert pd.isna(evaluation_summary["model_name"].iloc[2])
 
+
+def _assert_characterized_decision_and_manifest(result):
     decision_summary = read_json(result.artifacts["decision_summary_json"])
     assert sorted(decision_summary) == [
         "best_artifact_kind",
@@ -229,7 +239,6 @@ def test_tabular_pipeline_output_contract_before_module_split(tmp_path):
         "created_at",
         "ensemble_improved_over_best_single",
         "leaderboard_top5",
-        "recommendation",
         "recommended_candidate_selector",
         "recommended_inference_settings",
         "recommended_model_selector",
@@ -267,6 +276,16 @@ def test_tabular_inference_output_contract_before_module_split(tmp_path):
 
     result = run_infer(cfg)
 
+    _assert_characterized_inference_keys(result)
+    _assert_all_paths_exist(result.artifacts)
+    _assert_all_paths_exist(result.tables)
+    _assert_all_paths_exist(result.plots)
+    _assert_characterized_inference_predictions(result)
+    _assert_characterized_inference_schema_and_summary(result)
+    _assert_characterized_inference_manifest(result)
+
+
+def _assert_characterized_inference_keys(result):
     assert sorted(result.artifacts) == [
         "config",
         "feature_spec",
@@ -284,10 +303,9 @@ def test_tabular_inference_output_contract_before_module_split(tmp_path):
     ]
     assert sorted(result.plots) == ["prediction_distribution", "prediction_distribution_histogram"]
     assert result.metrics == {}
-    _assert_all_paths_exist(result.artifacts)
-    _assert_all_paths_exist(result.tables)
-    _assert_all_paths_exist(result.plots)
 
+
+def _assert_characterized_inference_predictions(result):
     predictions = pd.read_csv(result.tables["predictions"])
     assert predictions.columns.tolist() == [
         "row_index",
@@ -306,6 +324,8 @@ def test_tabular_inference_output_contract_before_module_split(tmp_path):
     assert "x2" not in predictions.columns
     assert "segment" not in predictions.columns
 
+
+def _assert_characterized_inference_schema_and_summary(result):
     schema_check = read_json(result.artifacts["schema_check_summary"])
     assert schema_check["status"] == "ok"
     assert schema_check["missing_features"] == []
@@ -343,6 +363,8 @@ def test_tabular_inference_output_contract_before_module_split(tmp_path):
         "preprocess_bundle_path",
     ]
 
+
+def _assert_characterized_inference_manifest(result):
     manifest = read_json(result.artifacts["manifest"])
     assert sorted(manifest["extra"]) == [
         "artifact_kind",

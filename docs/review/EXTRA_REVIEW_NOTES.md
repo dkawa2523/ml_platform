@@ -5,8 +5,8 @@ Before splitting `pkgs/tabular/src/ml_platform_tabular/pipeline.py`,
 pin the current output contracts:
 
 - training artifact/table/plot/metric key sets
-- leaderboard, evaluation predictions, candidate predictions, decision summary,
-  and recommendation schema
+- leaderboard, evaluation predictions, candidate predictions, and decision
+  summary schema
 - inference slim prediction frame columns and manifest/schema summary fields
 - standalone plot writer table and plot key behavior
 
@@ -30,9 +30,8 @@ The implementation has moved behind those facades:
 - training behavior: `ml_platform_tabular.training.*`
 
 `EvaluationResult` is the explicit typed boundary for evaluate-models outputs.
-`evaluate_model_candidates()` returns this dataclass, while `_evaluate_models()`
-continues returning the legacy dict so `stage.py` and existing tests can remain
-unchanged during this compatibility-preserving split.
+`evaluate_model_candidates()` returns this dataclass, and both full-pipeline and
+stage execution now consume that boundary directly.
 
 Future cleanup should migrate internal imports from private facade helpers to
 public package functions, then remove private re-exports only after ClearML

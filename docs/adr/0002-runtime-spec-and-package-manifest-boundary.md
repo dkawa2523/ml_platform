@@ -75,6 +75,24 @@ removed from the contract dataclasses. The remaining core contracts are limited
 to manifest validation, runner path declaration, artifact/parameter schema, and
 runtime-neutral domain plans consumed by the ClearML renderer.
 
+SR01 extracts ClearML parameter transport into `clearml/params.py`. That module
+owns flat ClearML parameter keys, connected-value coercion, and mapping
+connected values back onto nested config. `clearml/adapter.py` delegates
+transport details, while tabular model-suite and quality-mode policy remains in
+`ml_platform_tabular.policy`.
+
+SR03 keeps tabular plot construction in the tabular package. `clearml/reports.py`
+no longer rebuilds prediction or leaderboard plots from CSV artifacts; it uploads
+artifacts/tables, publishes scalar metrics, and reports existing plot artifacts
+through ClearML image/media APIs. CSV reads remain only for scalar/table
+reporting where the ClearML UI needs metric values.
+
+SR05 separates typed config parsing from legacy dict serialization. The typed
+models in `config_models.py` own field shape, parsing, and validation.
+`config_compat.py` owns legacy dict generation and present-section handling.
+Callers that need the legacy dict shape use `to_legacy_dict()` or the section
+serializers explicitly.
+
 ## Consequences
 
 - `pkgs/core` stays free of runtime-vendor knowledge.

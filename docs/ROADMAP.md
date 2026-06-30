@@ -41,8 +41,8 @@ Status: not implemented.
 - No approved-model registry, promotion workflow, or registry-specific template
   exists today.
 - Future behavior should start from `evaluate_models` outputs:
-  `decision_summary.md`, `decision_summary.json`, and `recommendation.json`.
-- A later flow may turn an accepted recommendation into an approved registered
+  `decision_summary.md` and `decision_summary.json`.
+- A later flow may turn an accepted decision summary into an approved registered
   model, but training and inference should continue to work without registry
   services.
 

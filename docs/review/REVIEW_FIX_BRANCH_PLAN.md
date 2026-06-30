@@ -133,7 +133,7 @@ Scope:
 
 - `plots.py` を種類別に分割
 - `infer.py` を resolver / metadata / schema / prediction_frame / writer / runner に分割
-- `pipeline.py` を orchestrator / candidate_training / ensemble / evaluation / ranking / summary / recommendation / artifacts に分割
+- `pipeline.py` を orchestrator / candidate_training / ensemble / evaluation / ranking / summary / decision_artifacts / artifacts に分割
 - 互換ファサードを必要最小限残す
 
 ## Phase 7: ClearML / Kubernetes evidence

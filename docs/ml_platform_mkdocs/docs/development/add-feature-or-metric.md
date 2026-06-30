@@ -17,7 +17,10 @@ Start with:
 
 - `metrics.py` for metric calculation.
 - `training/ranking.py` for sort direction and selectors.
-- `training/evaluation.py` for leaderboard, summary, and artifact output.
+- `training/evaluation.py` for evaluation orchestration and result assembly.
+- `training/leaderboard_artifacts.py`, `training/prediction_artifacts.py`,
+  `training/best_model_artifacts.py`, and `training/decision_artifacts.py` for
+  user-facing evaluation artifacts.
 - `clearml/reports.py` only when ClearML display behavior changes.
 
 If a new metric can be used as `selection_metric`, define whether lower or

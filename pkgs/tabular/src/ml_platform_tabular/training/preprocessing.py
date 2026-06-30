@@ -15,9 +15,10 @@ from ..plotting import (
     write_feature_summary_tables,
     write_metrics_bar_plot,
 )
+from .artifacts import FeatureTransformer, PreprocessResult
 
 
-def _transformed_columns(transformer: Any) -> list[str]:
+def _transformed_columns(transformer: FeatureTransformer) -> list[str]:
     return transformed_columns_from_transformer(transformer)
 
 
@@ -30,7 +31,7 @@ def _write_feature_visibility_artifacts(
     target_column: str,
     feature_columns: list[str],
     transformed_columns: list[str],
-    transformer: Any,
+    transformer: FeatureTransformer,
     feature_config: dict[str, Any],
     stage_dir: Path,
 ) -> tuple[dict[str, Path], dict[str, Path]]:
@@ -53,16 +54,16 @@ def _write_feature_visibility_artifacts(
         title="Feature missing rate",
         value_label="missing_rate",
     )
-    return tables, {"missing_rate_by_column_bar": missingness_bar_path, "feature_missingness_bar": missingness_bar_path}
+    return tables, {"missing_rate_by_column_bar": missingness_bar_path}
 
 
-def _xy_frame(X: pd.DataFrame, y, target_column: str) -> pd.DataFrame:
+def _xy_frame(X: pd.DataFrame, y: pd.Series, target_column: str) -> pd.DataFrame:
     frame = X.reset_index(drop=True).copy()
     frame[target_column] = list(pd.Series(y).reset_index(drop=True))
     return frame
 
 
-def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, Any]:
+def preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> PreprocessResult:
     stage_dir = pipeline_dir / "preprocess_features"
     stage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -100,7 +101,7 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
         pd.DataFrame(transformer.transform(X_valid), columns=transformed_columns),
         stage_dir / "valid_features.csv",
     )
-    target_column = cfg.get("data", {}).get("target_column")
+    target_column = str(cfg.get("data", {}).get("target_column"))
     processed_train_path = write_table(_xy_frame(X_train, y_train, target_column), stage_dir / "processed_train.csv")
     processed_valid_path = write_table(_xy_frame(X_valid, y_valid, target_column), stage_dir / "processed_valid.csv")
     preprocess_bundle_path = dump_joblib(
@@ -184,29 +185,27 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
         stage_dir / "data_quality_warnings.csv",
     )
 
-    return {
-        "stage": "preprocess_features",
-        "stage_dir": stage_dir,
-        "transformer": transformer,
-        "feature_columns": feature_columns,
-        "target_column": target_column,
-        "feature_preset": feature_preset,
-        "feature_config": feature_config,
-        "X_train": X_train,
-        "X_valid": X_valid,
-        "y_train": y_train,
-        "y_valid": y_valid,
-        "artifacts": {
+    return PreprocessResult(
+        stage="preprocess_features",
+        stage_dir=stage_dir,
+        transformer=transformer,
+        feature_columns=feature_columns,
+        target_column=target_column,
+        feature_preset=feature_preset,
+        feature_config=feature_config,
+        X_train=X_train,
+        X_valid=X_valid,
+        y_train=y_train,
+        y_valid=y_valid,
+        artifacts={
             "preprocess_bundle": preprocess_bundle_path,
             "feature_spec": feature_spec_path,
             "feature_summary": feature_summary_path,
             "data_quality_summary": data_quality_summary_path,
         },
-        "tables": {
+        tables={
             "feature_summary_table": feature_summary_table_path,
-            "feature_summary": feature_summary_table_path,
             "missing_rate_by_column": missing_rate_by_column_path,
-            "feature_missingness": missing_rate_by_column_path,
             "feature_type_counts": feature_type_counts_path,
             "data_quality_summary_table": data_quality_summary_table_path,
             "data_quality_warnings": data_quality_warnings_path,
@@ -215,5 +214,5 @@ def _preprocess_features(cfg: dict[str, Any], pipeline_dir: Path) -> dict[str, A
             "processed_train": processed_train_path,
             "processed_valid": processed_valid_path,
         },
-        "plots": feature_plots,
-    }
+        plots=feature_plots,
+    )

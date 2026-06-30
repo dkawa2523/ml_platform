@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
-
 from ml_platform_core.contracts import (
     ArtifactSpec,
-    DomainPipelinePlan,
-    DomainStepPlan,
     PackageManifest,
     ParameterSpec,
     PipelineSpec,
@@ -15,14 +10,14 @@ from ml_platform_core.contracts import (
 )
 
 from .ensemble import SUPPORTED_ENSEMBLE_METHODS
-from .models import SUPPORTED_MODELS, validate_model_name
+from .models import SUPPORTED_MODELS
 from .policy import model_suite_names, quality_mode_names
 
 TABULAR_DOMAIN = "tabular"
 TABULAR_MANIFEST_VERSION = "0.1.0"
 TABULAR_STAGE_RUNNER = "ml_platform_tabular.stage:run_stage"
-TABULAR_PIPELINE_RUNNER = "ml_platform_tabular.pipeline:run_pipeline"
-TABULAR_INFER_RUNNER = "ml_platform_tabular.infer:run_infer"
+TABULAR_PIPELINE_RUNNER = "ml_platform_tabular.training:run_pipeline"
+TABULAR_INFER_RUNNER = "ml_platform_tabular.inference:run_infer"
 
 TRAINING_STAGE_KEYS = ("preprocess_features", "train_model", "build_ensemble", "evaluate_models")
 
@@ -133,8 +128,12 @@ TABULAR_EVALUATE_STAGE = StageSpec(
     ),
     output_artifacts=(
         _artifact("decision_summary", "file"),
+        _artifact("decision_summary_json", "json"),
         _artifact("leaderboard", "table"),
+        _artifact("best_model", "model", required=False),
         _artifact("metrics", "json"),
+        _artifact("evaluation_predictions", "table", required=False),
+        _artifact("candidate_predictions", "table", required=False),
     ),
 )
 TABULAR_INFER_STAGE = StageSpec(
@@ -143,7 +142,7 @@ TABULAR_INFER_STAGE = StageSpec(
     display_name="Tabular inference",
     runner_path=TABULAR_INFER_RUNNER,
     parameters=(
-        _param("Model/source_type", "enum", default="local_path", choices=("pipeline_task", "task", "local_path")),
+        _param("Model/source_type", "enum", default="local_path", choices=("task_id", "local_path")),
         _param("Model/source_task_id", "str"),
         _param("Model/model_selector", "str", default="best"),
         _param("Model/local_model_path", "str"),
@@ -181,12 +180,14 @@ TABULAR_PIPELINE_PARAMETERS = (
     _param("Model/ensemble_enabled", "bool"),
     _param("Model/ensemble_methods", "json", default=["mean_topk"]),
     _param("Model/ensemble_top_k", "int", default=3),
-    _param("Output/report_plots", "bool", default=True),
+    _param("Output/upload_plots", "bool", default=True),
 )
 TABULAR_PIPELINE_ARTIFACTS = (
     _artifact("decision_summary", "file"),
+    _artifact("decision_summary_json", "json"),
     _artifact("leaderboard", "table"),
     _artifact("best_model", "model", required=False),
+    _artifact("metrics", "json"),
 )
 
 TABULAR_PIPELINE_TASK = TaskSpec(
@@ -231,133 +232,3 @@ TABULAR_MANIFEST = PackageManifest(
 
 def get_tabular_manifest() -> PackageManifest:
     return TABULAR_MANIFEST
-
-
-def _safe_step_suffix(value: str) -> str:
-    text = "".join(char if char.isalnum() else "_" for char in value.strip().lower())
-    return text.strip("_") or "unnamed"
-
-
-def _normalize_candidates(candidates: Sequence[str | Mapping[str, Any]] | None) -> tuple[dict[str, Any], ...]:
-    raw_values = tuple(candidates or ("ridge",))
-    values: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_values):
-        if isinstance(item, str):
-            values.append({"name": item, "params": {}})
-        elif isinstance(item, Mapping):
-            name = item.get("name")
-            if not isinstance(name, str) or not name:
-                raise ValueError(f"Domain plan candidate[{index}].name is required.")
-            params = item.get("params") or {}
-            if not isinstance(params, dict):
-                raise ValueError(f"Domain plan candidate[{index}].params must be a mapping.")
-            values.append({"name": name, "params": dict(params)})
-        else:
-            raise ValueError(f"Domain plan candidate[{index}] must be a model name or mapping.")
-    if not values:
-        raise ValueError("Domain plan requires at least one model candidate.")
-    for value in values:
-        validate_model_name(value["name"])
-    return tuple(values)
-
-
-def _normalize_ensemble_methods(methods: Sequence[str] | None) -> tuple[str, ...]:
-    values = tuple(methods or ("mean_topk",))
-    invalid = [value for value in values if value not in SUPPORTED_ENSEMBLE_METHODS]
-    if invalid:
-        choices = ", ".join(SUPPORTED_ENSEMBLE_METHODS)
-        raise ValueError(f"Unsupported ensemble methods: {invalid}. Available: {choices}.")
-    return values
-
-
-def build_tabular_domain_plan(
-    *,
-    run_name: str = "tabular_training_pipeline",
-    candidates: Sequence[str | Mapping[str, Any]] | None = None,
-    ensemble_methods: Sequence[str] | None = None,
-    include_ensemble: bool = True,
-    selection_metric: str | None = None,
-    preprocess_overrides: Mapping[str, object] | None = None,
-    stage_common_overrides: Mapping[str, object] | None = None,
-    ensemble_top_k: int = 3,
-) -> DomainPipelinePlan:
-    model_candidates = _normalize_candidates(candidates)
-    methods = _normalize_ensemble_methods(ensemble_methods) if include_ensemble else ()
-    preprocess_params = {
-        **dict(preprocess_overrides or {}),
-        **dict(stage_common_overrides or {}),
-    }
-    steps: list[DomainStepPlan] = [
-        DomainStepPlan(
-            name="preprocess_features",
-            stage_key="preprocess_features",
-            parameter_overrides=preprocess_params,
-            expected_artifacts=tuple(artifact.name for artifact in TABULAR_PREPROCESS_STAGE.output_artifacts),
-        )
-    ]
-
-    train_step_names: list[str] = []
-    for candidate in model_candidates:
-        model_name = candidate["name"]
-        step_name = f"train_{_safe_step_suffix(model_name)}"
-        train_step_names.append(step_name)
-        train_params: dict[str, object] = {
-            **dict(stage_common_overrides or {}),
-            "Model/name": model_name,
-            "Model/params": candidate.get("params") or {},
-        }
-        if selection_metric is not None:
-            train_params["Model/selection_metric"] = selection_metric
-        steps.append(
-            DomainStepPlan(
-                name=step_name,
-                stage_key="train_model",
-                parents=("preprocess_features",),
-                parameter_overrides=train_params,
-                expected_artifacts=tuple(artifact.name for artifact in TABULAR_TRAIN_STAGE.output_artifacts),
-                model_name=model_name,
-            )
-        )
-
-    evaluate_parents = list(train_step_names)
-    for method in methods:
-        step_name = f"build_ensemble_{_safe_step_suffix(method)}"
-        evaluate_parents.append(step_name)
-        ensemble_params: dict[str, object] = {
-            **dict(stage_common_overrides or {}),
-            "Model/ensemble_enabled": True,
-            "Model/ensemble_methods": [method],
-            "Model/ensemble_method": method,
-            "Model/ensemble_top_k": ensemble_top_k,
-        }
-        if selection_metric is not None:
-            ensemble_params["Model/selection_metric"] = selection_metric
-        steps.append(
-            DomainStepPlan(
-                name=step_name,
-                stage_key="build_ensemble",
-                parents=tuple(train_step_names),
-                parameter_overrides=ensemble_params,
-                expected_artifacts=tuple(artifact.name for artifact in TABULAR_ENSEMBLE_STAGE.output_artifacts),
-                ensemble_method=method,
-            )
-        )
-
-    evaluate_params: dict[str, object] = dict(stage_common_overrides or {})
-    if selection_metric is not None:
-        evaluate_params["Model/selection_metric"] = selection_metric
-    steps.append(
-        DomainStepPlan(
-            name="evaluate_models",
-            stage_key="evaluate_models",
-            parents=tuple(evaluate_parents),
-            parameter_overrides=evaluate_params,
-            expected_artifacts=tuple(artifact.name for artifact in TABULAR_EVALUATE_STAGE.output_artifacts),
-        )
-    )
-    return DomainPipelinePlan(
-        key=TABULAR_TRAINING_PIPELINE_SPEC.key,
-        version=TABULAR_MANIFEST.version,
-        run_name=run_name,
-        steps=tuple(steps),
-    )

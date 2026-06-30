@@ -26,7 +26,8 @@ from adapter import (
     validate_clearml_runtime,
 )
 from ml_platform_core.config import load_run_config, load_yaml
-from pipelines import build_pipeline_plan, pipeline_runtime_params, sync_pipeline_draft
+from pipeline_controller import sync_pipeline_draft
+from pipeline_plan import build_pipeline_plan, pipeline_runtime_params
 
 
 TASK_TEMPLATES = [
@@ -242,104 +243,135 @@ def _task_args(task_config: str, profile_path: str | Path) -> str:
     return f"--task {task_config} --profile {Path(profile_path).as_posix()}"
 
 
-def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
-    """Register minimal ClearML template tasks and Pipeline-tab drafts."""
+def _template_sync_settings(profile_path: str | Path) -> dict[str, Any]:
     profile = load_yaml(profile_path)
     clearml_cfg = profile.get("clearml", {})
-    project_name = clearml_projects(clearml_cfg)["templates"]
-    execution_image = clearml_execution_image(clearml_cfg)
-    repository = clearml_cfg.get("repository", ".")
-    branch = clearml_cfg.get("branch", "main")
-    working_dir = clearml_cfg.get("working_dir", ".")
+    projects = clearml_projects(clearml_cfg)
+    return {
+        "profile_path": profile_path,
+        "clearml_cfg": clearml_cfg,
+        "project_name": projects["templates"],
+        "pipeline_project_name": projects["pipelines"],
+        "execution_image": clearml_execution_image(clearml_cfg),
+        "repository": clearml_cfg.get("repository", "."),
+        "branch": clearml_cfg.get("branch", "main"),
+        "working_dir": clearml_cfg.get("working_dir", "."),
+    }
 
+
+def sync_templates(profile_path: str | Path, *, dry_run: bool = False) -> None:
+    """Register minimal ClearML template tasks and Pipeline-tab drafts."""
+    settings = _template_sync_settings(profile_path)
     if dry_run:
-        for task_name, task_config, task_type_name in TASK_TEMPLATES:
-            cfg = load_run_config(task_config, profile_path)
-            runtime_params = _task_runtime_params(task_name, cfg)
-            params = ", ".join(runtime_params)
-            entry_point = _entry_point(task_name)
-            display_name = clearml_template_name(task_name)
-            print(
-                "DRY-RUN template: "
-                f"project={project_name} "
-                f"name={display_name} "
-                f"type={task_type_name} "
-                f"repository={repository} "
-                f"branch={branch} "
-                f"working_dir={working_dir} "
-                f"execution_image={execution_image or ''} "
-                f"entry_point={entry_point} "
-                f'args="{_task_args(task_config, profile_path)}" '
-                f"params=[{params}] "
-                f"tags={_template_tags(task_name)} "
-                f'note="{_template_note(task_name, execution_image)}"'
-            )
-        for task_name, task_config, task_type_name in PIPELINE_TEMPLATES:
-            runtime_params = pipeline_runtime_params(task_config, profile_path)
-            plan = build_pipeline_plan(task_path=task_config, profile_path=profile_path, ui_params=runtime_params)
-            params = ", ".join(runtime_params)
-            steps = " -> ".join(step["name"] for step in plan["steps"])
-            display_name = clearml_template_name(task_name)
-            print(
-                "DRY-RUN pipeline template: "
-                f"project={plan['project']} "
-                f"name={display_name} "
-                f"type={task_type_name} "
-                f"repository={repository} "
-                f"branch={branch} "
-                f"working_dir={working_dir} "
-                f"execution_image={execution_image or ''} "
-                f"entry_point={_entry_point(task_name)} "
-                f'args="{_task_args(task_config, profile_path)}" '
-                f"params=[{params}] "
-                f"steps={steps} "
-                f"tags={_template_tags(task_name)} "
-                f'note="{_template_note(task_name, execution_image)}"'
-            )
+        _dry_run_templates(settings)
         return
-
     validate_clearml_runtime()
     clearml_sdk = import_clearml_sdk()
-    Task = clearml_sdk.Task
+    _sync_task_templates(clearml_sdk.Task, settings)
+    _sync_pipeline_templates(settings)
 
+
+def _dry_run_templates(settings: dict[str, Any]) -> None:
     for task_name, task_config, task_type_name in TASK_TEMPLATES:
-        cfg = load_run_config(task_config, profile_path)
+        _print_task_template_dry_run(settings, task_name, task_config, task_type_name)
+    for task_name, task_config, task_type_name in PIPELINE_TEMPLATES:
+        _print_pipeline_template_dry_run(settings, task_name, task_config, task_type_name)
+
+
+def _print_task_template_dry_run(
+    settings: dict[str, Any], task_name: str, task_config: str, task_type_name: str
+) -> None:
+    cfg = load_run_config(task_config, settings["profile_path"])
+    runtime_params = _task_runtime_params(task_name, cfg)
+    entry_point = _entry_point(task_name)
+    print(
+        "DRY-RUN template: "
+        f"project={settings['project_name']} "
+        f"name={clearml_template_name(task_name)} "
+        f"type={task_type_name} "
+        f"repository={settings['repository']} "
+        f"branch={settings['branch']} "
+        f"working_dir={settings['working_dir']} "
+        f"execution_image={settings['execution_image'] or ''} "
+        f"entry_point={entry_point} "
+        f'args="{_task_args(task_config, settings["profile_path"])}" '
+        f"params=[{', '.join(runtime_params)}] "
+        f"tags={_template_tags(task_name)} "
+        f'note="{_template_note(task_name, settings["execution_image"])}"'
+    )
+
+
+def _print_pipeline_template_dry_run(
+    settings: dict[str, Any], task_name: str, task_config: str, task_type_name: str
+) -> None:
+    runtime_params = pipeline_runtime_params(task_config, settings["profile_path"])
+    plan = build_pipeline_plan(
+        task_path=task_config,
+        profile_path=settings["profile_path"],
+        runtime_params=runtime_params,
+    )
+    print(
+        "DRY-RUN pipeline template: "
+        f"project={plan['project']} "
+        f"name={clearml_template_name(task_name)} "
+        f"type={task_type_name} "
+        f"repository={settings['repository']} "
+        f"branch={settings['branch']} "
+        f"working_dir={settings['working_dir']} "
+        f"execution_image={settings['execution_image'] or ''} "
+        f"entry_point={_entry_point(task_name)} "
+        f'args="{_task_args(task_config, settings["profile_path"])}" '
+        f"params=[{', '.join(runtime_params)}] "
+        f"steps={' -> '.join(step['name'] for step in plan['steps'])} "
+        f"tags={_template_tags(task_name)} "
+        f'note="{_template_note(task_name, settings["execution_image"])}"'
+    )
+
+
+def _sync_task_templates(Task: Any, settings: dict[str, Any]) -> None:
+    for task_name, task_config, task_type_name in TASK_TEMPLATES:
+        cfg = load_run_config(task_config, settings["profile_path"])
         entry_point = _entry_point(task_name)
         params = _task_runtime_params(task_name, cfg)
         display_name = clearml_template_name(task_name)
         task = _sync_template_task(
             Task,
-            project_name=project_name,
+            project_name=settings["project_name"],
             task_name=display_name,
             task_type=_task_type(Task, task_type_name),
-            repository=repository,
-            branch=branch,
-            working_dir=working_dir,
+            repository=settings["repository"],
+            branch=settings["branch"],
+            working_dir=settings["working_dir"],
             entry_point=entry_point,
             task_config=task_config,
-            profile_path=profile_path,
+            profile_path=settings["profile_path"],
             params=params,
         )
-        apply_execution_image(task, execution_image)
-        _apply_task_metadata(task, task_name, execution_image)
-        _delete_stale_created_templates(Task, project_name, display_name, task.id)
+        apply_execution_image(task, settings["execution_image"])
+        _apply_task_metadata(task, task_name, settings["execution_image"])
+        _delete_stale_created_templates(Task, settings["project_name"], display_name, task.id)
         print(
-            f"Synced template: {project_name}/{display_name} id={task.id} image={execution_image or '-'} ({_template_note(task_name, execution_image)})"
+            f"Synced template: {settings['project_name']}/{display_name} "
+            f"id={task.id} image={settings['execution_image'] or '-'} "
+            f"({_template_note(task_name, settings['execution_image'])})"
         )
 
+
+def _sync_pipeline_templates(settings: dict[str, Any]) -> None:
     for task_name, task_config, _ in PIPELINE_TEMPLATES:
         task = sync_pipeline_draft(
             task_path=task_config,
-            profile_path=profile_path,
+            profile_path=settings["profile_path"],
             template_name=task_name,
-            repository=repository,
-            branch=branch,
-            working_dir=working_dir,
+            repository=settings["repository"],
+            branch=settings["branch"],
+            working_dir=settings["working_dir"],
             packages=_remote_packages(),
-            execution_image=execution_image,
+            execution_image=settings["execution_image"],
         )
         print(
             "Synced pipeline template: "
-            f"{clearml_projects(clearml_cfg)['pipelines']}/{clearml_template_name(task_name)} "
-            f"id={task.id} image={execution_image or '-'} ({_template_note(task_name, execution_image)})"
+            f"{settings['pipeline_project_name']}/{clearml_template_name(task_name)} "
+            f"id={task.id} image={settings['execution_image'] or '-'} "
+            f"({_template_note(task_name, settings['execution_image'])})"
         )

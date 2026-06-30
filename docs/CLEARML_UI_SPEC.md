@@ -122,7 +122,7 @@ Detailed user-facing parameters remain available:
 - `Model/ensemble_top_k`
 - `Model/evaluation_metrics`
 - `Model/selection_metric`
-- `Output/report_plots`
+- `Output/upload_plots`
 
 `Split/method` values are `random`, `group`, `time`, and `fixed`. `random` uses
 the existing seeded holdout behavior. `group` requires `Split/group_column` and
@@ -178,10 +178,9 @@ inference settings:
 - `Model/source_task_id=<training_or_evaluate_task_id>`
 - `Model/model_selector=best`
 
-`decision_summary.json` carries the same recommendation in machine-readable
-form. `recommendation.json` remains as a compatibility artifact, while
-`leaderboard_decision_summary.csv` and `best_vs_ensemble_summary.csv` remain
-ClearML table views.
+`decision_summary.json` carries the same inference decision in machine-readable
+form. `evaluation_summary.csv` and `best_vs_ensemble_summary.csv` remain ClearML
+table views.
 
 ## Inference UI
 
@@ -214,7 +213,7 @@ Inference tasks should not show candidate comparison plots.
 
 Drift/monitoring and Model Registry promotion are not current ClearML UI
 surfaces. Future monitoring should compare accumulated inference summaries;
-future registration should start from the `evaluate_models` recommendation.
+future registration should start from the `evaluate_models` decision summary.
 
 ## P2 Items Not Shown In Current UI
 

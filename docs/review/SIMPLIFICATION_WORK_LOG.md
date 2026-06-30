@@ -385,7 +385,7 @@ CLEAN-4 should focus on one of:
 git status --short
 git branch --show-current
 rg -n "from \\.pipeline import|from ml_platform_tabular\\.pipeline import|from ml_platform_tabular\\.infer import|from ml_platform_tabular\\.plots import|_load_entrypoint_bootstrap|importlib\\.util" pkgs tests clearml scripts docs --glob "!docs/review/source/**"
-rg -n "def _metric_name|def _metric_names|def _safe_name|def _build_ensemble|def _train_model|def _preprocess_features|def _ranked_results|def _evaluate_models|def _best_vs_ensemble_rows|def _decision_summary_payload|def _recommendation_payload|class EvaluationResult" pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/inference
+rg -n "def _metric_name|def _metric_names|def _safe_name|def _build_ensemble|def _train_model|def _preprocess_features|def _ranked_results|def evaluate_model_candidates|def _best_vs_ensemble_rows|def _decision_summary_payload|class EvaluationResult" pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/inference
 uv run python -m ruff check clearml/app.py clearml/templates.py clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/stage.py pkgs/tabular/src/ml_platform_tabular/infer.py pkgs/tabular/src/ml_platform_tabular/pipeline.py tests/test_decision_summary.py tests/test_infer_schema_check.py tests/test_tabular_plots.py tests/test_tabular_characterization.py
 uv run python -m pytest tests/test_infer_schema_check.py tests/test_decision_summary.py tests/test_tabular_plots.py
 uv run python -m pytest tests/test_stage_smoke.py tests/test_tabular_characterization.py tests/test_runtime_manifest.py
@@ -400,7 +400,7 @@ uv run python -m compileall clearml pkgs scripts
 
 ## Results
 
-- `stage.py` imports `_build_ensemble`, `_evaluate_models`, metric helpers,
+- `stage.py` imports `_build_ensemble`, `evaluate_model_candidates`, metric helpers,
   preprocessing, ranking, and candidate training from `training.*` modules
   instead of `pipeline.py`.
 - Tests that exercise private inference, summary, and plotting helpers now

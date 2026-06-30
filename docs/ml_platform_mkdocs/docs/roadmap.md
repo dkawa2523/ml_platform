@@ -38,7 +38,7 @@
 | --- | --- |
 | 現状 | 未実装 |
 | 入れないもの | 自動登録、承認フロー、production alias |
-| 将来方針 | `evaluate_models` の recommendation / decision summary から昇格する |
+| 将来方針 | `evaluate_models` の `decision_summary` から昇格する |
 | 実装前提 | 登録基準、承認者、ロールバック方針を決める |
 
 ### Drift / Monitoring

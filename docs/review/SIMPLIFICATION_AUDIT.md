@@ -305,10 +305,9 @@ S03 verification:
   module.
 - `pkgs/tabular/src/ml_platform_tabular/policy.py`: model suite, quality mode,
   runtime defaults, and config mutation are tightly coupled.
-- `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py`: evaluation,
-  prediction table writing, leaderboard artifacts, recommendation, and summary
-  generation are partially split but still orchestrated in one high-complexity
-  function.
+- `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py`: evaluation
+  ranking remains the coordinator, while prediction, leaderboard, best-model,
+  and decision/report artifacts are split into focused writers.
 - `pkgs/tabular/src/ml_platform_tabular/stage.py`: CLEAN-4 removed the import
   dependency on private `pipeline.py` re-exports. The file still owns stage
   dispatch plus artifact-ref loading and may be split later only if call sites
@@ -460,6 +459,181 @@ Low-risk areas:
 - Documentation cleanup outside evidence files.
 - Adding optional audit tooling notes.
 - Isolated formatting-only cleanup.
+
+## CLEAN-S06 Architecture And Data Science Simplification Pass
+
+Date: 2026-06-30
+
+Purpose:
+
+- Reduce mixed responsibilities in the tabular stage and runtime manifest path.
+- Keep the training graph understandable to both architects and data scientists:
+  manifest = static contract, domain plan = experiment graph, stage inputs =
+  resolved artifact references, stage runner = execution dispatch.
+- Prefer small, proven splits over speculative abstractions.
+
+Implemented:
+
+- Split `pkgs/tabular/src/ml_platform_tabular/stage.py`.
+  - `stage.py` now owns stage dispatch and high-level orchestration.
+  - `stage_inputs.py` owns `stage_inputs` validation, artifact path resolution,
+    preprocessing bundle loading, model refs, and ensemble refs.
+  - `stage_result.py` owns run-directory setup, config snapshots, manifests,
+    latest pointers, and `RunResult` construction.
+- Simplified the stage input parser.
+  - `_model_ref` complexity dropped from D (21) to A (5).
+  - Stage execution files now average A complexity in the focused radon check.
+- Split `pkgs/tabular/src/ml_platform_tabular/manifest.py`.
+  - `manifest.py` now stays declarative: tasks, stages, parameters, artifacts,
+    and package manifest only.
+  - `domain_plan.py` owns `build_tabular_domain_plan()` and validation of model
+    candidates / ensemble methods.
+  - The old `manifest.build_tabular_domain_plan` compatibility wrapper was
+    removed after internal imports were migrated to `domain_plan.py`.
+- Updated active MkDocs architecture docs.
+  - `repository-structure.md` and `development/guidelines.md` now show the new
+    file ownership.
+  - `clearml-boundary.md` was rewritten to remove mojibake and document the
+    ClearML dependency boundary in readable form.
+
+Verification:
+
+- `uv run python -m pytest -q`: passed, 130 tests.
+- `uv run python -m ruff check .`: passed.
+- `uv run lint-imports --config pyproject.toml`: passed.
+- `uv run python -m compileall clearml pkgs scripts`: passed.
+- `uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict`:
+  passed.
+- `uv run python scripts\clearml_pipeline.py --task config\tasks\tabular_pipeline.yaml --profile config\profiles\clearml-dev.yaml --dry-run`:
+  passed.
+- `uv run python scripts\sync_clearml_templates.py --profile config\profiles\clearml-dev.yaml --dry-run`:
+  passed.
+- `uv run python -m ruff format --check .`: still fails on known formatting debt
+  in 8 pre-existing files, none from this S06 split.
+
+Remaining cleanup after S06:
+
+- `tests/test_clearml_mapping.py` remains very large. Split only if the test
+  scenarios can stay behavior-focused and easy to run.
+- `clearml/adapter.py` still combines SDK import safety, dataset/source
+  resolution, artifact lookup, and logger calls. Next split should target
+  source resolution and artifact selection, not SDK compatibility guards.
+- `clearml/reports.py` still has ClearML reporting plus some presentation
+  assembly. Prefer reporting existing tabular artifacts over creating new
+  figures in the ClearML layer.
+- `domain_plan.py` still has moderate complexity in graph construction. Keep it
+  as-is while there is only one training graph; split further only if future
+  graph variants make the current flow hard to read.
+- Broad unused-code and dependency deletion still needs `vulture`, `deptry`, or
+  equivalent evidence before removing public facades or dependency files.
+- ClearML direct entrypoints and `_entrypoint_bootstrap.py` remain
+  `needs_confirmation` until remote Agent training and inference templates are
+  verified.
+
+## CLEAN-S07 ClearML Source Resolution Split
+
+Date: 2026-06-30
+
+Purpose:
+
+- Reduce `clearml/adapter.py` to SDK-facing operations.
+- Move inference source-task traversal and artifact selection into a focused
+  module that can be tested and read without ClearML SDK import concerns.
+- Remove obsolete active UI choices for inference source type while preserving
+  runtime compatibility for older template values.
+
+Implemented:
+
+- Added `clearml/source_resolution.py`.
+  - Owns `stage_inputs` artifact URL resolution.
+  - Owns inference `source_task_id + model_selector` resolution.
+  - Owns task-family traversal, best-model selection, ensemble selector
+    handling, and discovery summaries.
+- Slimmed `clearml/adapter.py`.
+  - Keeps SDK import, Dataset/StorageManager access, parameter connection,
+    metadata, artifact upload, and logger wrappers.
+  - Delegates `resolve_stage_inputs()` and `resolve_infer_model_source()` to
+    `source_resolution.py`.
+- Updated manifest source-type choices.
+  - Active choices are now `("task_id", "local_path")`.
+  - Legacy `task` and `pipeline_task` values are accepted internally and
+    normalized to `task_id` for old template compatibility.
+- Added regression coverage for source-type choices and legacy normalization.
+- Updated MkDocs architecture and development guidance to show
+  `clearml/source_resolution.py` as the owner of source/artifact selection.
+
+Verification:
+
+- `uv run python -m pytest tests/test_clearml_mapping.py tests/test_runtime_manifest.py -q`:
+  passed, 65 tests.
+- `uv run python -m ruff check clearml/adapter.py clearml/source_resolution.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_clearml_mapping.py tests/test_runtime_manifest.py`:
+  passed.
+- `uv run python -m ruff format --check clearml/adapter.py clearml/source_resolution.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_clearml_mapping.py tests/test_runtime_manifest.py`:
+  passed.
+- Focused radon complexity:
+  - `ClearMLAdapter.resolve_stage_inputs`: A (1).
+  - `ClearMLAdapter.resolve_infer_model_source`: A (1).
+  - `source_resolution._select_ensemble_artifact`: A (2).
+
+Remaining cleanup after S07:
+
+- `clearml_projects()` and metadata helpers in `adapter.py` still have moderate
+  branching, but they are SDK/runtime concerns and lower priority than source
+  selection was.
+- `clearml/reports.py` should remain focused on reporting existing artifacts;
+  avoid moving tabular plotting logic back into ClearML.
+- The huge `tests/test_clearml_mapping.py` file remains a readability target,
+  but splitting it should be done by behavior area to avoid test indirection.
+
+## CLEAN-S08 ClearML Reporting Split
+
+Date: 2026-06-30
+
+Purpose:
+
+- Keep `clearml/reports.py` as a small `RunResult` reporting orchestrator.
+- Separate scalar extraction from ClearML upload/table/image routing.
+- Keep table/plot UI naming and duplicate-suppression rules explicit and easy
+  to review.
+
+Implemented:
+
+- Added `clearml/reporting_scalars.py`.
+  - Owns scalar extraction from `metrics.json`, feature summary JSON,
+    candidate metrics JSON, `metrics_table.csv`, and
+    `ensemble_metrics_table.csv`.
+  - Keeps metric parsing best-effort and isolated from ClearML SDK calls.
+- Added `clearml/reporting_targets.py`.
+  - Owns reportable table names, table series aliases, compatibility aliases
+    that should be uploaded but not shown, and duplicate plot-image aliases.
+- Slimmed `clearml/reports.py`.
+  - `report_result()` now only calls result-metric reporting and routes
+    artifacts, tables, and plots through small helpers.
+  - `report_result()` complexity dropped from C (15) to A (1).
+- Updated MkDocs architecture/development pages to show the new reporting
+  boundary.
+
+Verification:
+
+- `uv run python -m pytest tests/test_clearml_mapping.py -k "report_result or report_plots or report_plotly" -q`:
+  passed, 5 focused tests.
+- `uv run python -m ruff check clearml/reports.py clearml/reporting_scalars.py clearml/reporting_targets.py tests/test_clearml_mapping.py`:
+  passed.
+- `uv run python -m ruff format --check clearml/reports.py clearml/reporting_scalars.py clearml/reporting_targets.py tests/test_clearml_mapping.py`:
+  passed.
+- Focused radon complexity:
+  - `clearml/reports.py`: all functions A, average A.
+  - `report_result`: A (1).
+
+Remaining cleanup after S08:
+
+- `tests/test_clearml_mapping.py` still combines parameter mapping, reporting,
+  source resolution, template sync, and pipeline plan tests. Split by behavior
+  area only after the current code splits settle.
+- ClearML reporting should continue to report tabular-produced plot artifacts;
+  avoid reintroducing CSV-to-plot reconstruction in `clearml/`.
+- Broad unused-code/dependency deletion still requires vulture/deptry or
+  equivalent evidence.
 
 ## CLEAN-S05/S08/S09 Verification
 
