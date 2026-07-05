@@ -63,20 +63,12 @@ def _decode_stage_value(value: Any) -> Any:
 def _resolve_stage_value(value: Any, resolve_artifact_path: ArtifactPathResolver) -> Any:
     value = _decode_stage_value(value)
     if isinstance(value, dict):
-        return _resolve_stage_mapping(value, resolve_artifact_path)
+        return {key: _resolve_stage_value(item, resolve_artifact_path) for key, item in value.items()}
     if isinstance(value, list):
-        return _resolve_stage_list(value, resolve_artifact_path)
+        return [_resolve_stage_value(item, resolve_artifact_path) for item in value]
     if _is_artifact_ref(value):
         return resolve_artifact_path(value)
     return value
-
-
-def _resolve_stage_mapping(value: dict[str, Any], resolve_artifact_path: ArtifactPathResolver) -> dict[str, Any]:
-    return {key: _resolve_stage_value(item, resolve_artifact_path) for key, item in value.items()}
-
-
-def _resolve_stage_list(value: list[Any], resolve_artifact_path: ArtifactPathResolver) -> list[Any]:
-    return [_resolve_stage_value(item, resolve_artifact_path) for item in value]
 
 
 def _is_artifact_ref(value: Any) -> bool:
@@ -85,8 +77,7 @@ def _is_artifact_ref(value: Any) -> bool:
 
 def _resolve_local_model_paths(model_cfg: dict[str, Any], resolve_artifact_path: ArtifactPathResolver) -> None:
     for key in LOCAL_MODEL_PATH_KEYS:
-        value = model_cfg.get(key)
-        if isinstance(value, str) and "://" in value:
+        if isinstance(value := model_cfg.get(key), str) and "://" in value:
             model_cfg[key] = resolve_artifact_path(value)
 
 
@@ -119,33 +110,15 @@ def _resolve_task_model_source(
 def _task_family(Task: Any, task_id: str, source_task: Any) -> list[Any]:
     tasks: list[Any] = [source_task]
     seen_ids = {getattr(source_task, "id", None)}
-    for parent in _task_query_ids(task_id, source_task):
-        _append_unseen_children(tasks, seen_ids, _child_tasks(Task, parent))
+    for parent in dict.fromkeys((task_id, getattr(source_task, "parent", None))):
+        if not parent:
+            continue
+        for child in Task.get_tasks(task_filter={"parent": parent}, allow_archived=True) or []:
+            child_id = getattr(child, "id", None)
+            if child_id not in seen_ids:
+                tasks.append(child)
+                seen_ids.add(child_id)
     return tasks
-
-
-def _task_query_ids(task_id: str, source_task: Any) -> list[str]:
-    query_ids = [task_id]
-    parent_id = getattr(source_task, "parent", None)
-    if parent_id and parent_id not in query_ids:
-        query_ids.append(parent_id)
-    return query_ids
-
-
-def _append_unseen_children(tasks: list[Any], seen_ids: set[Any], children: list[Any]) -> None:
-    for child in children:
-        child_id = getattr(child, "id", None)
-        if child_id not in seen_ids:
-            tasks.append(child)
-            seen_ids.add(child_id)
-
-
-def _child_tasks(Task: Any, parent_id: str) -> list[Any]:
-    try:
-        children = Task.get_tasks(task_filter={"parent": parent_id}, allow_archived=True)
-    except TypeError:
-        children = Task.get_tasks(task_filter={"parent": parent_id})
-    return list(children or [])
 
 
 def _set_optional_info_path(
@@ -165,24 +138,12 @@ def _preprocess_paths(tasks: list[Any], resolve_artifact_path: ArtifactPathResol
     preprocess = next((task for task in tasks if _looks_like_stage(task, "preprocess_features")), None)
     if preprocess is None:
         return {}
-    return _artifact_path_map(
-        preprocess,
-        resolve_artifact_path,
-        {
-            "feature_spec_path": "feature_spec",
-            "preprocess_bundle_path": "preprocess_bundle",
-        },
-    )
-
-
-def _artifact_path_map(
-    task: Any,
-    resolve_artifact_path: ArtifactPathResolver,
-    artifacts: dict[str, str],
-) -> dict[str, str]:
     paths: dict[str, str] = {}
-    for config_key, artifact_key in artifacts.items():
-        path = _artifact_local_path(task, artifact_key, resolve_artifact_path)
+    for config_key, artifact_key in {
+        "feature_spec_path": "feature_spec",
+        "preprocess_bundle_path": "preprocess_bundle",
+    }.items():
+        path = _artifact_local_path(preprocess, artifact_key, resolve_artifact_path)
         if path:
             paths[config_key] = path
     return paths
@@ -255,12 +216,14 @@ def _select_named_model_artifact(tasks: list[Any], selector: str) -> tuple[Any, 
 
 
 def _first_task_with_artifact(tasks: list[Any], artifact_name: str, *, stage: str | None = None) -> Any | None:
-    for task in tasks:
-        if stage is not None and not _looks_like_stage(task, stage):
-            continue
-        if artifact_name in _task_artifacts(task):
-            return task
-    return None
+    return next(
+        (
+            task
+            for task in tasks
+            if (stage is None or _looks_like_stage(task, stage)) and artifact_name in _task_artifacts(task)
+        ),
+        None,
+    )
 
 
 def _matches_named_model(task: Any, selector: str) -> bool:
@@ -329,10 +292,7 @@ def _task_parameters(task: Any) -> dict[str, Any]:
     get_parameters = getattr(task, "get_parameters", None)
     if not callable(get_parameters):
         return {}
-    try:
-        params = get_parameters(cast=True)
-    except TypeError:
-        params = get_parameters()
+    params = get_parameters(cast=True)
     return params if isinstance(params, dict) else {}
 
 
@@ -348,13 +308,15 @@ def _task_name(task: Any) -> str:
 
 
 def _task_stage(task: Any) -> str:
-    params = _task_parameters(task)
-    return str(params.get("Run/stage") or "").strip()
+    return _task_param(task, "Run/stage")
 
 
 def _task_model_name(task: Any) -> str:
-    params = _task_parameters(task)
-    return str(params.get("Model/name") or "").strip()
+    return _task_param(task, "Model/name")
+
+
+def _task_param(task: Any, key: str) -> str:
+    return str(_task_parameters(task).get(key) or "").strip()
 
 
 def _looks_like_stage(task: Any, stage: str) -> bool:

@@ -5,6 +5,8 @@ from numbers import Real
 from pathlib import Path
 from typing import Any
 
+from support import read_csv_for_reporting
+
 MODEL_METRICS = ("rmse", "mae", "r2")
 FEATURE_SUMMARY_SCALARS = (
     "input_rows",
@@ -30,7 +32,6 @@ def report_artifact_scalars(adapter, name: str, path: str | Path) -> None:
     reporters = {
         "metrics": _report_metrics_artifact,
         "feature_summary": _report_feature_summary_metrics,
-        "metrics_by_candidate": _report_metrics_by_candidate_artifact,
     }
     reporter = reporters.get(name)
     if reporter is not None:
@@ -48,10 +49,6 @@ def _report_metrics_artifact(adapter, path: str | Path) -> None:
     _report_plain_metrics(adapter, _read_json(path))
 
 
-def _report_metrics_by_candidate_artifact(adapter, path: str | Path) -> None:
-    _report_candidate_metrics(adapter, path, title_prefix="metrics_by_candidate")
-
-
 def _is_metrics_table(name: str) -> bool:
     return name == "metrics_table" or name.startswith("metrics_table_")
 
@@ -63,42 +60,11 @@ def _read_json(path: str | Path) -> dict[str, Any]:
         return {}
 
 
-def _read_csv_or_none(path: str | Path):
-    try:
-        import pandas as pd
-
-        return pd.read_csv(path)
-    except (OSError, UnicodeDecodeError, ValueError):
-        return None
-
-
 def _numeric_metrics(payload: dict[str, Any]) -> dict[str, float]:
     metrics = payload.get("metrics", payload)
     if not isinstance(metrics, dict):
         return {}
     return {name: float(metrics[name]) for name in MODEL_METRICS if isinstance(metrics.get(name), Real)}
-
-
-def _report_candidate_metrics(adapter, path: str | Path, *, title_prefix: str) -> None:
-    payload = _read_json(path)
-    by_candidate = payload.get("metrics_by_candidate") or {}
-    if not isinstance(by_candidate, dict):
-        return
-    for model_name, model_payload in by_candidate.items():
-        _report_candidate_payload(adapter, str(model_name), model_payload, title_prefix=title_prefix)
-
-
-def _report_candidate_payload(adapter, model_name: str, payload: Any, *, title_prefix: str) -> None:
-    if not isinstance(payload, dict):
-        return
-    metrics = _numeric_metrics(payload)
-    for metric_name, value in metrics.items():
-        adapter.report_scalar(f"{title_prefix}/{metric_name}", model_name, value, iteration=0)
-    if payload.get("artifact_kind") != "ensemble":
-        return
-    series = str(payload.get("ensemble_method") or model_name)
-    for metric_name, value in metrics.items():
-        adapter.report_scalar(f"ensemble/{metric_name}", series, value, iteration=0)
 
 
 def _report_best_model_metrics(adapter, metrics_payload: dict[str, Any]) -> None:
@@ -125,7 +91,7 @@ def _report_plain_metrics(adapter, payload: dict[str, Any], *, title: str = "met
 
 
 def _report_metrics_table(adapter, path: str | Path, *, title: str = "metrics") -> None:
-    frame = _read_csv_or_none(path)
+    frame = read_csv_for_reporting(path)
     if frame is None or not {"metric", "value"} <= set(frame.columns):
         return
     for row in frame.itertuples(index=False):
@@ -141,7 +107,7 @@ def _report_metric_row(adapter, row: Any, *, title: str) -> None:
 
 
 def _report_ensemble_metrics_table(adapter, path: str | Path) -> None:
-    frame = _read_csv_or_none(path)
+    frame = read_csv_for_reporting(path)
     if frame is None or "ensemble_method" not in frame.columns:
         return
     for row in frame.to_dict(orient="records"):

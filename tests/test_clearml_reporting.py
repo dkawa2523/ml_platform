@@ -87,6 +87,28 @@ def test_clearml_adapter_reports_prediction_scatter_as_markers():
     ]
 
 
+def test_clearml_adapter_reports_table_preview_with_row_limit(tmp_path):
+    adapter_module = load_clearml_adapter_module()
+    table = tmp_path / "large.csv"
+    table.write_text("value\n" + "\n".join(str(index) for index in range(1005)), encoding="utf-8")
+
+    class FakeLogger:
+        def report_table(self, **kwargs):
+            self.table = kwargs["table_plot"]
+
+    class FakeTask:
+        def __init__(self):
+            self.logger = FakeLogger()
+
+        def get_logger(self):
+            return self.logger
+
+    task = FakeTask()
+    adapter_module.ClearMLAdapter(task).report_table("tables", "large", table)
+
+    assert len(task.logger.table) == 1000
+
+
 def test_clearml_adapter_reports_plotly_and_axis_named_histogram():
     adapter_module = load_clearml_adapter_module()
 
@@ -161,22 +183,6 @@ def test_clearml_adapter_report_plotly_does_not_silence_logger_runtime_errors():
         adapter.report_plotly("plot", "series", {"data": []})
 
 
-def test_clearml_adapter_report_plotly_explains_unsupported_logger_signature():
-    adapter_module = load_clearml_adapter_module()
-
-    class FakeLogger:
-        def report_plotly(self, **kwargs):
-            raise TypeError("unsupported")
-
-    class FakeTask:
-        def get_logger(self):
-            return FakeLogger()
-
-    adapter = adapter_module.ClearMLAdapter(FakeTask())
-    with pytest.raises(TypeError, match="report_plotly has an unsupported signature"):
-        adapter.report_plotly("plot", "series", {"data": []})
-
-
 def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     reports = load_clearml_reports_module()
     metrics = tmp_path / "metrics.json"
@@ -187,25 +193,6 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
                 "mae": 0.18,
                 "r2": 0.92,
                 "best_model": {"model_name": "mean_topk", "metrics": {"rmse": 0.25, "mae": 0.18, "r2": 0.92}},
-            }
-        ),
-        encoding="utf-8",
-    )
-    metrics_by_candidate = tmp_path / "metrics_by_candidate.json"
-    metrics_by_candidate.write_text(
-        json.dumps(
-            {
-                "metrics_by_candidate": {
-                    "ridge": {
-                        "artifact_kind": "model",
-                        "metrics": {"rmse": 0.3, "mae": 0.2, "r2": 0.9},
-                    },
-                    "weighted": {
-                        "artifact_kind": "ensemble",
-                        "ensemble_method": "weighted",
-                        "metrics": {"rmse": 0.24, "mae": 0.17, "r2": 0.93},
-                    },
-                }
             }
         ),
         encoding="utf-8",
@@ -234,12 +221,6 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
         "2,ridge,model,,rmse,0.3,0.2,0.9,ridge,task_artifact\n",
         encoding="utf-8",
     )
-    leaderboard_topk = tmp_path / "leaderboard_topk.csv"
-    leaderboard_topk.write_text(
-        "rank,model_name,artifact_kind,ensemble_method,selection_metric,rmse,mae,r2,infer_target,ref_kind\n"
-        "1,mean_topk,ensemble,mean_topk,rmse,0.25,0.18,0.92,ensemble:mean_topk,task_artifact\n",
-        encoding="utf-8",
-    )
     feature_summary_table = tmp_path / "feature_summary_table.csv"
     feature_summary_table.write_text("metric,value\ninput_rows,100\n", encoding="utf-8")
     missing_rate_by_column = tmp_path / "missing_rate_by_column.csv"
@@ -257,28 +238,6 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     feature_importance.write_text("rank,feature,importance,raw_value,source\n1,x,0.5,0.5,coef_\n", encoding="utf-8")
     metrics_table = tmp_path / "metrics_table.csv"
     metrics_table.write_text("metric,value\nrmse,0.25\nmae,0.18\nr2,0.92\n", encoding="utf-8")
-    evaluation_summary = tmp_path / "evaluation_summary.csv"
-    evaluation_summary.write_text("summary,model_name,rmse\nbest_overall,ridge,0.3\n", encoding="utf-8")
-    best_vs_ensemble_summary = tmp_path / "best_vs_ensemble_summary.csv"
-    best_vs_ensemble_summary.write_text(
-        "metric,best_single_model,best_single_value,best_ensemble_method,best_ensemble_value,ensemble_minus_single,ensemble_improved\n"
-        "rmse,ridge,0.3,weighted,0.24,-0.06,true\n",
-        encoding="utf-8",
-    )
-    decision_summary = tmp_path / "decision_summary.md"
-    decision_summary.write_text(
-        "# Leaderboard Decision Summary\n\n"
-        "## Use These Inference Settings\n"
-        "- Model/source_type: task_id\n"
-        "- Model/source_task_id: <training_or_evaluate_task_id>\n"
-        "- Model/model_selector: best\n",
-        encoding="utf-8",
-    )
-    decision_summary_json = tmp_path / "decision_summary.json"
-    decision_summary_json.write_text(
-        '{"recommended_inference_settings":{"Model/source_type":"task_id","Model/model_selector":"best"}}\n',
-        encoding="utf-8",
-    )
     validation_predictions = tmp_path / "validation_predictions.csv"
     validation_predictions.write_text("actual,prediction,residual,abs_error\n1,0.9,0.1,0.1\n", encoding="utf-8")
     aggregate_validation_predictions = tmp_path / "validation_predictions_linear.csv"
@@ -297,22 +256,13 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     prediction_preview.write_text("prediction\n1.1\n", encoding="utf-8")
     source_summary = tmp_path / "source_summary.csv"
     source_summary.write_text("field,value\nmodel_selector,best\nartifact_kind,model\n", encoding="utf-8")
+    processed_train = tmp_path / "processed_train.csv"
+    processed_train.write_text("x,target\n1,2\n", encoding="utf-8")
     ensemble_predictions = tmp_path / "ensemble_predictions_weighted.csv"
     ensemble_predictions.write_text("actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n", encoding="utf-8")
     ensemble_predictions_alias = tmp_path / "ensemble_predictions.csv"
     ensemble_predictions_alias.write_text(
         "actual,prediction,residual,abs_error\n1,1.05,-0.05,0.05\n",
-        encoding="utf-8",
-    )
-    candidate_predictions = tmp_path / "candidate_predictions.csv"
-    candidate_predictions.write_text(
-        "candidate_rank,candidate_name,artifact_kind,ensemble_method,actual,prediction,residual,abs_error\n"
-        "1,ridge,model,,1,0.9,0.1,0.1\n"
-        "2,weighted,ensemble,weighted,1,1.05,-0.05,0.05\n"
-        "3,median,ensemble,median,1,1.02,-0.02,0.02\n"
-        "4,linear,model,,1,0.8,0.2,0.2\n"
-        "5,lasso,model,,1,0.85,0.15,0.15\n"
-        "6,elasticnet,model,,1,0.75,0.25,0.25\n",
         encoding="utf-8",
     )
     ensemble_metrics_table = tmp_path / "ensemble_metrics_table.csv"
@@ -322,15 +272,11 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     ensemble_weights = tmp_path / "ensemble_weights_weighted.csv"
     ensemble_weights.write_text("rank,model_name,weight\n1,ridge,1.0\n", encoding="utf-8")
     plot_paths = {
-        "metrics_by_candidate_bar": tmp_path / "metrics_by_candidate_bar.png",
         "validation_prediction_vs_actual": tmp_path / "validation_prediction_vs_actual.png",
         "best_prediction_vs_actual": tmp_path / "best_prediction_vs_actual.png",
         "best_residual_histogram": tmp_path / "best_residual_histogram.png",
-        "topk_prediction_vs_actual": tmp_path / "topk_prediction_vs_actual.png",
         "prediction_distribution_histogram": tmp_path / "prediction_distribution_histogram.png",
-        "leaderboard_topk_score_bar": tmp_path / "leaderboard_topk_score_bar.png",
         "leaderboard_metric_panel": tmp_path / "leaderboard_metric_panel.png",
-        "leaderboard_pareto_rmse_r2": tmp_path / "leaderboard_pareto_rmse_r2.png",
     }
     suppressed_plot_alias = tmp_path / "prediction_vs_actual.png"
     for plot_path in [*plot_paths.values(), suppressed_plot_alias]:
@@ -379,13 +325,9 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
         artifacts={
             "metrics": metrics,
             "feature_summary": feature_summary,
-            "metrics_by_candidate": metrics_by_candidate,
-            "decision_summary": decision_summary,
-            "decision_summary_json": decision_summary_json,
         },
         tables={
             "leaderboard": leaderboard,
-            "leaderboard_topk": leaderboard_topk,
             "feature_summary_table": feature_summary_table,
             "missing_rate_by_column": missing_rate_by_column,
             "feature_type_counts": feature_type_counts,
@@ -393,8 +335,6 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "data_quality_warnings": data_quality_warnings,
             "feature_importance_linear": feature_importance,
             "metrics_table": metrics_table,
-            "evaluation_summary": evaluation_summary,
-            "best_vs_ensemble_summary": best_vs_ensemble_summary,
             "validation_predictions": validation_predictions,
             "validation_predictions_linear": aggregate_validation_predictions,
             "evaluation_predictions": evaluation_predictions,
@@ -403,10 +343,10 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "prediction_summary": prediction_summary,
             "prediction_preview": prediction_preview,
             "source_summary": source_summary,
+            "processed_train": processed_train,
             "ensemble_metrics_table": ensemble_metrics_table,
             "ensemble_predictions": ensemble_predictions_alias,
             "ensemble_predictions_weighted": ensemble_predictions,
-            "candidate_predictions": candidate_predictions,
             "ensemble_members_weighted": ensemble_members,
             "ensemble_weights_weighted": ensemble_weights,
         },
@@ -415,13 +355,12 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
 
     reports.report_result(adapter, result)
 
-    _assert_report_uploads(adapter, decision_summary, decision_summary_json, plot_paths, suppressed_plot_alias)
+    _assert_report_uploads(adapter, plot_paths, suppressed_plot_alias)
     _assert_report_scalars(adapter)
     _assert_report_tables(
         adapter,
         {
             "leaderboard_table": leaderboard,
-            "leaderboard_topk_table": leaderboard_topk,
             "feature_summary_table": feature_summary_table,
             "missing_rate_by_column": missing_rate_by_column,
             "feature_type_counts": feature_type_counts,
@@ -429,8 +368,6 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "data_quality_warnings_table": data_quality_warnings,
             "feature_importance_linear": feature_importance,
             "metrics_table": metrics_table,
-            "evaluation_summary_table": evaluation_summary,
-            "best_vs_ensemble_summary_table": best_vs_ensemble_summary,
             "validation_predictions": validation_predictions,
             "evaluation_predictions": evaluation_predictions,
             "predictions_table": predictions,
@@ -440,13 +377,13 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
             "source_summary_table": source_summary,
             "ensemble_metrics_table": ensemble_metrics_table,
             "ensemble_predictions_weighted": ensemble_predictions,
-            "candidate_predictions_table": candidate_predictions,
             "ensemble_members_weighted": ensemble_members,
             "ensemble_weights_weighted": ensemble_weights,
         },
         {
             "ensemble_predictions": ensemble_predictions_alias,
             "validation_predictions_linear": aggregate_validation_predictions,
+            "processed_train": processed_train,
         },
     )
     _assert_report_images(adapter, plot_paths, suppressed_plot_alias)
@@ -454,10 +391,8 @@ def test_clearml_report_result_expands_model_metrics_and_tables(tmp_path):
     assert adapter.media == []
 
 
-def _assert_report_uploads(adapter, decision_summary, decision_summary_json, plot_paths, suppressed_plot_alias):
+def _assert_report_uploads(adapter, plot_paths, suppressed_plot_alias):
     expected_uploads = {
-        ("decision_summary", decision_summary),
-        ("decision_summary_json", decision_summary_json),
         ("prediction_vs_actual", suppressed_plot_alias),
         *set(plot_paths.items()),
     }
@@ -466,8 +401,6 @@ def _assert_report_uploads(adapter, decision_summary, decision_summary_json, plo
 
 def _assert_report_scalars(adapter):
     expected_scalars = {
-        ("metrics_by_candidate/rmse", "ridge", 0.3, 0),
-        ("metrics_by_candidate/mae", "weighted", 0.17, 0),
         ("ensemble/rmse", "weighted", 0.24, 0),
         ("best_model/r2", "mean_topk", 0.92, 0),
         ("features", "input_rows", 100.0, 0),

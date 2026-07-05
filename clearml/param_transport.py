@@ -5,14 +5,7 @@ from typing import Any
 
 from ml_platform_core.value_coercion import as_bool, as_candidates, as_dict, as_str_list
 
-from param_keys import (
-    BOOL_PARAM_KEYS,
-    CANDIDATE_PARAM_KEYS,
-    DICT_PARAM_KEYS,
-    FLOAT_PARAM_KEYS,
-    INT_PARAM_KEYS,
-    LIST_PARAM_KEYS,
-)
+from param_bindings import keys_with_type
 
 
 def normalize_clearml_param_value(value: Any) -> Any:
@@ -23,12 +16,12 @@ def normalize_clearml_param_value(value: Any) -> Any:
 
 
 PARAM_VALUE_COERCERS = (
-    (BOOL_PARAM_KEYS, as_bool),
-    (INT_PARAM_KEYS, int),
-    (FLOAT_PARAM_KEYS, float),
-    (LIST_PARAM_KEYS, as_str_list),
-    (DICT_PARAM_KEYS, as_dict),
-    (CANDIDATE_PARAM_KEYS, as_candidates),
+    (keys_with_type("bool"), as_bool),
+    (keys_with_type("int"), int),
+    (keys_with_type("float"), float),
+    (keys_with_type("list"), as_str_list),
+    (keys_with_type("dict"), as_dict),
+    (keys_with_type("candidates"), as_candidates),
 )
 
 

@@ -14,21 +14,20 @@ from _entrypoint_bootstrap import add_clearml_entrypoint_paths
 add_clearml_entrypoint_paths()
 
 from ml_platform_core.config import apply_overrides, load_run_config
+from ml_platform_core.value_coercion import as_bool, as_str_list
 from ml_platform_tabular import run_task
 
 from adapter import (
     ClearMLAdapter,
-    apply_runtime_params,
-    as_bool,
-    as_str_list,
     clearml_projects,
     clearml_stage_project,
     clearml_tags,
-    default_runtime_params,
     prefixed_task_name,
     stage_task_label,
     validate_clearml_runtime,
 )
+from param_apply import apply_connected_params_to_config
+from param_defaults import build_default_connected_params
 from reports import report_result
 
 
@@ -195,8 +194,8 @@ def _init_adapter(cfg: dict) -> ClearMLAdapter:
 
 
 def _connect_runtime_params(adapter: ClearMLAdapter, cfg: dict) -> dict:
-    connected = adapter.connect_params(default_runtime_params(cfg))
-    metadata_cfg = apply_runtime_params(cfg, connected)
+    connected = adapter.connect_params(build_default_connected_params(cfg))
+    metadata_cfg = apply_connected_params_to_config(cfg, connected)
     runtime_project, runtime_name, runtime_tags, runtime_comment = _runtime_clearml_metadata(metadata_cfg)
     adapter.apply_metadata(
         project_name=runtime_project,
@@ -228,7 +227,7 @@ def _needs_dataset_resolution(cfg: dict, connected: dict) -> bool:
 
 def _runtime_task_config(adapter: ClearMLAdapter, cfg: dict, connected: dict) -> dict:
     resolved_local_path = _resolved_dataset_path(adapter, cfg, connected)
-    cfg = apply_runtime_params(cfg, connected, resolved_local_path=resolved_local_path)
+    cfg = apply_connected_params_to_config(cfg, connected, resolved_local_path=resolved_local_path)
     task_id = adapter.task.id
     if task_id:
         cfg.setdefault("runtime", {})["clearml_task_id"] = task_id

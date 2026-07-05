@@ -28,7 +28,8 @@ from ml_platform_tabular.policy import (
     training_model_candidates,
     validate_primary_training_graph,
 )
-from params import (
+from param_bindings import runtime_keys_for_config_section
+from param_transport import (
     coerce_connected_params,
     connected_params_from_task,
     normalize_clearml_param_value,
@@ -39,6 +40,23 @@ from params import (
 PIPELINE_ARG_PREFIX = "Args/"
 STAGE_TASK_CONFIG = "config/tasks/tabular_stage.yaml"
 STAGE_TEMPLATE = "tabular_stage_template"
+MODEL_REF_ARTIFACTS = ("model", "model_info", "metrics", "validation_predictions")
+ENSEMBLE_REF_ARTIFACTS = ("model", "model_info", "ensemble_info", "metrics", "ensemble_predictions")
+PIPELINE_DRY_RUN_KEYS = (
+    "kind",
+    "project",
+    "stage_project",
+    "stage_projects",
+    "name",
+    "version",
+    "training_flow",
+    "model_suite",
+    "quality_mode",
+    "candidate_models",
+    "ensemble_enabled",
+    "controller_queue",
+    "stage_queue",
+)
 
 
 def execution_image(profile: dict[str, Any]) -> str | None:
@@ -81,36 +99,32 @@ def build_pipeline_plan(
 
 
 def print_pipeline_plan(plan: dict[str, Any]) -> None:
-    print(
-        "DRY-RUN pipeline: "
-        f"kind={plan['kind']} "
-        f"project={plan['project']} "
-        f"stage_project={plan['stage_project']} "
-        f"stage_projects={plan.get('stage_projects', {})} "
-        f"name={plan['name']} "
-        f"version={plan['version']} "
-        f"training_flow={plan['training_flow']} "
-        f"model_suite={plan.get('model_suite')} "
-        f"quality_mode={plan.get('quality_mode')} "
-        f"candidate_models={plan.get('candidate_models', [])} "
-        f"ensemble_enabled={plan.get('ensemble_enabled')} "
-        f"controller_queue={plan.get('controller_queue')} "
-        f"stage_queue={plan.get('stage_queue')}"
-    )
+    print("DRY-RUN pipeline: " + _format_fields(_pipeline_dry_run_fields(plan)))
     for step in plan["steps"]:
         parents = ",".join(step["parents"]) if step["parents"] else "-"
         overrides = ", ".join(f"{key}={value}" for key, value in step["parameter_override"].items()) or "-"
-        print(
-            "DRY-RUN step: "
-            f"name={step['name']} "
-            f"parents={parents} "
-            f"target_project={step.get('target_project')} "
-            f"execution_queue={step.get('execution_queue')} "
-            f"template={step['base_task_project']}/{step['base_task_name']} "
-            f"task_config={step['task_config']} "
-            f"parameter_override=[{overrides}] "
-            f"tags={step.get('tags', [])}"
-        )
+        print("DRY-RUN step: " + _format_fields(_step_dry_run_fields(step, parents, overrides)))
+
+
+def _format_fields(fields: tuple[tuple[str, Any], ...]) -> str:
+    return " ".join(f"{key}={value}" for key, value in fields)
+
+
+def _pipeline_dry_run_fields(plan: dict[str, Any]) -> tuple[tuple[str, Any], ...]:
+    return tuple((key, plan.get(key)) for key in PIPELINE_DRY_RUN_KEYS)
+
+
+def _step_dry_run_fields(step: dict[str, Any], parents: str, overrides: str) -> tuple[tuple[str, Any], ...]:
+    return (
+        ("name", step["name"]),
+        ("parents", parents),
+        ("target_project", step.get("target_project")),
+        ("execution_queue", step.get("execution_queue")),
+        ("template", f"{step['base_task_project']}/{step['base_task_name']}"),
+        ("task_config", step["task_config"]),
+        ("parameter_override", f"[{overrides}]"),
+        ("tags", step.get("tags", [])),
+    )
 
 
 def _artifact_ref(step_name: str, artifact_name: str) -> str:
@@ -121,130 +135,94 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def _project_layout(profile: dict[str, Any]) -> dict[str, str]:
-    clearml_cfg = profile.get("clearml", {})
-    return clearml_projects(clearml_cfg)
-
-
-def _remote_dataset_defaults(profile: dict[str, Any]) -> tuple[str | None, str | None]:
-    clearml_cfg = profile.get("clearml", {}) or {}
-    dataset_id = clearml_cfg.get("default_dataset_id")
-    dataset_file = clearml_cfg.get("default_dataset_file")
-    return dataset_id, dataset_file
-
-
 def _training_pipeline_runtime_params(
     pipeline_cfg: dict[str, Any], profile: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     profile = profile or {}
-    remote_default_dataset_id, remote_default_dataset_file = _remote_dataset_defaults(profile)
+    clearml_cfg = profile.get("clearml", {}) or {}
     return pipeline_runtime_defaults(
         pipeline_cfg,
-        remote_default_dataset_id=remote_default_dataset_id,
-        remote_default_dataset_file=remote_default_dataset_file,
+        remote_default_dataset_id=clearml_cfg.get("default_dataset_id"),
+        remote_default_dataset_file=clearml_cfg.get("default_dataset_file"),
         use_clearml=bool(profile.get("runtime", {}).get("use_clearml")),
     )
 
 
 def _data_overrides(params: dict[str, Any]) -> dict[str, Any]:
-    overrides: dict[str, Any] = {}
-    for key in (
-        "Input/local_path",
-        "Input/clearml_dataset_id",
-        "Input/dataset_file",
-        "Input/target_column",
-        "Input/feature_columns",
-        "Input/id_columns",
-    ):
-        if key in params:
-            value = params[key]
-            if key in {"Input/feature_columns", "Input/id_columns"}:
-                value = as_str_list(value)
-            overrides[key] = value
-    return overrides
+    return _section_overrides(params, "data", include_empty=True)
 
 
 def _split_overrides(params: dict[str, Any]) -> dict[str, Any]:
-    overrides: dict[str, Any] = {}
-    _copy_non_empty_params(
-        overrides,
-        params,
-        (
-            "Split/method",
-            "Split/group_column",
-            "Split/time_column",
-            "Split/valid_filter_column",
-            "Split/valid_filter_value",
-        ),
-    )
-    _copy_float_param(overrides, params, "Split/valid_size")
-    return overrides
+    return _section_overrides(params, "split", float_keys=("Split/valid_size",))
 
 
 def _feature_overrides(params: dict[str, Any]) -> dict[str, Any]:
+    return _section_overrides(params, "features")
+
+
+def _section_overrides(
+    params: dict[str, Any],
+    section: str,
+    *,
+    include_empty: bool = False,
+    float_keys: tuple[str, ...] = (),
+) -> dict[str, Any]:
     overrides: dict[str, Any] = {}
-    _copy_non_empty_params(
-        overrides,
-        params,
-        (
-            "Features/preset",
-            "Features/numeric_impute_strategy",
-            "Features/categorical_impute_strategy",
-            "Features/categorical_encoder",
-            "Features/scaling",
-        ),
-    )
-    for key in ("Features/drop_columns", "Features/passthrough_columns"):
-        if key in params:
-            overrides[key] = as_str_list(params.get(key)) or []
+    list_keys = set(runtime_keys_for_config_section(section, value_type="list"))
+    for key in runtime_keys_for_config_section(section):
+        if key not in params:
+            continue
+        value = params[key]
+        if key in list_keys:
+            overrides[key] = as_str_list(value) or []
+        elif include_empty or value not in {None, ""}:
+            overrides[key] = float(value) if key in float_keys else value
     return overrides
 
 
-def _copy_non_empty_params(target: dict[str, Any], params: dict[str, Any], keys: tuple[str, ...]) -> None:
-    for key in keys:
-        if key in params and params.get(key) not in {None, ""}:
-            target[key] = params[key]
+def _artifact_ref_map(
+    step: DomainStepPlan,
+    *,
+    suffix: str = "",
+    required: tuple[str, ...] = (),
+) -> dict[str, str]:
+    refs = {artifact: _artifact_ref(step.name, f"{artifact}{suffix}") for artifact in step.expected_artifacts}
+    missing = [artifact for artifact in required if artifact not in refs]
+    if missing:
+        raise ValueError(f"Domain step {step.name!r} is missing expected artifact(s): {', '.join(missing)}.")
+    return refs
 
 
-def _copy_float_param(target: dict[str, Any], params: dict[str, Any], key: str) -> None:
-    if key in params and params.get(key) not in {None, ""}:
-        target[key] = float(params[key])
+def _preprocess_refs(domain_plan: DomainPipelinePlan) -> dict[str, str]:
+    preprocess = _step_by_stage(domain_plan, "preprocess_features")
+    return {f"Input/{artifact}": ref for artifact, ref in _artifact_ref_map(preprocess).items()}
 
 
-def _preprocess_refs() -> dict[str, str]:
+def _step_by_stage(domain_plan: DomainPipelinePlan, stage: str) -> DomainStepPlan:
+    return next(step for step in domain_plan.steps if step.stage_key == stage)
+
+
+def _model_ref(step: DomainStepPlan, model_params: dict[str, Any]) -> dict[str, Any]:
+    refs = _artifact_ref_map(step, required=MODEL_REF_ARTIFACTS)
     return {
-        "Input/preprocess_bundle": _artifact_ref("preprocess_features", "preprocess_bundle"),
-        "Input/feature_spec": _artifact_ref("preprocess_features", "feature_spec"),
-        "Input/processed_train": _artifact_ref("preprocess_features", "processed_train"),
-        "Input/processed_valid": _artifact_ref("preprocess_features", "processed_valid"),
-    }
-
-
-def _model_ref(step_name: str, model_name: str, model_params: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "stage": step_name,
-        "model_name": model_name,
+        "stage": step.name,
+        "model_name": step.model_name,
         "model_params": model_params,
         "artifact_kind": "model",
-        "model": _artifact_ref(step_name, "model"),
-        "model_info": _artifact_ref(step_name, "model_info"),
-        "metrics": _artifact_ref(step_name, "metrics"),
-        "validation_predictions": _artifact_ref(step_name, "validation_predictions"),
+        **{artifact: refs[artifact] for artifact in MODEL_REF_ARTIFACTS},
     }
 
 
-def _ensemble_reference(step_name: str, method: str | None = None) -> dict[str, Any]:
+def _ensemble_reference(step: DomainStepPlan) -> dict[str, Any]:
+    method = step.ensemble_method
     suffix = f"_{method}" if method else ""
+    refs = _artifact_ref_map(step, suffix=suffix, required=ENSEMBLE_REF_ARTIFACTS)
     return {
-        "stage": step_name,
+        "stage": step.name,
         "model_name": method or "mean_topk",
         "ensemble_method": method,
         "artifact_kind": "ensemble",
-        "model": _artifact_ref(step_name, f"model{suffix}"),
-        "model_info": _artifact_ref(step_name, f"model_info{suffix}"),
-        "ensemble_info": _artifact_ref(step_name, f"ensemble_info{suffix}"),
-        "metrics": _artifact_ref(step_name, f"metrics{suffix}"),
-        "ensemble_predictions": _artifact_ref(step_name, f"ensemble_predictions{suffix}"),
+        **{artifact: refs[artifact] for artifact in ENSEMBLE_REF_ARTIFACTS},
     }
 
 
@@ -276,30 +254,31 @@ def _render_domain_plan_steps(
     run_name: str,
     execution_queue: str,
 ) -> list[dict[str, Any]]:
+    preprocess_refs = _preprocess_refs(domain_plan)
     model_refs = _model_refs(domain_plan)
     ensemble_refs = _ensemble_refs(domain_plan)
-    rendered_steps: list[dict[str, Any]] = []
-    for step in domain_plan.steps:
-        rendered_steps.append(
-            _stage_step(
-                name=step.name,
-                stage=step.stage_key,
-                templates_project=templates_project,
-                projects=projects,
-                run_name=run_name,
-                execution_queue=execution_queue,
-                model_name=step.model_name,
-                ensemble_method=step.ensemble_method,
-                parents=list(step.parents),
-                overrides=_serialized_stage_overrides(_domain_step_overrides(step, model_refs, ensemble_refs)),
-            )
+    return [
+        _stage_step(
+            name=step.name,
+            stage=step.stage_key,
+            templates_project=templates_project,
+            projects=projects,
+            run_name=run_name,
+            execution_queue=execution_queue,
+            model_name=step.model_name,
+            ensemble_method=step.ensemble_method,
+            parents=list(step.parents),
+            overrides=_serialized_stage_overrides(
+                _domain_step_overrides(step, preprocess_refs, model_refs, ensemble_refs)
+            ),
         )
-    return rendered_steps
+        for step in domain_plan.steps
+    ]
 
 
 def _model_refs(domain_plan: DomainPipelinePlan) -> list[dict[str, Any]]:
     return [
-        _model_ref(step.name, step.model_name, _step_model_params(step))
+        _model_ref(step, _step_model_params(step))
         for step in domain_plan.steps
         if step.stage_key == "train_model" and step.model_name is not None
     ]
@@ -307,7 +286,7 @@ def _model_refs(domain_plan: DomainPipelinePlan) -> list[dict[str, Any]]:
 
 def _ensemble_refs(domain_plan: DomainPipelinePlan) -> list[dict[str, Any]]:
     return [
-        _ensemble_reference(step.name, step.ensemble_method)
+        _ensemble_reference(step)
         for step in domain_plan.steps
         if step.stage_key == "build_ensemble" and step.ensemble_method is not None
     ]
@@ -315,51 +294,21 @@ def _ensemble_refs(domain_plan: DomainPipelinePlan) -> list[dict[str, Any]]:
 
 def _domain_step_overrides(
     step: DomainStepPlan,
+    preprocess_refs: dict[str, str],
     model_refs: list[dict[str, Any]],
     ensemble_refs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     overrides = dict(step.parameter_overrides)
-    builders = {
-        "train_model": _train_step_overrides,
-        "build_ensemble": _ensemble_step_overrides,
-        "evaluate_models": _evaluate_step_overrides,
-    }
-    return builders.get(step.stage_key, _unchanged_step_overrides)(overrides, model_refs, ensemble_refs)
-
-
-def _train_step_overrides(
-    overrides: dict[str, Any],
-    model_refs: list[dict[str, Any]],
-    ensemble_refs: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {**_preprocess_refs(), **overrides}
-
-
-def _ensemble_step_overrides(
-    overrides: dict[str, Any],
-    model_refs: list[dict[str, Any]],
-    ensemble_refs: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {**_preprocess_refs(), "Input/model_refs": _json(model_refs), **overrides}
-
-
-def _evaluate_step_overrides(
-    overrides: dict[str, Any],
-    model_refs: list[dict[str, Any]],
-    ensemble_refs: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {
-        **overrides,
-        "Input/model_refs": _json(model_refs),
-        "Input/ensemble_refs": _json(ensemble_refs) if ensemble_refs else None,
-    }
-
-
-def _unchanged_step_overrides(
-    overrides: dict[str, Any],
-    model_refs: list[dict[str, Any]],
-    ensemble_refs: list[dict[str, Any]],
-) -> dict[str, Any]:
+    if step.stage_key == "train_model":
+        return {**preprocess_refs, **overrides}
+    if step.stage_key == "build_ensemble":
+        return {**preprocess_refs, "Input/model_refs": _json(model_refs), **overrides}
+    if step.stage_key == "evaluate_models":
+        return {
+            **overrides,
+            "Input/model_refs": _json(model_refs),
+            "Input/ensemble_refs": _json(ensemble_refs) if ensemble_refs else None,
+        }
     return overrides
 
 
@@ -411,7 +360,7 @@ def _build_training_plan(
     profile_path: str | Path,
     runtime_params: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    projects = _project_layout(profile)
+    projects = clearml_projects(profile.get("clearml", {}))
     templates_project = projects["templates"]
     pipelines_project = projects["pipelines"]
     stages_project = projects["stages"]

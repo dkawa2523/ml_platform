@@ -3,6 +3,8 @@ import json
 import pytest
 
 from clearml_test_utils import load_clearml_pipeline_controller_module, load_clearml_pipeline_plan_module
+from ml_platform_core.contracts import DomainStepPlan
+from ml_platform_tabular.manifest import get_tabular_manifest
 
 
 DEFAULT_MODELS = [
@@ -17,6 +19,16 @@ DEFAULT_MODELS = [
     "xgboost",
     "catboost",
 ]
+DEFAULT_ENSEMBLES = ["build_ensemble_mean_topk", "build_ensemble_weighted", "build_ensemble_median"]
+
+
+def _default_step_names():
+    return [
+        "preprocess_features",
+        *[f"train_{model}" for model in DEFAULT_MODELS],
+        *DEFAULT_ENSEMBLES,
+        "evaluate_models",
+    ]
 
 
 def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
@@ -27,6 +39,16 @@ def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
 
     _assert_pipeline_template_param_surface(params)
     _assert_pipeline_template_defaults(params)
+
+
+def test_clearml_pipeline_runtime_params_are_manifest_declared():
+    pipeline_plan = load_clearml_pipeline_plan_module()
+    params = pipeline_plan.pipeline_runtime_params(
+        "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
+    )
+    manifest_keys = {parameter.name for parameter in get_tabular_manifest().task("tabular_pipeline").parameters}
+
+    assert set(params) <= manifest_keys
 
 
 def _assert_pipeline_template_param_surface(params):
@@ -147,6 +169,19 @@ def test_clearml_training_pipeline_plan_is_stage_graph():
     _assert_default_plan_ref_wiring(plan)
 
 
+def test_clearml_pipeline_plan_reports_missing_domain_artifacts():
+    pipeline_plan = load_clearml_pipeline_plan_module()
+    step = DomainStepPlan(
+        name="train_bad",
+        stage_key="train_model",
+        expected_artifacts=("model", "model_info", "metrics"),
+        model_name="ridge",
+    )
+
+    with pytest.raises(ValueError, match="train_bad.*validation_predictions"):
+        pipeline_plan._model_ref(step, {})
+
+
 def _assert_default_plan_metadata(plan):
     assert plan["kind"] == "training"
     assert plan["project"] == "MLPlatform/Dev/Pipelines/Tabular"
@@ -165,41 +200,11 @@ def _assert_default_plan_metadata(plan):
 
 
 def _assert_default_plan_steps(plan):
-    assert [step["name"] for step in plan["steps"]] == [
-        "preprocess_features",
-        "train_linear",
-        "train_ridge",
-        "train_lasso",
-        "train_elasticnet",
-        "train_random_forest",
-        "train_extra_trees",
-        "train_gradient_boosting",
-        "train_lightgbm",
-        "train_xgboost",
-        "train_catboost",
-        "build_ensemble_mean_topk",
-        "build_ensemble_weighted",
-        "build_ensemble_median",
-        "evaluate_models",
-    ]
+    assert [step["name"] for step in plan["steps"]] == _default_step_names()
     assert all(step["base_task_project"] == "MLPlatform/Dev/Templates/Tabular" for step in plan["steps"])
     assert all(step["base_task_name"] == "internal/tabular_stage" for step in plan["steps"])
     assert plan["steps"][1]["parents"] == ["preprocess_features"]
-    assert plan["steps"][-1]["parents"] == [
-        "train_linear",
-        "train_ridge",
-        "train_lasso",
-        "train_elasticnet",
-        "train_random_forest",
-        "train_extra_trees",
-        "train_gradient_boosting",
-        "train_lightgbm",
-        "train_xgboost",
-        "train_catboost",
-        "build_ensemble_mean_topk",
-        "build_ensemble_weighted",
-        "build_ensemble_median",
-    ]
+    assert plan["steps"][-1]["parents"] == _default_step_names()[1:-1]
 
 
 def _assert_default_plan_stage_overrides(plan):
@@ -344,58 +349,58 @@ def _train_model_params(plan, model_name):
     return json.loads(step["parameter_override"]["Model/params"])
 
 
-def test_clearml_basic_quality_mode_fast_uses_lightweight_params():
+@pytest.mark.parametrize(
+    ("suite", "quality", "expected_candidates", "expected_values"),
+    [
+        (
+            "fast",
+            "fast",
+            ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting"],
+            {
+                "random_forest": {"n_estimators": 10},
+                "extra_trees": {"n_estimators": 10},
+                "gradient_boosting": {"n_estimators": 10},
+            },
+        ),
+        (
+            "default",
+            "standard",
+            None,
+            {
+                "random_forest": {"n_estimators": 20},
+                "gradient_boosting": {"n_estimators": 20},
+                "lightgbm": {"n_estimators": 100},
+                "xgboost": {"n_estimators": 100},
+                "catboost": {"iterations": 100},
+            },
+        ),
+        (
+            "tree",
+            "quality",
+            ["random_forest", "extra_trees", "gradient_boosting"],
+            {
+                "random_forest": {"n_estimators": 60},
+                "extra_trees": {"n_estimators": 60},
+                "gradient_boosting": {"n_estimators": 60},
+            },
+        ),
+    ],
+)
+def test_clearml_basic_quality_mode_sets_bounded_params(suite, quality, expected_candidates, expected_values):
     pipeline_plan = load_clearml_pipeline_plan_module()
 
     plan = pipeline_plan.build_pipeline_plan(
         "config/tasks/tabular_pipeline.yaml",
         "config/profiles/clearml-dev.yaml",
-        runtime_params={"Basic/model_suite": "fast", "Basic/quality_mode": "fast"},
+        runtime_params={"Basic/model_suite": suite, "Basic/quality_mode": quality},
     )
 
-    assert plan["candidate_models"] == [
-        "linear",
-        "ridge",
-        "lasso",
-        "elasticnet",
-        "random_forest",
-        "extra_trees",
-        "gradient_boosting",
-    ]
-    assert _train_model_params(plan, "random_forest")["n_estimators"] == 10
-    assert _train_model_params(plan, "extra_trees")["n_estimators"] == 10
-    assert _train_model_params(plan, "gradient_boosting")["n_estimators"] == 10
-
-
-def test_clearml_basic_quality_mode_standard_matches_current_defaults():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={"Basic/model_suite": "default", "Basic/quality_mode": "standard"},
-    )
-
-    assert _train_model_params(plan, "random_forest")["n_estimators"] == 20
-    assert _train_model_params(plan, "gradient_boosting")["n_estimators"] == 20
-    assert _train_model_params(plan, "lightgbm")["n_estimators"] == 100
-    assert _train_model_params(plan, "xgboost")["n_estimators"] == 100
-    assert _train_model_params(plan, "catboost")["iterations"] == 100
-
-
-def test_clearml_basic_quality_mode_quality_uses_larger_bounded_params():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={"Basic/model_suite": "tree", "Basic/quality_mode": "quality"},
-    )
-
-    assert plan["candidate_models"] == ["random_forest", "extra_trees", "gradient_boosting"]
-    assert _train_model_params(plan, "random_forest")["n_estimators"] == 60
-    assert _train_model_params(plan, "extra_trees")["n_estimators"] == 60
-    assert _train_model_params(plan, "gradient_boosting")["n_estimators"] == 60
+    if expected_candidates is not None:
+        assert plan["candidate_models"] == expected_candidates
+    for model_name, values in expected_values.items():
+        model_params = _train_model_params(plan, model_name)
+        for key, value in values.items():
+            assert model_params[key] == value
 
 
 def test_clearml_explicit_model_params_override_basic_quality_mode():

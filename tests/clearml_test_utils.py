@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 
 def load_module(path: str, name: str):
@@ -15,6 +16,7 @@ def load_module(path: str, name: str):
     spec = importlib.util.spec_from_file_location(name, module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
     finally:
@@ -28,7 +30,21 @@ def load_clearml_adapter_module():
 
 
 def load_clearml_params_module():
-    return load_module("clearml/params.py", "ml_platform_clearml_params_test")
+    bindings = load_module("clearml/param_bindings.py", "ml_platform_clearml_param_bindings_test")
+    defaults = load_module("clearml/param_defaults.py", "ml_platform_clearml_param_defaults_test")
+    apply = load_module("clearml/param_apply.py", "ml_platform_clearml_param_apply_test")
+    transport = load_module("clearml/param_transport.py", "ml_platform_clearml_param_transport_test")
+    return SimpleNamespace(
+        apply_connected_params_to_config=apply.apply_connected_params_to_config,
+        bindings_for_config=bindings.bindings_for_config,
+        build_default_connected_params=defaults.build_default_connected_params,
+        coerce_connected_params=transport.coerce_connected_params,
+        connected_params_from_task=transport.connected_params_from_task,
+        group_connected_params=transport.group_connected_params,
+        normalize_clearml_param_value=transport.normalize_clearml_param_value,
+        prefixed_connected_params=transport.prefixed_connected_params,
+        unique_specs=bindings._unique_specs,
+    )
 
 
 def load_clearml_templates_module():

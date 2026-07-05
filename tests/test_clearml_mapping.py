@@ -82,7 +82,6 @@ def test_clearml_execution_image_is_profile_driven():
     adapter = load_clearml_adapter_module()
 
     assert adapter.clearml_execution_image({"execution": {"image": "registry/image:tag"}}) == "registry/image:tag"
-    assert adapter.clearml_execution_image({"execution_image": "legacy/image:tag"}) == "legacy/image:tag"
     assert adapter.clearml_execution_image({}) is None
 
 
@@ -107,52 +106,19 @@ def test_clearml_execution_image_is_applied_to_task():
     assert task.params["Execution/docker_image"] == "registry/image:tag"
 
 
-def test_clearml_execution_image_keeps_legacy_sdk_fallback():
+def test_clearml_runtime_validation_checks_expected_sdk_contract():
     adapter = load_clearml_adapter_module()
+    FakeSdk = type("FakeSdk", (), {"__version__": "2.1.7", "Task": object, "StorageManager": object})
+    FakeAutomation = type("FakeAutomation", (), {"PipelineController": object})
 
-    class FakeLegacyTask:
-        def __init__(self):
-            self.base_docker = None
-            self.params = {}
+    adapter.import_clearml_sdk = lambda: FakeSdk
+    adapter.import_clearml_automation = lambda: FakeAutomation
+    adapter.validate_clearml_runtime()
+    adapter.validate_clearml_runtime(require_automation=True)
 
-        def set_base_docker(self, docker_cmd=None, **kwargs):
-            if "docker_image" in kwargs:
-                raise TypeError("legacy SDK does not accept docker_image")
-            self.base_docker = docker_cmd
-
-        def update_parameters(self, params):
-            self.params.update(params)
-
-    task = FakeLegacyTask()
-    adapter.apply_execution_image(task, "legacy/image:tag")
-
-    assert task.base_docker == "legacy/image:tag"
-    assert task.params["Execution/docker_image"] == "legacy/image:tag"
-
-
-def test_clearml_dataset_exists_uses_dataset_api(monkeypatch):
-    adapter = load_clearml_adapter_module()
-    seen = []
-
-    class FakeDataset:
-        @staticmethod
-        def get(dataset_id):
-            seen.append(dataset_id)
-            if dataset_id == "missing":
-                raise RuntimeError("missing dataset")
-            return object()
-
-    def fake_symbol(symbol):
-        assert symbol == "Dataset"
-        return FakeDataset
-
-    monkeypatch.setattr(adapter, "import_clearml_symbol", fake_symbol)
-
-    assert adapter.clearml_dataset_exists(" dataset-id ") is True
-    assert adapter.clearml_dataset_exists("missing") is False
-    assert seen == ["dataset-id", "missing"]
-    with pytest.raises(ValueError, match="dataset_id must not be empty"):
-        adapter.clearml_dataset_exists("")
+    FakeSdk.__version__ = "2.0.0"
+    with pytest.raises(adapter.ClearMLUnavailable, match="2.1"):
+        adapter.validate_clearml_runtime()
 
 
 def test_clearml_stage_names_are_validated():

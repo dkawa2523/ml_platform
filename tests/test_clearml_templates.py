@@ -76,6 +76,87 @@ def test_clearml_infer_template_uses_remote_dataset_defaults():
     assert params["Model/source_type"] == "task_id"
 
 
+def test_clearml_set_script_quotes_entry_point_cli_args_without_clearml_arguments():
+    templates = load_clearml_templates_module()
+
+    class FakeTask:
+        def __init__(self):
+            self.script = None
+
+        def set_script(
+            self,
+            *,
+            repository=None,
+            branch=None,
+            commit=None,
+            diff=None,
+            working_dir=None,
+            entry_point=None,
+            binary=None,
+        ):
+            self.script = {
+                "repository": repository,
+                "branch": branch,
+                "commit": commit,
+                "diff": diff,
+                "working_dir": working_dir,
+                "entry_point": entry_point,
+                "binary": binary,
+            }
+
+    task = FakeTask()
+    templates._set_script(
+        task,
+        repository=".",
+        branch="main",
+        working_dir=".",
+        entry_point="clearml/app.py",
+        task_config="config/tasks/tabular_stage.yaml",
+        profile_path="config/profiles/clearml dev.yaml",
+    )
+
+    assert task.script["entry_point"] == (
+        "clearml/app.py --task config/tasks/tabular_stage.yaml --profile 'config/profiles/clearml dev.yaml'"
+    )
+
+
+def test_clearml_pipeline_cleanup_is_fail_closed_without_project_name():
+    pipeline_controller = load_clearml_pipeline_controller_module()
+
+    class FakeTask:
+        def __init__(self, task_id):
+            self.id = task_id
+            self.status = "created"
+            self.task_type = "controller"
+            self.deleted = False
+
+        def get_system_tags(self):
+            return ["pipeline"]
+
+        def delete(self, **_kwargs):
+            self.deleted = True
+
+    stale = FakeTask("old")
+
+    class FakeTaskApi:
+        class TaskTypes:
+            controller = "controller"
+
+        @staticmethod
+        def get_tasks(**_kwargs):
+            return [stale]
+
+    pipeline_controller._delete_stale_pipeline_drafts(
+        FakeTaskApi,
+        project_name="MLPlatform/Dev/Pipelines/Tabular",
+        task_name="template/tabular_train_pipeline",
+        keep_id="new",
+    )
+
+    assert stale.deleted is False
+    assert not hasattr(pipeline_controller, "_delete_legacy_pipeline_templates")
+
+
 def test_clearml_template_metadata_replaces_stale_role_tags():
     templates = load_clearml_templates_module()
     pipeline_controller = load_clearml_pipeline_controller_module()

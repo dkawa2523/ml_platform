@@ -1,6 +1,11 @@
 import json
 
+import pytest
+
 from ml_platform_core.config import load_run_config
+from ml_platform_core.contracts import ParameterSpec
+from ml_platform_core.value_coercion import as_str_list
+from ml_platform_tabular.manifest import get_tabular_manifest
 
 from clearml_test_utils import (
     load_clearml_adapter_module,
@@ -15,12 +20,13 @@ def test_clearml_runtime_param_helpers_use_current_names():
     pipeline_plan = load_clearml_pipeline_plan_module()
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
-    assert "Run/task" in adapter.default_runtime_params(cfg)
-    assert adapter.default_runtime_params(cfg) == params.build_default_connected_params(cfg)
-    assert adapter.grouped_runtime_params({"Run/name": "demo"}) == {"Run": {"name": "demo"}}
-    assert adapter.apply_runtime_params(cfg, {"Run/seed": 11})["run"]["seed"] == 11
-    assert adapter.as_str_list('["a", 2]') == ["a", "2"]
-    assert adapter.as_str_list("a,b") == ["a", "b"]
+    assert "Run/task" in params.build_default_connected_params(cfg)
+    assert params.group_connected_params({"Run/name": "demo"}) == {"Run": {"name": "demo"}}
+    assert params.apply_connected_params_to_config(cfg, {"Run/seed": 11})["run"]["seed"] == 11
+    assert as_str_list('["a", 2]') == ["a", "2"]
+    assert as_str_list("a,b") == ["a", "b"]
+    assert not hasattr(adapter, "default_runtime_params")
+    assert not hasattr(adapter, "apply_runtime_params")
     assert "Basic/model_suite" in pipeline_plan.pipeline_runtime_params(
         "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
     )
@@ -51,11 +57,36 @@ def test_clearml_param_transport_coerces_current_keys():
     assert json.loads(params.normalize_clearml_param_value({"a": [1, 2]})) == {"a": [1, 2]}
 
 
+def test_clearml_default_params_are_declared_by_manifest_bindings():
+    params = load_clearml_params_module()
+    manifest_keys = {parameter.name for task in get_tabular_manifest().tasks for parameter in task.parameters}
+
+    for task_path in (
+        "config/tasks/tabular_infer.yaml",
+        "config/tasks/tabular_pipeline.yaml",
+        "config/tasks/tabular_stage.yaml",
+    ):
+        cfg = load_run_config(task_path, "config/profiles/clearml-dev.yaml")
+        defaults = params.build_default_connected_params(cfg)
+        binding_keys = {binding.key for binding in params.bindings_for_config(cfg)}
+        assert set(defaults) <= manifest_keys
+        assert set(defaults) <= binding_keys
+
+
+def test_clearml_runtime_bindings_reject_conflicting_duplicate_specs():
+    params = load_clearml_params_module()
+    base = ParameterSpec(name="Input/example", value_type="str")
+
+    assert params.unique_specs(((base,), (ParameterSpec(name="Input/example", value_type="str", required=True),)))
+    with pytest.raises(ValueError, match="Input/example"):
+        params.unique_specs(((base,), (ParameterSpec(name="Input/example", value_type="int"),)))
+
+
 def test_clearml_runtime_params_apply_current_keys_and_ignore_unknown_keys():
-    adapter = load_clearml_adapter_module()
+    params = load_clearml_params_module()
     cfg = load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml")
 
-    updated = adapter.apply_runtime_params(
+    updated = params.apply_connected_params_to_config(
         cfg,
         {
             "Run/seed": "17",
@@ -70,7 +101,7 @@ def test_clearml_runtime_params_apply_current_keys_and_ignore_unknown_keys():
 
 
 def test_clearml_runtime_params_are_applied_to_nested_config():
-    adapter = load_clearml_adapter_module()
+    params = load_clearml_params_module()
     cfg = load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml")
     connected = {
         "Input/local_path": "data/other.csv",
@@ -86,7 +117,7 @@ def test_clearml_runtime_params_are_applied_to_nested_config():
         "Output/prediction_name": "scored.csv",
         "Output/chunk_size": 500,
     }
-    updated = adapter.apply_runtime_params(cfg, connected)
+    updated = params.apply_connected_params_to_config(cfg, connected)
     assert updated["data"]["local_path"] == "data/other.csv"
     assert updated["data"]["dataset_file"] == "train.csv"
     assert updated["data"]["target_column"] == "y"
@@ -102,29 +133,29 @@ def test_clearml_runtime_params_are_applied_to_nested_config():
 
 
 def test_clearml_stage_runtime_params_include_feature_group():
-    adapter = load_clearml_adapter_module()
+    params = load_clearml_params_module()
     cfg = load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml")
-    params = adapter.default_runtime_params(cfg)
+    defaults = params.build_default_connected_params(cfg)
 
-    assert "Input/dataset_file" in params
-    assert params["Run/stage"] == "preprocess_features"
-    assert params["Model/name"] == "ridge"
-    assert params["Model/params"] == "{}"
-    assert params["Model/candidates"] == "[]"
-    assert params["Model/selection_metric"] == "rmse"
-    assert params["Model/ensemble_enabled"] is False
-    assert params["Model/ensemble_method"] == "mean_topk"
-    assert params["Model/ensemble_top_k"] == 3
-    assert params["Features/preset"] == "basic"
-    assert {key.split("/", 1)[0] for key in params} <= {"Input", "Run", "Split", "Model", "Features", "Output"}
-    assert params["Output/upload_plots"] is True
+    assert "Input/dataset_file" in defaults
+    assert defaults["Run/stage"] == "preprocess_features"
+    assert defaults["Model/name"] == "ridge"
+    assert defaults["Model/params"] == "{}"
+    assert defaults["Model/candidates"] == "[]"
+    assert defaults["Model/selection_metric"] == "rmse"
+    assert defaults["Model/ensemble_enabled"] is False
+    assert defaults["Model/ensemble_method"] == "mean_topk"
+    assert defaults["Model/ensemble_top_k"] == 3
+    assert defaults["Features/preset"] == "basic"
+    assert {key.split("/", 1)[0] for key in defaults} <= {"Input", "Run", "Split", "Model", "Features", "Output"}
+    assert defaults["Output/upload_plots"] is True
 
 
 def test_clearml_flat_ensemble_params_apply_to_nested_config():
-    adapter = load_clearml_adapter_module()
+    params = load_clearml_params_module()
     cfg = load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml")
 
-    updated = adapter.apply_runtime_params(
+    updated = params.apply_connected_params_to_config(
         cfg,
         {
             "Model/ensemble_enabled": True,
@@ -143,14 +174,14 @@ def test_clearml_flat_ensemble_params_apply_to_nested_config():
 
 
 def test_clearml_default_runtime_params_cover_primary_and_internal_tasks():
-    adapter = load_clearml_adapter_module()
-    infer = adapter.default_runtime_params(
+    params = load_clearml_params_module()
+    infer = params.build_default_connected_params(
         load_run_config("config/tasks/tabular_infer.yaml", "config/profiles/clearml-dev.yaml")
     )
-    pipeline = adapter.default_runtime_params(
+    pipeline = params.build_default_connected_params(
         load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
     )
-    stage = adapter.default_runtime_params(
+    stage = params.build_default_connected_params(
         load_run_config("config/tasks/tabular_stage.yaml", "config/profiles/clearml-dev.yaml")
     )
 
@@ -209,10 +240,10 @@ def test_clearml_default_runtime_params_cover_primary_and_internal_tasks():
 
 
 def test_clearml_pipeline_params_map_model_metrics_and_output_options():
-    adapter = load_clearml_adapter_module()
+    params = load_clearml_params_module()
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
-    updated = adapter.apply_runtime_params(
+    updated = params.apply_connected_params_to_config(
         cfg,
         {
             "Model/model_params_by_name": '{"ridge":{"alpha":2.0}}',

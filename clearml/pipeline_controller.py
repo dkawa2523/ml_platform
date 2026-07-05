@@ -21,6 +21,8 @@ from pipeline_plan import (
     pipeline_params_from_task,
     pipeline_runtime_params,
 )
+from support import delete_task as _delete_clearml_task
+from support import kept_task_tags, replace_task_tags, set_task_comment, set_task_script
 
 
 PIPELINE_TEMPLATE_TAGS = clearml_tags("template", user_facing=True)
@@ -41,27 +43,80 @@ def sync_pipeline_draft(
     clearml_sdk = import_clearml_sdk()
     Task = clearml_sdk.Task
     display_name = clearml_template_name(template_name)
-    validate_clearml_runtime()
+    validate_clearml_runtime(require_automation=True)
     params = pipeline_runtime_params(task_path, profile_path)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, runtime_params=params)
     if execution_image is None:
         execution_image = profile_execution_image(load_yaml(profile_path))
-    existing = _find_pipeline_draft(Task, plan["project"], display_name)
-    # ClearML pipeline drafts persist their step graph separately from normal
-    # task parameters. Updating an existing draft can leave New Run parameters
-    # current while executing an old graph, so template sync rebuilds the draft.
+    repository = _default_text(repository, ".")
+    branch = _default_text(branch, "main")
+    working_dir = _default_text(working_dir, ".")
+    _delete_existing_pipeline_draft(Task, plan["project"], display_name)
+    draft_params = _pipeline_draft_params(params, plan)
+
+    automation = import_clearml_automation()
+    PipelineController = automation.PipelineController
+    pipe = _pipeline_controller(
+        PipelineController,
+        plan,
+        display_name=display_name,
+        repository=repository,
+        branch=branch,
+        packages=packages,
+        working_dir=working_dir,
+    )
+    _configure_pipeline_draft(
+        pipe,
+        plan,
+        params=params,
+        draft_params=draft_params,
+        task_path=task_path,
+        profile_path=profile_path,
+        repository=repository,
+        branch=branch,
+        working_dir=working_dir,
+    )
+    apply_execution_image(pipe.task, execution_image)
+    _apply_pipeline_template_metadata(
+        pipe.task,
+        execution_image,
+        controller_queue=plan["controller_queue"],
+        stage_queue=plan["stage_queue"],
+    )
+    _delete_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
+    return pipe.task
+
+
+def _default_text(value: str | None, default: str) -> str:
+    return value or default
+
+
+def _delete_existing_pipeline_draft(Task: Any, project_name: str, display_name: str) -> None:
+    existing = _find_pipeline_draft(Task, project_name, display_name)
     if existing is not None:
         _delete_created_pipeline_draft(existing)
-    draft_params = {
+
+
+def _pipeline_draft_params(params: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    return {
         **params,
         **pipeline_arg_params(params),
         "pipeline/controller_queue": plan["controller_queue"],
         "pipeline/default_queue": plan["stage_queue"],
     }
 
-    automation = import_clearml_automation()
-    PipelineController = automation.PipelineController
-    pipe = PipelineController(
+
+def _pipeline_controller(
+    PipelineController: Any,
+    plan: dict[str, Any],
+    *,
+    display_name: str,
+    repository: str,
+    branch: str | None,
+    packages: list[str] | None,
+    working_dir: str,
+) -> Any:
+    return PipelineController(
         project=plan["project"],
         name=display_name,
         version=plan["version"],
@@ -72,12 +127,26 @@ def sync_pipeline_draft(
         packages=packages,
         working_dir=working_dir or ".",
     )
+
+
+def _configure_pipeline_draft(
+    pipe: Any,
+    plan: dict[str, Any],
+    *,
+    params: dict[str, Any],
+    draft_params: dict[str, Any],
+    task_path: str | Path,
+    profile_path: str | Path,
+    repository: str,
+    branch: str,
+    working_dir: str,
+) -> None:
     _add_pipeline_args(pipe, params)
-    _set_pipeline_script_with_compat(
+    _set_pipeline_script(
         pipe.task,
-        repository=repository or ".",
-        branch=branch or "main",
-        working_dir=working_dir or ".",
+        repository=repository,
+        branch=branch,
+        working_dir=working_dir,
         task_config=task_path,
         profile_path=profile_path,
     )
@@ -85,16 +154,6 @@ def sync_pipeline_draft(
     _add_plan_steps(pipe, plan)
     pipe.create_draft()
     pipe.task.update_parameters(draft_params)
-    apply_execution_image(pipe.task, execution_image)
-    _apply_pipeline_template_metadata(
-        pipe.task,
-        execution_image,
-        controller_queue=plan["controller_queue"],
-        stage_queue=plan["stage_queue"],
-    )
-    _delete_stale_pipeline_drafts(Task, plan["project"], display_name, pipe.task.id)
-    _delete_legacy_pipeline_templates(Task, ["tabular_train_pipeline_template"])
-    return pipe.task
 
 
 def register_tabular_pipeline(
@@ -107,7 +166,7 @@ def register_tabular_pipeline(
     automation = import_clearml_automation()
     PipelineController = automation.PipelineController
     Task = import_clearml_symbol("Task")
-    validate_clearml_runtime()
+    validate_clearml_runtime(require_automation=True)
     defaults = pipeline_runtime_params(task_path, profile_path)
     plan = build_pipeline_plan(task_path=task_path, profile_path=profile_path, overrides=overrides)
 
@@ -138,11 +197,7 @@ def _add_pipeline_args(pipe: Any, params: dict[str, Any]) -> None:
         pipe.add_parameter(name=key, default=value)
 
 
-def _entry_command(task_config: str | Path, profile_path: str | Path) -> str:
-    return f"clearml/pipelines.py --task {Path(task_config).as_posix()} --profile {Path(profile_path).as_posix()}"
-
-
-def _set_pipeline_script_with_compat(
+def _set_pipeline_script(
     task: Any,
     *,
     repository: str,
@@ -151,44 +206,38 @@ def _set_pipeline_script_with_compat(
     task_config: str | Path,
     profile_path: str | Path,
 ) -> None:
-    entry_command = _entry_command(task_config, profile_path)
-    common = {
-        "repository": repository,
-        "branch": branch,
-        "commit": "",
-        "diff": "",
-        "working_dir": working_dir,
-        "entry_point": entry_command,
-    }
-    try:
-        task.set_script(
-            **common,
-            arguments={"--task": str(task_config), "--profile": str(profile_path)},
-        )
-    except TypeError:  # pragma: no cover - depends on ClearML SDK version
-        try:
-            task.set_script(**common, args=f"--task {task_config} --profile {profile_path}")
-        except TypeError:
-            task.set_script(**common)
+    set_task_script(
+        task,
+        repository=repository,
+        branch=branch,
+        working_dir=working_dir,
+        entry_point="clearml/pipelines.py",
+        cli_args={"--task": str(task_config), "--profile": str(profile_path)},
+    )
 
 
 def _add_plan_steps(pipe: Any, plan: dict[str, Any]) -> None:
     pipe.set_default_execution_queue(plan["queue"])
     for step in plan["steps"]:
-        kwargs = {
-            "name": step["name"],
-            "base_task_project": step["base_task_project"],
-            "base_task_name": step["base_task_name"],
-        }
-        if step["parents"]:
-            kwargs["parents"] = step["parents"]
-        if step["parameter_override"]:
-            kwargs["parameter_override"] = step["parameter_override"]
-        if step.get("execution_queue"):
-            kwargs["execution_queue"] = step["execution_queue"]
-        if step.get("pipeline_stage_group"):
-            kwargs["stage"] = step["pipeline_stage_group"]
-        pipe.add_step(**kwargs)
+        pipe.add_step(**_step_kwargs(step))
+
+
+def _step_kwargs(step: dict[str, Any]) -> dict[str, Any]:
+    kwargs = {
+        "name": step["name"],
+        "base_task_project": step["base_task_project"],
+        "base_task_name": step["base_task_name"],
+    }
+    _add_step_kwarg(kwargs, "parents", step.get("parents"))
+    _add_step_kwarg(kwargs, "parameter_override", step.get("parameter_override"))
+    _add_step_kwarg(kwargs, "execution_queue", step.get("execution_queue"))
+    _add_step_kwarg(kwargs, "stage", step.get("pipeline_stage_group"))
+    return kwargs
+
+
+def _add_step_kwarg(kwargs: dict[str, Any], key: str, value: Any) -> None:
+    if value:
+        kwargs[key] = value
 
 
 def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
@@ -201,7 +250,12 @@ def _find_pipeline_draft(Task: Any, project_name: str, task_name: str):
 
 def _delete_stale_pipeline_drafts(Task: Any, project_name: str, task_name: str, keep_id: str) -> None:
     for task in Task.get_tasks(task_name=task_name, allow_archived=True):
-        if task.id != keep_id and _is_created_pipeline_controller(Task, task, project_name=project_name):
+        if task.id != keep_id and _is_created_pipeline_controller(
+            Task,
+            task,
+            project_name=project_name,
+            require_pipeline_tag=True,
+        ):
             _delete_task(task)
 
 
@@ -212,21 +266,26 @@ def _is_created_pipeline_controller(
     project_name: str | None = None,
     require_pipeline_tag: bool = False,
 ) -> bool:
-    if getattr(task, "status", None) != "created":
-        return False
-    if project_name and not _task_is_under_pipeline_project(task, project_name):
-        return False
-    if str(_task_type(task)) != str(Task.TaskTypes.controller):
-        return False
-    if require_pipeline_tag and "pipeline" not in (task.get_system_tags() or []):
-        return False
-    return True
+    return (
+        getattr(task, "status", None) == "created"
+        and _matches_pipeline_project(task, project_name)
+        and str(_task_type(task)) == str(Task.TaskTypes.controller)
+        and _has_required_pipeline_tag(task, require_pipeline_tag)
+    )
+
+
+def _matches_pipeline_project(task: Any, project_name: str | None) -> bool:
+    return not project_name or _task_is_under_pipeline_project(task, project_name)
+
+
+def _has_required_pipeline_tag(task: Any, require_pipeline_tag: bool) -> bool:
+    return not require_pipeline_tag or "pipeline" in (task.get_system_tags() or [])
 
 
 def _task_is_under_pipeline_project(task: Any, project_name: str) -> bool:
     candidate_project = _task_project_name(task)
     if not candidate_project:
-        return True
+        return False
     return candidate_project == project_name or candidate_project.startswith(f"{project_name}/.pipelines/")
 
 
@@ -244,9 +303,7 @@ def _task_type(task: Any) -> Any:
 
 
 def _delete_task(task: Any) -> None:
-    delete = getattr(task, "delete", None)
-    if callable(delete):
-        delete(delete_artifacts_and_models=False, raise_on_error=False)
+    _delete_clearml_task(task)
 
 
 def _delete_created_pipeline_draft(task: Any) -> None:
@@ -258,17 +315,6 @@ def _delete_created_pipeline_draft(task: Any) -> None:
     _delete_task(task)
 
 
-def _delete_legacy_pipeline_templates(Task: Any, names: list[str]) -> None:
-    """Remove old created pipeline templates that can still appear as New Run entries."""
-    for task_name in names:
-        for task in Task.get_tasks(task_name=task_name, allow_archived=True):
-            if getattr(task, "status", None) != "created":
-                continue
-            if ".pipelines/" not in _task_project_name(task):
-                continue
-            _delete_task(task)
-
-
 def _apply_pipeline_template_metadata(
     task: Any,
     execution_image: str | None = None,
@@ -277,9 +323,7 @@ def _apply_pipeline_template_metadata(
     stage_queue: str | None = None,
 ) -> None:
     _replace_task_tags(task, PIPELINE_TEMPLATE_TAGS, remove_roles={"internal:true", "user_facing:true"})
-    set_comment = getattr(task, "set_comment", None)
-    if callable(set_comment):
-        set_comment(_pipeline_template_comment(execution_image, controller_queue, stage_queue))
+    set_task_comment(task, _pipeline_template_comment(execution_image, controller_queue, stage_queue))
 
 
 def _apply_pipeline_run_metadata(task: Any, *, task_name: str | None = None) -> None:
@@ -291,20 +335,11 @@ def _apply_pipeline_run_metadata(task: Any, *, task_name: str | None = None) -> 
 
 
 def _replace_task_tags(task: Any, tags: list[str], *, remove_roles: set[str]) -> None:
-    set_tags = getattr(task, "set_tags", None)
-    if callable(set_tags):
-        kept = _kept_tags(task, remove_roles)
-        set_tags(sorted(set(kept) | set(tags)))
-    else:
-        add_tags = getattr(task, "add_tags", None)
-        if callable(add_tags):
-            add_tags(tags)
+    replace_task_tags(task, tags, remove_tags=remove_roles, remove_prefixes=("run_type:",))
 
 
 def _kept_tags(task: Any, remove_roles: set[str]) -> list[str]:
-    get_tags = getattr(task, "get_tags", None)
-    current = list(get_tags() or []) if callable(get_tags) else []
-    return [tag for tag in current if not tag.startswith("run_type:") and tag not in remove_roles]
+    return kept_task_tags(task, remove_tags=remove_roles, remove_prefixes=("run_type:",))
 
 
 def _pipeline_template_comment(
@@ -312,12 +347,6 @@ def _pipeline_template_comment(
     controller_queue: str | None,
     stage_queue: str | None,
 ) -> str:
-    image_note = f" Execution image: {execution_image}." if execution_image else ""
-    queue_note = ""
-    if controller_queue or stage_queue:
-        queue_note = (
-            f" Run the PipelineController on queue {controller_queue or '-'}; stages run on queue {stage_queue or '-'}."
-        )
     return (
         "USER-FACING training pipeline template. Remote runs should use "
         "Input/clearml_dataset_id + Input/dataset_file, not Agent-local paths. "
@@ -325,6 +354,16 @@ def _pipeline_template_comment(
         "with Features/*. Advanced users can still edit Model/candidates and "
         "Model/ensemble_methods. Synced templates install GBM packages into the "
         "remote execution venv."
-        f"{queue_note}"
-        f"{image_note}"
+        f"{_queue_note(controller_queue, stage_queue)}"
+        f"{_image_note(execution_image)}"
     )
+
+
+def _queue_note(controller_queue: str | None, stage_queue: str | None) -> str:
+    if not controller_queue and not stage_queue:
+        return ""
+    return f" Run the PipelineController on queue {controller_queue or '-'}; stages run on queue {stage_queue or '-'}."
+
+
+def _image_note(execution_image: str | None) -> str:
+    return f" Execution image: {execution_image}." if execution_image else ""

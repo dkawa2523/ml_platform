@@ -1,100 +1,62 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from ml_platform_core.value_coercion import as_bool
 
-from param_keys import FEATURE_DEFAULT_KEYS, MODEL_SOURCE_DEFAULT_KEYS
+from param_bindings import binding_map_for_config
 from param_transport import normalize_clearml_param_value
 
 
-def _section(cfg: dict[str, Any], name: str) -> dict[str, Any] | None:
-    if name not in cfg:
-        return None
-    value = cfg.get(name) or {}
-    return value if isinstance(value, dict) else {}
+_RUN_DEFAULT_KEYS = ("Run/task", "Run/name", "Run/seed")
+_MODEL_SOURCE_KEYS = (
+    "Model/source_type",
+    "Model/source_task_id",
+    "Model/model_selector",
+    "Model/local_model_path",
+    "Model/feature_spec_path",
+    "Model/preprocess_bundle_path",
+)
+_MISSING = object()
 
 
 def build_default_connected_params(cfg: dict[str, Any]) -> dict[str, Any]:
     """Return the small ClearML runtime parameter surface for a task config."""
+    bindings = binding_map_for_config(cfg)
     params: dict[str, Any] = {}
-    _add_run_defaults(params, cfg)
-    _add_split_defaults(params, cfg)
-    _add_data_defaults(params, cfg)
-    _add_model_defaults(params, cfg)
-    _add_metric_defaults(params, cfg)
-    _add_feature_defaults(params, cfg)
-    _add_output_defaults(params, cfg)
+    _add_defaults(params, cfg, bindings, _RUN_DEFAULT_KEYS, include_missing=True)
+    if "stage" in (cfg.get("run") or {}):
+        _add_defaults(params, cfg, bindings, ("Run/stage",))
+    _add_section_defaults(params, cfg, bindings, "split")
+    _add_section_defaults(params, cfg, bindings, "data", include_missing=True, defaults={"Input/id_columns": []})
+    _add_model_defaults(params, cfg, bindings)
+    _add_metric_defaults(params, cfg, bindings)
+    _add_section_defaults(params, cfg, bindings, "features", normalize=True)
+    _add_output_defaults(params, cfg, bindings)
     _add_stage_input_defaults(params, cfg)
     return params
 
 
-def _add_run_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    run = cfg.get("run", {})
-    params["Run/task"] = cfg.get("task")
-    params["Run/name"] = run.get("name")
-    params["Run/seed"] = run.get("seed")
-    if "stage" in run:
-        params["Run/stage"] = run.get("stage")
-
-
-def _add_split_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    split = _section(cfg, "split")
-    if split is None:
-        return
-    _add_prefixed_defaults(
-        params,
-        split,
-        "Split",
-        ("method", "valid_size", "group_column", "time_column", "valid_filter_column", "valid_filter_value"),
-    )
-
-
-def _add_data_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    data = _section(cfg, "data")
-    if data is None:
-        return
-    params.update(
-        {
-            "Input/local_path": data.get("local_path"),
-            "Input/clearml_dataset_id": data.get("clearml_dataset_id"),
-            "Input/dataset_file": data.get("dataset_file"),
-            "Input/target_column": data.get("target_column"),
-            "Input/feature_columns": data.get("feature_columns"),
-            "Input/id_columns": data.get("id_columns", []),
-        }
-    )
-
-
-def _add_model_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
+def _add_model_defaults(params, cfg, bindings) -> None:
     if "model" not in cfg:
         return
-    model = cfg.get("model", {})
-    _add_model_identity_defaults(params, model)
-    _add_ensemble_defaults(params, model)
-    _add_model_source_defaults(params, model)
+    _add_defaults(params, cfg, bindings, ("Model/name", "Model/selection_metric"))
+    _add_json_model_default(params, cfg, "params", default={})
+    _add_json_model_default(params, cfg, "candidates", default=[])
+    _add_defaults(params, cfg, bindings, _MODEL_SOURCE_KEYS)
+    _add_defaults(params, cfg, bindings, ("Model/artifact_path", "Model/info_path"))
+    _add_ensemble_defaults(params, cfg)
 
 
-def _add_model_identity_defaults(params: dict[str, Any], model: dict[str, Any]) -> None:
-    _add_prefixed_defaults(params, model, "Model", ("name", "selection_metric"))
-    _add_json_default(params, model, "params", default={})
-    _add_json_default(params, model, "candidates", default=[])
+def _add_json_model_default(params, cfg, leaf, *, default) -> None:
+    path = ("model", leaf)
+    if _path_exists(cfg, path):
+        params[f"Model/{leaf}"] = normalize_clearml_param_value(_path_get(cfg, path, default) or default)
 
 
-def _add_model_source_defaults(params: dict[str, Any], model: dict[str, Any]) -> None:
-    for key in MODEL_SOURCE_DEFAULT_KEYS:
-        if key in model:
-            params[f"Model/{key}"] = model.get(key)
-    if "artifact_path" in model:
-        params["Model/artifact_path"] = model.get("artifact_path")
-    if "info_path" in model:
-        params["Model/info_path"] = model.get("info_path")
-
-
-def _add_ensemble_defaults(params: dict[str, Any], model: dict[str, Any]) -> None:
-    ensemble = _section(model, "ensemble")
-    if ensemble is None:
+def _add_ensemble_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
+    ensemble = (cfg.get("model") or {}).get("ensemble")
+    if not isinstance(ensemble, dict):
         return
     params["Model/ensemble_enabled"] = as_bool(ensemble.get("enabled"))
     if "methods" in ensemble:
@@ -103,33 +65,19 @@ def _add_ensemble_defaults(params: dict[str, Any], model: dict[str, Any]) -> Non
     params["Model/ensemble_top_k"] = int(ensemble.get("top_k") or 3)
 
 
-def _add_metric_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    if "metrics" not in cfg:
+def _add_metric_defaults(params, cfg, bindings) -> None:
+    binding = bindings.get("Model/evaluation_metrics")
+    if binding is None:
         return
-    metric_names = cfg.get("metrics", {}).get("names")
+    metric_names = _path_get(cfg, binding.config_path)
     if metric_names is not None:
-        params["Model/evaluation_metrics"] = normalize_clearml_param_value(metric_names)
+        params[binding.key] = normalize_clearml_param_value(metric_names)
 
 
-def _add_feature_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    features = _section(cfg, "features")
-    if features is None:
-        return
-    for key in FEATURE_DEFAULT_KEYS:
-        if key in features:
-            params[f"Features/{key}"] = normalize_clearml_param_value(features.get(key))
-
-
-def _add_output_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
-    output = _section(cfg, "output")
-    if output is None:
-        return
-    if "prediction_name" in output:
-        params["Output/prediction_name"] = output.get("prediction_name")
-    if "chunk_size" in output:
-        params["Output/chunk_size"] = output.get("chunk_size")
-    if "upload_plots" in output:
-        params["Output/upload_plots"] = as_bool(output.get("upload_plots"), default=True)
+def _add_output_defaults(params, cfg, bindings) -> None:
+    _add_section_defaults(params, cfg, bindings, "output", keys=("Output/prediction_name", "Output/chunk_size"))
+    if _path_exists(cfg, ("output", "upload_plots")):
+        params["Output/upload_plots"] = as_bool(_path_get(cfg, ("output", "upload_plots")), default=True)
 
 
 def _add_stage_input_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> None:
@@ -139,23 +87,46 @@ def _add_stage_input_defaults(params: dict[str, Any], cfg: dict[str, Any]) -> No
         params[f"Input/{key}"] = normalize_clearml_param_value(value)
 
 
-def _add_prefixed_defaults(
-    params: dict[str, Any],
-    source: dict[str, Any],
-    prefix: str,
-    keys: tuple[str, ...],
+def _add_section_defaults(
+    params, cfg, bindings, section, *, include_missing=False, defaults=None, keys=None, normalize=False
 ) -> None:
+    if section not in cfg:
+        return
+    selected = _selected_bindings(bindings, section, keys)
+    _add_defaults(
+        params, cfg, bindings, selected, include_missing=include_missing, defaults=defaults, normalize=normalize
+    )
+
+
+def _selected_bindings(bindings, section, keys) -> tuple[str, ...]:
+    if keys is not None:
+        return keys
+    return tuple(
+        binding.key
+        for binding in bindings.values()
+        if binding.config_path[:1] == (section,) and len(binding.config_path) > 1
+    )
+
+
+def _add_defaults(params, cfg, bindings, keys, *, include_missing=False, defaults=None, normalize=False) -> None:
+    defaults = defaults or {}
     for key in keys:
-        if key in source:
-            params[f"{prefix}/{key}"] = source.get(key)
+        binding = bindings.get(key)
+        if binding is None or not binding.config_path:
+            continue
+        if include_missing or _path_exists(cfg, binding.config_path):
+            value = _path_get(cfg, binding.config_path, defaults.get(key))
+            params[key] = normalize_clearml_param_value(value) if normalize else value
 
 
-def _add_json_default(
-    params: dict[str, Any],
-    source: dict[str, Any],
-    key: str,
-    *,
-    default: list[Any] | dict[str, Any],
-) -> None:
-    if key in source:
-        params[f"Model/{key}"] = json.dumps(source.get(key, default) or default)
+def _path_exists(cfg: dict[str, Any], path: tuple[str, ...]) -> bool:
+    return _path_get(cfg, path, _MISSING) is not _MISSING
+
+
+def _path_get(cfg: dict[str, Any], path: tuple[str, ...], default: Any = None) -> Any:
+    target: Any = cfg
+    for part in path:
+        if not isinstance(target, dict) or part not in target:
+            return default
+        target = target[part]
+    return target

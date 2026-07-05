@@ -4,32 +4,20 @@ import importlib
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Protocol
+from typing import Any, Iterator
 
 from ml_platform_core.io import find_table_file
 from ml_platform_core.stages import StageName, as_stage_name
-from ml_platform_core.value_coercion import (
-    as_bool as _as_bool,
-    as_candidates as _as_candidates,
-    as_dict as _as_dict,
-    as_str_list as _as_str_list,
-)
-from params import (
-    apply_connected_params_to_config,
-    build_default_connected_params,
-    group_connected_params,
-)
+from param_transport import group_connected_params
 from source_resolution import resolve_infer_model_source_config, resolve_stage_inputs_config
+from support import ClearMLLoggerAdapter, apply_task_tags, set_task_comment
 
 
 class ClearMLUnavailable(RuntimeError):
     pass
 
 
-class ClearMLExecutionTask(Protocol):
-    def set_base_docker(self, *args: Any, **kwargs: Any) -> Any: ...
-
-    def update_parameters(self, params: dict[str, Any]) -> Any: ...
+CLEARML_SDK_VERSION_PREFIX = "2.1."
 
 
 def clearml_projects(clearml_cfg: dict[str, Any] | None) -> dict[str, str]:
@@ -85,16 +73,13 @@ def clearml_execution_image(clearml_cfg: dict[str, Any] | None) -> str | None:
     execution = clearml_cfg.get("execution") or {}
     if not isinstance(execution, dict):
         execution = {}
-    return execution.get("image") or clearml_cfg.get("execution_image")
+    return execution.get("image")
 
 
-def apply_execution_image(task: ClearMLExecutionTask, image: str | None) -> None:
+def apply_execution_image(task: Any, image: str | None) -> None:
     if not image:
         return
-    try:
-        task.set_base_docker(docker_image=image)
-    except TypeError:  # pragma: no cover - ClearML SDK version compatibility
-        task.set_base_docker(docker_cmd=image)
+    task.set_base_docker(docker_image=image)
     task.update_parameters({"Execution/docker_image": image})
 
 
@@ -175,25 +160,11 @@ def _apply_clearml_metadata(
 
 
 def _apply_clearml_tags(task: Any, tags: list[str], *, replace_tags: bool) -> None:
-    add_tags = getattr(task, "add_tags", None)
-    set_tags = getattr(task, "set_tags", None)
-    if replace_tags and callable(set_tags):
-        set_tags(sorted(set(tags)))
-    elif callable(add_tags):
-        add_tags(tags)
-    elif callable(set_tags):
-        set_tags(sorted(set(_existing_tags(task)) | set(tags)))
-
-
-def _existing_tags(task: Any) -> list[str]:
-    get_tags = getattr(task, "get_tags", None)
-    return list(get_tags() or []) if callable(get_tags) else []
+    apply_task_tags(task, tags, replace=replace_tags)
 
 
 def _apply_clearml_comment(task: Any, comment: str) -> None:
-    set_comment = getattr(task, "set_comment", None)
-    if callable(set_comment):
-        set_comment(comment)
+    set_task_comment(task, comment)
 
 
 @contextmanager
@@ -258,76 +229,23 @@ def import_clearml_automation() -> Any:
         ) from exc
 
 
-def validate_clearml_runtime() -> None:
+def validate_clearml_runtime(*, require_automation: bool = False) -> None:
     """Fail early when the ClearML SDK/runtime cannot be imported."""
-    import_clearml_symbol("Task")
+    sdk = import_clearml_sdk()
+    version = str(getattr(sdk, "__version__", "") or "")
+    if not version.startswith(CLEARML_SDK_VERSION_PREFIX):
+        raise ClearMLUnavailable(
+            f"ClearML SDK {CLEARML_SDK_VERSION_PREFIX}x is required; found {version or 'unknown'}."
+        )
+    _require_clearml_symbols(sdk, ("Task", "StorageManager"), owner="ClearML SDK")
+    if require_automation:
+        _require_clearml_symbols(import_clearml_automation(), ("PipelineController",), owner="clearml.automation")
 
 
-def clearml_dataset_exists(dataset_id: str) -> bool:
-    """Return whether a ClearML Dataset ID resolves.
-
-    Callers should validate ClearML runtime availability at the entrypoint
-    before using this narrow existence check.
-    """
-    dataset_id = dataset_id.strip()
-    if not dataset_id:
-        raise ValueError("dataset_id must not be empty.")
-    Dataset = import_clearml_symbol("Dataset")
-    try:
-        Dataset.get(dataset_id=dataset_id)
-    except Exception:  # pragma: no cover - ClearML SDK raises version-specific exceptions
-        return False
-    return True
-
-
-def as_bool(value: Any, *, default: bool = False) -> bool:
-    return _as_bool(value, default=default)
-
-
-def default_runtime_params(cfg: dict[str, Any]) -> dict[str, Any]:
-    return build_default_connected_params(cfg)
-
-
-def grouped_runtime_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return group_connected_params(params)
-
-
-def as_str_list(value: Any) -> list[str] | None:
-    return _as_str_list(value)
-
-
-def as_dict(value: Any) -> dict[str, Any]:
-    return _as_dict(value)
-
-
-def as_candidates(value: Any) -> list[Any]:
-    return _as_candidates(value)
-
-
-def apply_runtime_params(
-    cfg: dict[str, Any],
-    connected_params: dict[str, Any],
-    *,
-    resolved_local_path: str | None = None,
-) -> dict[str, Any]:
-    return apply_connected_params_to_config(
-        cfg,
-        connected_params,
-        resolved_local_path=resolved_local_path,
-    )
-
-
-def _read_table_for_reporting(path: Path):
-    try:
-        import pandas as pd
-
-        return pd.read_csv(path)
-    except (OSError, UnicodeDecodeError, ValueError):
-        return None
-
-
-def _raise_logger_signature_error(method_name: str, exc: TypeError) -> None:
-    raise TypeError(f"ClearML logger method {method_name} has an unsupported signature.") from exc
+def _require_clearml_symbols(module: Any, symbols: tuple[str, ...], *, owner: str) -> None:
+    missing = [symbol for symbol in symbols if not hasattr(module, symbol)]
+    if missing:
+        raise ClearMLUnavailable(f"{owner} is missing required symbol(s): {', '.join(missing)}.")
 
 
 class ClearMLAdapter:
@@ -339,6 +257,7 @@ class ClearMLAdapter:
 
     def __init__(self, task: Any) -> None:
         self.task = task
+        self.logger = ClearMLLoggerAdapter(task)
 
     @classmethod
     def init(
@@ -382,7 +301,7 @@ class ClearMLAdapter:
 
     def connect_params(self, params: dict[str, Any]) -> dict[str, Any]:
         connected: dict[str, Any] = {}
-        for group, values in grouped_runtime_params(params).items():
+        for group, values in group_connected_params(params).items():
             group_values = self.task.connect(values, name=group)
             if not isinstance(group_values, dict):
                 group_values = values
@@ -414,10 +333,7 @@ class ClearMLAdapter:
             return text
 
         StorageManager = import_clearml_symbol("StorageManager")
-        try:
-            local_copy = StorageManager.get_local_copy(remote_url=text)
-        except TypeError:  # pragma: no cover - depends on ClearML SDK version
-            local_copy = StorageManager.get_local_copy(text)
+        local_copy = StorageManager.get_local_copy(remote_url=text)
         return str(local_copy)
 
     def resolve_stage_inputs(self, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -436,67 +352,16 @@ class ClearMLAdapter:
             self.task.upload_artifact(name=name, artifact_object=path)
 
     def report_scalar(self, title: str, series: str, value: float, iteration: int = 0) -> None:
-        self.task.get_logger().report_scalar(title=title, series=series, value=value, iteration=iteration)
+        self.logger.report_scalar(title, series, value, iteration=iteration)
 
     def report_table(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
-        path = Path(path)
-        if not path.exists():
-            return
-        report_table = getattr(self.task.get_logger(), "report_table", None)
-        if not callable(report_table):
-            return
-        frame = _read_table_for_reporting(path)
-        if frame is None:
-            return
-        try:
-            report_table(title=title, series=series, table_plot=frame, iteration=iteration)
-        except TypeError as exc:
-            _raise_logger_signature_error("report_table", exc)
+        self.logger.report_table(title, series, path, iteration=iteration)
 
     def report_scatter(self, title: str, series: str, points: list[tuple[float, float]], iteration: int = 0) -> None:
-        if not points:
-            return
-        report_scatter = getattr(self.task.get_logger(), "report_scatter2d", None)
-        if not callable(report_scatter):
-            return
-        try:
-            report_scatter(
-                title=title,
-                series=series,
-                scatter=points,
-                iteration=iteration,
-                xaxis="actual",
-                yaxis="prediction",
-                mode="markers",
-            )
-        except TypeError:
-            try:
-                report_scatter(title=title, series=series, scatter=points, iteration=iteration)
-            except TypeError:
-                try:
-                    report_scatter(
-                        title=title,
-                        series=series,
-                        x=[point[0] for point in points],
-                        y=[point[1] for point in points],
-                        iteration=iteration,
-                    )
-                except TypeError as exc:
-                    _raise_logger_signature_error("report_scatter2d", exc)
+        self.logger.report_scatter(title, series, points, iteration=iteration)
 
     def report_plotly(self, title: str, series: str, figure: dict[str, Any], iteration: int = 0) -> None:
-        if not figure:
-            return
-        report_plotly = getattr(self.task.get_logger(), "report_plotly", None)
-        if not callable(report_plotly):
-            return
-        try:
-            report_plotly(title=title, series=series, figure=figure, iteration=iteration)
-        except TypeError:
-            try:
-                report_plotly(title=title, series=series, plotly_object=figure, iteration=iteration)
-            except TypeError as exc:
-                _raise_logger_signature_error("report_plotly", exc)
+        self.logger.report_plotly(title, series, figure, iteration=iteration)
 
     def report_histogram(
         self,
@@ -509,58 +374,21 @@ class ClearMLAdapter:
         yaxis: str | None = None,
         mode: str | None = None,
     ) -> None:
-        if not values:
-            return
-        report_histogram = getattr(self.task.get_logger(), "report_histogram", None)
-        if not callable(report_histogram):
-            return
-        kwargs: dict[str, Any] = {
-            "title": title,
-            "series": series,
-            "values": values,
-            "iteration": iteration,
-        }
-        if xaxis:
-            kwargs["xaxis"] = xaxis
-        if yaxis:
-            kwargs["yaxis"] = yaxis
-        if mode:
-            kwargs["mode"] = mode
-        try:
-            report_histogram(**kwargs)
-        except TypeError:
-            try:
-                kwargs.pop("values", None)
-                kwargs["histogram"] = values
-                report_histogram(**kwargs)
-            except TypeError:
-                try:
-                    report_histogram(title=title, series=series, values=values, iteration=iteration)
-                except TypeError as exc:
-                    _raise_logger_signature_error("report_histogram", exc)
+        self.logger.report_histogram(
+            title,
+            series,
+            values,
+            iteration=iteration,
+            xaxis=xaxis,
+            yaxis=yaxis,
+            mode=mode,
+        )
 
     def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
-        path = Path(path)
-        if not path.exists():
-            return
-        report_media = getattr(self.task.get_logger(), "report_media", None)
-        if not callable(report_media):
-            return
-        report_media(title=title, series=series, local_path=str(path), iteration=iteration)
+        self.logger.report_media(title, series, path, iteration=iteration)
 
     def report_image(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
-        path = Path(path)
-        if not path.exists():
-            return
-        logger = self.task.get_logger()
-        report_image = getattr(logger, "report_image", None)
-        if callable(report_image):
-            try:
-                report_image(title=title, series=series, local_path=str(path), iteration=iteration)
-                return
-            except TypeError:
-                pass
-        self.report_media(title, series, path, iteration=iteration)
+        self.logger.report_image(title, series, path, iteration=iteration)
 
     def close(self) -> None:
         close = getattr(self.task, "close", None)
