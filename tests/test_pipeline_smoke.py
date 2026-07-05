@@ -38,7 +38,7 @@ def test_local_training_pipeline_default_graph_and_artifacts(tmp_path):
     _assert_training_pipeline_shape(result, tmp_path)
     _assert_training_pipeline_outputs_exist(result)
     _assert_training_leaderboard_outputs(result)
-    _assert_training_decision_outputs(result)
+    _assert_training_best_model_decision(result)
     _assert_training_reference_artifacts(result)
     _assert_training_feature_and_manifest_outputs(result, tmp_path)
 
@@ -75,47 +75,24 @@ def _assert_training_leaderboard_outputs(result):
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(validation_predictions.columns)
     assert _expected_training_plots_present() <= set(result.plots)
     assert _expected_training_plots_absent().isdisjoint(result.plots)
-    assert result.plots["metrics_by_candidate_bar"].suffix == ".png"
     assert result.plots["feature_importance_bar_linear"].suffix == ".png"
 
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
-    candidate_predictions = pd.read_csv(result.tables["candidate_predictions"])
-    assert {"candidate_name", "artifact_kind", "actual", "prediction", "residual", "abs_error"} <= set(
-        candidate_predictions.columns
-    )
-    assert {"linear", "mean_topk", "weighted", "median"} <= set(candidate_predictions["candidate_name"])
-    evaluation_summary = pd.read_csv(result.tables["evaluation_summary"])
-    assert {"best_overall", "best_single_model", "best_ensemble"} <= set(evaluation_summary["summary"])
-    best_vs_ensemble = pd.read_csv(result.tables["best_vs_ensemble_summary"])
-    assert set(best_vs_ensemble["metric"]) == {"rmse", "mae", "r2"}
 
 
-def _assert_training_decision_outputs(result):
-    decision_summary_json = read_json(result.artifacts["decision_summary_json"])
-    assert decision_summary_json["recommended_model_selector"] == "best"
-    assert (
-        decision_summary_json["recommended_candidate_selector"]
-        == decision_summary_json["leaderboard_top5"][0]["infer_target"]
-    )
-    assert decision_summary_json["recommended_inference_settings"] == {
+def _assert_training_best_model_decision(result):
+    best_model = read_json(result.artifacts["best_model_json"])
+    assert best_model["model_selector"] == "best"
+    assert best_model["candidate_selector"]
+    assert best_model["recommended_inference_settings"] == {
         "Model/source_type": "task_id",
         "Model/source_task_id": "<training_or_evaluate_task_id>",
         "Model/model_selector": "best",
     }
-    assert decision_summary_json["best_model_name"]
-    assert decision_summary_json["best_artifact_kind"] in {"model", "ensemble"}
-    assert decision_summary_json["selection_metric"] == "rmse"
-    assert {"rmse", "mae", "r2"} <= set(decision_summary_json["best_metrics"])
-    assert len(decision_summary_json["leaderboard_top5"]) <= 5
-    assert decision_summary_json["best_single_model"]["artifact_kind"] == "model"
-    assert decision_summary_json["best_ensemble"]["artifact_kind"] == "ensemble"
-    assert decision_summary_json["ensemble_improved_over_best_single"] is not None
-    assert len(decision_summary_json["best_vs_ensemble_summary"]) == 3
-    decision_summary_md = result.artifacts["decision_summary"].read_text(encoding="utf-8")
-    assert "## Use These Inference Settings" in decision_summary_md
-    assert "- Model/source_type: task_id" in decision_summary_md
-    assert "- Model/model_selector: best" in decision_summary_md
+    assert best_model["artifact_kind"] in {"model", "ensemble"}
+    assert best_model["selection_metric"] == "rmse"
+    assert {"rmse", "mae", "r2"} <= set(best_model["metrics"])
     assert "predictions" not in result.tables
 
 
@@ -124,13 +101,6 @@ def _assert_training_reference_artifacts(result):
     assert best_model["best_model_artifact"] == str(result.artifacts["best_model"])
     assert result.artifacts["best_model"].exists()
     assert result.extra["best_model"]["model_name"] == best_model["model_name"]
-    model_refs = read_json(result.artifacts["model_refs"])
-    assert model_refs["stage"] == "evaluate_models"
-    assert {item["model_name"] for item in model_refs["models"]} == set(DEPENDENCY_FREE_MODELS)
-    assert {item["model_name"] for item in model_refs["ensembles"]} == {"mean_topk", "weighted", "median"}
-    assert model_refs["ensemble"]["artifact_kind"] == "ensemble"
-    metrics_by_candidate = read_json(result.artifacts["metrics_by_candidate"])
-    assert set(_expected_training_candidates()) <= set(metrics_by_candidate["metrics_by_candidate"])
 
 
 def _assert_training_feature_and_manifest_outputs(result, tmp_path):
@@ -156,7 +126,7 @@ def _assert_training_feature_and_manifest_outputs(result, tmp_path):
     assert "infer_predictions" not in manifest["tables"]
     assert "data_quality_summary_table" in manifest["tables"]
     assert "data_quality_warnings" in manifest["tables"]
-    assert "leaderboard_topk_score_bar" in manifest["plots"]
+    assert "leaderboard_metric_panel" in manifest["plots"]
     assert "best_prediction_vs_actual" in manifest["plots"]
 
 
@@ -181,12 +151,9 @@ def _expected_training_artifacts():
         "feature_spec",
         "feature_summary",
         "data_quality_summary",
-        "model_refs",
-        "metrics_by_candidate",
         "leaderboard",
         "best_model",
         "best_model_json",
-        "evaluation_report",
         "evaluation_predictions",
         "metrics",
         "manifest",
@@ -197,8 +164,6 @@ def _expected_training_artifacts():
         "ensemble_mean_topk",
         "ensemble_weighted",
         "ensemble_median",
-        "decision_summary",
-        "decision_summary_json",
     ]
 
 
@@ -214,12 +179,7 @@ def _expected_training_tables():
         "train_features",
         "valid_features",
         "leaderboard",
-        "leaderboard_topk",
-        "best_vs_ensemble_summary",
-        "metrics_by_candidate",
-        "evaluation_summary",
         "evaluation_predictions",
-        "candidate_predictions",
         "metrics_table_linear",
         "validation_predictions_linear",
         "validation_predictions_ridge",
@@ -253,10 +213,7 @@ def _expected_training_plots_present():
         "validation_prediction_vs_actual_linear",
         "validation_residual_histogram_linear",
         "validation_residual_vs_predicted_linear",
-        "metrics_by_candidate_bar",
-        "leaderboard_topk_score_bar",
         "leaderboard_metric_panel",
-        "leaderboard_pareto_rmse_r2",
         "missing_rate_by_column_bar",
         "feature_importance_bar_linear",
         "ensemble_weights_mean_topk",
@@ -265,9 +222,6 @@ def _expected_training_plots_present():
         "best_prediction_vs_actual",
         "best_residual_histogram",
         "best_residual_vs_predicted",
-        "topk_prediction_vs_actual",
-        "topk_residual_histogram",
-        "topk_residual_vs_predicted",
     }
 
 
@@ -368,13 +322,10 @@ def test_local_training_pipeline_without_ensemble(tmp_path):
     assert "ensemble" not in result.artifacts
     leaderboard = pd.read_csv(result.tables["leaderboard"])
     assert set(leaderboard["model_name"]) == {"linear", "ridge"}
-    decision_summary_json = read_json(result.artifacts["decision_summary_json"])
-    assert decision_summary_json["best_artifact_kind"] == "model"
-    assert decision_summary_json["best_ensemble"] is None
-    assert decision_summary_json["ensemble_improved_over_best_single"] is None
-    assert decision_summary_json["recommended_model_selector"] == "best"
-    assert decision_summary_json["recommended_candidate_selector"] in {"linear", "ridge"}
-    assert decision_summary_json["recommended_inference_settings"]["Model/model_selector"] == "best"
+    best_model = read_json(result.artifacts["best_model_json"])
+    assert best_model["artifact_kind"] == "model"
+    assert best_model["candidate_selector"] in {"linear", "ridge"}
+    assert best_model["recommended_inference_settings"]["Model/model_selector"] == "best"
 
 
 def test_infer_can_reference_local_training_pipeline_best_and_ensemble(tmp_path):

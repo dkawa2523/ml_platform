@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 from ml_platform_core.value_coercion import as_bool
 
+from .selection import metric_value as _metric_value, metric_weight_value
+
 WEIGHT_EPSILON = 1e-12
 SUPPORTED_ENSEMBLE_METHODS = ("mean_topk", "weighted", "median")
 
@@ -89,12 +91,8 @@ def _validate_ensemble_methods(methods: list[str]) -> None:
 
 
 def metric_value(metrics: dict[str, float], selection_metric: str) -> float:
-    if selection_metric not in metrics:
-        raise ValueError(f"selection_metric is missing from metrics: {selection_metric}")
-    value = float(metrics[selection_metric])
-    if not math.isfinite(value):
-        raise ValueError(f"selection_metric must be finite: {selection_metric}")
-    return value
+    """Compatibility wrapper; selection owns metric semantics."""
+    return _metric_value(metrics, selection_metric)
 
 
 def ensemble_weights(selected_results: Sequence[MetricsCarrier], method: str, selection_metric: str) -> list[float]:
@@ -112,11 +110,7 @@ def _uniform_weights(selected_results: Sequence[MetricsCarrier]) -> list[float]:
 
 
 def _raw_weight_values(selected_results: Sequence[MetricsCarrier], selection_metric: str) -> list[float]:
-    if selection_metric in {"rmse", "mae"}:
-        return [1.0 / max(metric_value(item.metrics, selection_metric), WEIGHT_EPSILON) for item in selected_results]
-    if selection_metric == "r2":
-        return [max(metric_value(item.metrics, selection_metric), 0.0) for item in selected_results]
-    raise ValueError("model.selection_metric must be one of: mae, rmse, r2.")
+    return [metric_weight_value(item.metrics, selection_metric, epsilon=WEIGHT_EPSILON) for item in selected_results]
 
 
 def _normalized_weights(raw_weights: list[float], selected_results: Sequence[MetricsCarrier]) -> list[float]:

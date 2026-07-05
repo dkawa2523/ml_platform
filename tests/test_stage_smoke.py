@@ -151,7 +151,7 @@ def _assert_ensemble_stage_outputs(result):
 def _assert_evaluation_stage_outputs(evaluation):
     _assert_evaluation_stage_tables(evaluation)
     _assert_evaluation_stage_artifacts(evaluation)
-    _assert_evaluation_decision_summary(evaluation)
+    _assert_evaluation_best_model(evaluation)
     _assert_evaluation_plots(evaluation)
 
 
@@ -160,12 +160,7 @@ def _assert_evaluation_stage_tables(evaluation):
         evaluation.tables,
         [
             "leaderboard",
-            "leaderboard_topk",
-            "metrics_by_candidate",
-            "evaluation_summary",
-            "best_vs_ensemble_summary",
             "evaluation_predictions",
-            "candidate_predictions",
         ],
     )
 
@@ -174,45 +169,32 @@ def _assert_evaluation_stage_artifacts(evaluation):
     _assert_stage_paths(
         evaluation.artifacts,
         [
-            "model_refs",
-            "metrics_by_candidate",
             "best_model",
             "best_model_json",
-            "evaluation_report",
-            "decision_summary",
-            "decision_summary_json",
+            "metrics",
             "manifest",
         ],
     )
 
 
-def _assert_evaluation_decision_summary(evaluation):
-    decision_summary = read_json(evaluation.artifacts["decision_summary_json"])
-    assert decision_summary["recommended_inference_settings"]["Model/source_type"] == "task_id"
-    assert decision_summary["recommended_inference_settings"]["Model/model_selector"] == "best"
-    assert decision_summary["recommended_candidate_selector"]
-    assert decision_summary["leaderboard_top5"]
-    assert decision_summary["best_single_model"]["artifact_kind"] == "model"
-    assert decision_summary["best_ensemble"]["artifact_kind"] == "ensemble"
+def _assert_evaluation_best_model(evaluation):
+    best_model = read_json(evaluation.artifacts["best_model_json"])
+    assert best_model["recommended_inference_settings"]["Model/source_type"] == "task_id"
+    assert best_model["recommended_inference_settings"]["Model/model_selector"] == "best"
+    assert best_model["candidate_selector"]
     assert evaluation.extra["report_schema_version"] == "leaderboard_dashboard_v2"
 
 
 def _assert_evaluation_plots(evaluation):
-    assert "metrics_by_candidate_bar" in evaluation.plots
-    assert "leaderboard_topk_score_bar" in evaluation.plots
     assert "leaderboard_metric_panel" in evaluation.plots
-    assert "leaderboard_pareto_rmse_r2" in evaluation.plots
     assert "best_prediction_vs_actual" in evaluation.plots
     assert "best_residual_histogram" in evaluation.plots
     assert "best_residual_vs_predicted" in evaluation.plots
     assert "prediction_vs_actual" not in evaluation.plots
     assert "residual_histogram" not in evaluation.plots
     assert "residual_vs_predicted" not in evaluation.plots
-    assert "topk_prediction_vs_actual" in evaluation.plots
-    assert "topk_residual_histogram" in evaluation.plots
-    assert "topk_residual_vs_predicted" in evaluation.plots
     evaluation_manifest = read_json(evaluation.artifacts["manifest"])
-    assert "leaderboard_topk_score_bar" in evaluation_manifest["plots"]
+    assert "leaderboard_metric_panel" in evaluation_manifest["plots"]
     assert "best_prediction_vs_actual" in evaluation_manifest["plots"]
 
 

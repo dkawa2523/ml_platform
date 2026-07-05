@@ -54,9 +54,11 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
     train = manifest.stage("train_model")
     evaluate = manifest.stage("evaluate_models")
     infer = manifest.stage("infer")
+    infer_target = next(parameter for parameter in infer.parameters if parameter.name == "Input/target_column")
     source_type = next(parameter for parameter in infer.parameters if parameter.name == "Model/source_type")
 
     assert target.required is True
+    assert infer_target.required is False
     assert source_type.choices == ("task_id", "local_path")
     assert {artifact.name for artifact in preprocess.output_artifacts} >= {
         "preprocess_bundle",
@@ -71,14 +73,22 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
         "validation_predictions",
     }
     assert {artifact.name for artifact in evaluate.output_artifacts} >= {
-        "decision_summary",
-        "decision_summary_json",
         "leaderboard",
         "best_model",
+        "best_model_json",
         "metrics",
         "evaluation_predictions",
-        "candidate_predictions",
     }
+    assert {artifact.name for artifact in infer.output_artifacts} >= {
+        "predictions",
+        "schema_check_summary",
+        "prediction_summary",
+        "prediction_preview",
+        "source_summary",
+        "prediction_distribution_histogram",
+        "manifest",
+    }
+    assert "schema_check" not in {artifact.name for artifact in infer.output_artifacts}
 
 
 def test_package_manifest_rejects_duplicate_stage_keys():
@@ -158,7 +168,7 @@ def test_tabular_domain_plan_builds_without_clearml():
     ]
     assert plan.steps[-1].parents == ("train_ridge", "train_linear", "build_ensemble_mean_topk")
     assert plan.steps[1].parameter_overrides == {"Model/name": "ridge", "Model/params": {}}
-    assert "decision_summary" in plan.steps[-1].expected_artifacts
+    assert "best_model_json" in plan.steps[-1].expected_artifacts
 
 
 def test_tabular_domain_plan_carries_runtime_neutral_overrides():

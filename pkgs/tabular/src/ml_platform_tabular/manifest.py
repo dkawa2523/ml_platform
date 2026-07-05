@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-from ml_platform_core.contracts import (
-    ArtifactSpec,
-    PackageManifest,
-    ParameterSpec,
-    PipelineSpec,
-    StageSpec,
-    TaskSpec,
-)
+from ml_platform_core.contracts import ArtifactSpec, PackageManifest, ParameterSpec, PipelineSpec, StageSpec, TaskSpec
 
 from .ensemble import SUPPORTED_ENSEMBLE_METHODS
 from .models import SUPPORTED_MODELS
@@ -26,21 +19,158 @@ def _artifact(name: str, kind: str, *, required: bool = True) -> ArtifactSpec:
     return ArtifactSpec(name=name, kind=kind, required=required)
 
 
-def _param(
-    name: str,
-    value_type: str,
-    *,
-    required: bool = False,
-    default: object | None = None,
-    choices: tuple[str, ...] = (),
-) -> ParameterSpec:
-    return ParameterSpec(
-        name=name,
-        value_type=value_type,
-        required=required,
-        default=default,
-        choices=choices,
-    )
+def _param(name, value_type, *, required=False, default=None, choices=()) -> ParameterSpec:
+    return ParameterSpec(name=name, value_type=value_type, required=required, default=default, choices=choices)
+
+
+def _params_by_name(*groups: tuple[ParameterSpec, ...]) -> tuple[ParameterSpec, ...]:
+    params: dict[str, ParameterSpec] = {}
+    for group in groups:
+        for parameter in group:
+            params.setdefault(parameter.name, parameter)
+    return tuple(params.values())
+
+
+def _select_params(parameters: tuple[ParameterSpec, ...], names: tuple[str, ...]) -> tuple[ParameterSpec, ...]:
+    by_name = {parameter.name: parameter for parameter in parameters}
+    return tuple(by_name[name] for name in names)
+
+
+TABULAR_BASIC_PARAMETERS = (
+    _param("Basic/model_suite", "enum", default="default", choices=model_suite_names()),
+    _param("Basic/quality_mode", "enum", default="standard", choices=quality_mode_names()),
+    _param("Basic/use_ensemble", "bool", default=True),
+    _param("Basic/notes", "str"),
+)
+TABULAR_RUN_PARAMETERS = (
+    _param("Run/task", "str"),
+    _param("Run/name", "str"),
+    _param("Run/seed", "int"),
+)
+TABULAR_STAGE_RUN_PARAMETERS = (
+    *TABULAR_RUN_PARAMETERS,
+    _param("Run/stage", "enum", choices=TRAINING_STAGE_KEYS),
+)
+TABULAR_DATA_PARAMETERS = (
+    _param("Input/local_path", "str"),
+    _param("Input/clearml_dataset_id", "str"),
+    _param("Input/dataset_file", "str"),
+    _param("Input/target_column", "str", required=True),
+    _param("Input/feature_columns", "list"),
+    _param("Input/id_columns", "list"),
+)
+TABULAR_INFER_DATA_PARAMETERS = (
+    _param("Input/local_path", "str"),
+    _param("Input/clearml_dataset_id", "str"),
+    _param("Input/dataset_file", "str"),
+    _param("Input/target_column", "str"),
+    _param("Input/feature_columns", "list"),
+    _param("Input/id_columns", "list"),
+)
+TABULAR_SPLIT_PARAMETERS = (
+    _param("Split/method", "str", default="random"),
+    _param("Split/valid_size", "float", default=0.2),
+    _param("Split/group_column", "str"),
+    _param("Split/time_column", "str"),
+    _param("Split/valid_filter_column", "str"),
+    _param("Split/valid_filter_value", "str"),
+)
+TABULAR_FEATURE_PARAMETERS = (
+    _param("Features/preset", "str", default="basic"),
+    _param("Features/numeric_impute_strategy", "str", default="median"),
+    _param("Features/categorical_impute_strategy", "str", default="missing_token"),
+    _param("Features/categorical_encoder", "str", default="onehot"),
+    _param("Features/scaling", "str", default="standard"),
+    _param("Features/drop_columns", "list", default=[]),
+    _param("Features/passthrough_columns", "list", default=[]),
+)
+TABULAR_MODEL_PARAMETERS = (
+    _param("Model/name", "enum", required=True, choices=tuple(SUPPORTED_MODELS)),
+    _param("Model/model_params_by_name", "dict", default={}),
+    _param("Model/params", "dict", default={}),
+    _param("Model/candidates", "json", default=list(SUPPORTED_MODELS)),
+    _param("Model/selection_metric", "str", default="rmse"),
+    _param("Model/source_type", "enum", default="local_path", choices=("task_id", "local_path")),
+    _param("Model/source_task_id", "str"),
+    _param("Model/model_selector", "str", default="best"),
+    _param("Model/local_model_path", "str"),
+    _param("Model/feature_spec_path", "str"),
+    _param("Model/preprocess_bundle_path", "str"),
+    _param("Model/artifact_path", "str"),
+    _param("Model/info_path", "str"),
+    _param("Model/evaluation_metrics", "list"),
+    _param("Model/ensemble_enabled", "bool"),
+    _param("Model/ensemble_methods", "list", default=["mean_topk"]),
+    _param("Model/ensemble_method", "enum", default="mean_topk", choices=tuple(SUPPORTED_ENSEMBLE_METHODS)),
+    _param("Model/ensemble_top_k", "int", default=3),
+)
+TABULAR_STAGE_INPUT_PARAMETERS = (
+    _param("Input/preprocess_bundle", "json"),
+    _param("Input/feature_spec", "json"),
+    _param("Input/processed_train", "json"),
+    _param("Input/processed_valid", "json"),
+    _param("Input/model_refs", "json"),
+    _param("Input/ensemble_refs", "json"),
+)
+TABULAR_OUTPUT_PARAMETERS = (
+    _param("Output/prediction_name", "str"),
+    _param("Output/chunk_size", "int"),
+    _param("Output/upload_plots", "bool", default=True),
+)
+TABULAR_TRAIN_MODEL_PARAMETERS = _select_params(
+    TABULAR_MODEL_PARAMETERS,
+    ("Model/name", "Model/params", "Model/selection_metric"),
+)
+TABULAR_ENSEMBLE_MODEL_PARAMETERS = _select_params(
+    TABULAR_MODEL_PARAMETERS,
+    ("Model/ensemble_method", "Model/ensemble_top_k", "Model/selection_metric"),
+)
+TABULAR_EVALUATE_MODEL_PARAMETERS = _select_params(TABULAR_MODEL_PARAMETERS, ("Model/selection_metric",))
+_INFER_MODEL_KEYS = (
+    "Model/source_type",
+    "Model/source_task_id",
+    "Model/model_selector",
+    "Model/local_model_path",
+    "Model/feature_spec_path",
+    "Model/preprocess_bundle_path",
+    "Model/artifact_path",
+    "Model/info_path",
+)
+TABULAR_INFER_MODEL_PARAMETERS = _select_params(TABULAR_MODEL_PARAMETERS, _INFER_MODEL_KEYS)
+_PIPELINE_MODEL_KEYS = (
+    "Model/model_params_by_name",
+    "Model/params",
+    "Model/candidates",
+    "Model/selection_metric",
+    "Model/evaluation_metrics",
+    "Model/ensemble_enabled",
+    "Model/ensemble_methods",
+    "Model/ensemble_top_k",
+)
+TABULAR_STAGE_TASK_PARAMETERS = _params_by_name(
+    TABULAR_STAGE_RUN_PARAMETERS,
+    TABULAR_DATA_PARAMETERS,
+    TABULAR_SPLIT_PARAMETERS,
+    TABULAR_FEATURE_PARAMETERS,
+    TABULAR_MODEL_PARAMETERS,
+    TABULAR_STAGE_INPUT_PARAMETERS,
+    TABULAR_OUTPUT_PARAMETERS,
+)
+TABULAR_PIPELINE_PARAMETERS = _params_by_name(
+    TABULAR_BASIC_PARAMETERS,
+    TABULAR_RUN_PARAMETERS,
+    TABULAR_DATA_PARAMETERS,
+    TABULAR_SPLIT_PARAMETERS,
+    TABULAR_FEATURE_PARAMETERS,
+    _select_params(TABULAR_MODEL_PARAMETERS, _PIPELINE_MODEL_KEYS),
+    _select_params(TABULAR_OUTPUT_PARAMETERS, ("Output/upload_plots",)),
+)
+TABULAR_INFER_PARAMETERS = _params_by_name(
+    TABULAR_RUN_PARAMETERS,
+    TABULAR_INFER_DATA_PARAMETERS,
+    TABULAR_INFER_MODEL_PARAMETERS,
+    _select_params(TABULAR_OUTPUT_PARAMETERS, ("Output/prediction_name", "Output/chunk_size")),
+)
 
 
 TABULAR_PREPROCESS_STAGE = StageSpec(
@@ -48,17 +178,7 @@ TABULAR_PREPROCESS_STAGE = StageSpec(
     kind="preprocess",
     display_name="Preprocess features",
     runner_path=TABULAR_STAGE_RUNNER,
-    parameters=(
-        _param("Input/local_path", "str"),
-        _param("Input/clearml_dataset_id", "str"),
-        _param("Input/dataset_file", "str"),
-        _param("Input/target_column", "str", required=True),
-        _param("Input/feature_columns", "list"),
-        _param("Input/id_columns", "list"),
-        _param("Split/method", "str", default="random"),
-        _param("Split/valid_size", "float", default=0.2),
-        _param("Features/preset", "str", default="basic"),
-    ),
+    parameters=_params_by_name(TABULAR_DATA_PARAMETERS, TABULAR_SPLIT_PARAMETERS, TABULAR_FEATURE_PARAMETERS),
     output_artifacts=(
         _artifact("preprocess_bundle", "file"),
         _artifact("feature_spec", "json"),
@@ -71,11 +191,7 @@ TABULAR_TRAIN_STAGE = StageSpec(
     kind="train",
     display_name="Train model",
     runner_path=TABULAR_STAGE_RUNNER,
-    parameters=(
-        _param("Model/name", "enum", required=True, choices=tuple(SUPPORTED_MODELS)),
-        _param("Model/params", "json", default={}),
-        _param("Model/selection_metric", "str", default="rmse"),
-    ),
+    parameters=TABULAR_TRAIN_MODEL_PARAMETERS,
     input_artifacts=(
         _artifact("preprocess_bundle", "file"),
         _artifact("feature_spec", "json"),
@@ -96,9 +212,7 @@ TABULAR_ENSEMBLE_STAGE = StageSpec(
     runner_path=TABULAR_STAGE_RUNNER,
     parameters=(
         _param("Input/model_refs", "json", required=True),
-        _param("Model/ensemble_method", "enum", default="mean_topk", choices=tuple(SUPPORTED_ENSEMBLE_METHODS)),
-        _param("Model/ensemble_top_k", "int", default=3),
-        _param("Model/selection_metric", "str", default="rmse"),
+        *TABULAR_ENSEMBLE_MODEL_PARAMETERS,
     ),
     input_artifacts=(
         _artifact("preprocess_bundle", "file"),
@@ -120,20 +234,18 @@ TABULAR_EVALUATE_STAGE = StageSpec(
     parameters=(
         _param("Input/model_refs", "json", required=True),
         _param("Input/ensemble_refs", "json"),
-        _param("Model/selection_metric", "str", default="rmse"),
+        *TABULAR_EVALUATE_MODEL_PARAMETERS,
     ),
     input_artifacts=(
         _artifact("preprocess_bundle", "file"),
         _artifact("feature_spec", "json"),
     ),
     output_artifacts=(
-        _artifact("decision_summary", "file"),
-        _artifact("decision_summary_json", "json"),
         _artifact("leaderboard", "table"),
         _artifact("best_model", "model", required=False),
+        _artifact("best_model_json", "json", required=False),
         _artifact("metrics", "json"),
         _artifact("evaluation_predictions", "table", required=False),
-        _artifact("candidate_predictions", "table", required=False),
     ),
 )
 TABULAR_INFER_STAGE = StageSpec(
@@ -141,16 +253,15 @@ TABULAR_INFER_STAGE = StageSpec(
     kind="infer",
     display_name="Tabular inference",
     runner_path=TABULAR_INFER_RUNNER,
-    parameters=(
-        _param("Model/source_type", "enum", default="local_path", choices=("task_id", "local_path")),
-        _param("Model/source_task_id", "str"),
-        _param("Model/model_selector", "str", default="best"),
-        _param("Model/local_model_path", "str"),
-        _param("Input/local_path", "str", required=True),
-    ),
+    parameters=TABULAR_INFER_PARAMETERS,
     output_artifacts=(
         _artifact("predictions", "table"),
-        _artifact("schema_check", "json"),
+        _artifact("schema_check_summary", "json"),
+        _artifact("prediction_summary", "table"),
+        _artifact("prediction_preview", "table"),
+        _artifact("source_summary", "table"),
+        _artifact("prediction_distribution_histogram", "plot", required=False),
+        _artifact("manifest", "json"),
     ),
 )
 
@@ -161,32 +272,10 @@ TABULAR_STAGES = (
     TABULAR_EVALUATE_STAGE,
     TABULAR_INFER_STAGE,
 )
-TABULAR_PIPELINE_PARAMETERS = (
-    _param("Basic/model_suite", "enum", default="default", choices=model_suite_names()),
-    _param("Basic/quality_mode", "enum", default="standard", choices=quality_mode_names()),
-    _param("Basic/use_ensemble", "bool", default=True),
-    _param("Basic/notes", "str"),
-    _param("Run/name", "str"),
-    _param("Run/seed", "int"),
-    _param("Input/local_path", "str"),
-    _param("Input/clearml_dataset_id", "str"),
-    _param("Input/dataset_file", "str"),
-    _param("Input/target_column", "str", required=True),
-    _param("Input/feature_columns", "list"),
-    _param("Input/id_columns", "list"),
-    _param("Model/candidates", "json", default=list(SUPPORTED_MODELS)),
-    _param("Model/model_params_by_name", "json", default={}),
-    _param("Model/selection_metric", "str", default="rmse"),
-    _param("Model/ensemble_enabled", "bool"),
-    _param("Model/ensemble_methods", "json", default=["mean_topk"]),
-    _param("Model/ensemble_top_k", "int", default=3),
-    _param("Output/upload_plots", "bool", default=True),
-)
 TABULAR_PIPELINE_ARTIFACTS = (
-    _artifact("decision_summary", "file"),
-    _artifact("decision_summary_json", "json"),
     _artifact("leaderboard", "table"),
     _artifact("best_model", "model", required=False),
+    _artifact("best_model_json", "json", required=False),
     _artifact("metrics", "json"),
 )
 
@@ -204,6 +293,7 @@ TABULAR_STAGE_TASK = TaskSpec(
     display_name="Tabular stage task",
     runner_path=TABULAR_STAGE_RUNNER,
     kind="stage",
+    parameters=TABULAR_STAGE_TASK_PARAMETERS,
     stage_keys=TRAINING_STAGE_KEYS,
 )
 TABULAR_INFER_TASK = TaskSpec(
@@ -211,7 +301,7 @@ TABULAR_INFER_TASK = TaskSpec(
     display_name="Tabular inference",
     runner_path=TABULAR_INFER_RUNNER,
     kind="task",
-    parameters=TABULAR_INFER_STAGE.parameters,
+    parameters=TABULAR_INFER_PARAMETERS,
     artifacts=TABULAR_INFER_STAGE.output_artifacts,
     stage_keys=("infer",),
 )

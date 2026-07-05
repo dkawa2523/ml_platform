@@ -8,7 +8,7 @@ import pandas as pd
 
 from ml_platform_core.io import write_json, write_table
 
-from ..ensemble import metric_value
+from ..selection import metric_value
 from ..metrics import regression_prediction_frame
 from ..model_artifact import write_model_info
 from ..plotting import write_metrics_bar_plot, write_regression_plot_artifacts

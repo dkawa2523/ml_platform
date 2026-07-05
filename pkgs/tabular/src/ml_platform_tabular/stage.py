@@ -15,14 +15,13 @@ from ml_platform_core.result import RunResult
 from ml_platform_core.stages import as_stage_name
 
 from .models import ModelCandidate
+from .selection import metric_settings
 from .stage_inputs import ensemble_refs, load_preprocess, model_refs, stage_inputs
 from .stage_result import finish_stage, stage_run_dir
 from .training.artifacts import (
     CandidateResult,
     PreprocessResult,
     ensemble_member_rows,
-    metric_name,
-    required_metric_names,
     safe_name,
 )
 from .training.candidate_training import train_model
@@ -36,10 +35,8 @@ __all__ = ["run_stage"]
 StageRunner = Callable[[dict[str, Any]], RunResult]
 
 
-def _metric_settings(cfg: dict[str, Any]) -> tuple[str, list[str] | str | None]:
-    selection_metric = metric_name(cfg.get("model", {}).get("selection_metric") or "rmse")
-    metric_names = required_metric_names(cfg.get("metrics", {}).get("names"), selection_metric)
-    return selection_metric, metric_names
+def _metric_settings(cfg: dict[str, Any]) -> tuple[str, list[str]]:
+    return metric_settings(cfg, cfg.get("model", {}))
 
 
 def _path_map(paths: dict[str, Path]) -> dict[str, str]:

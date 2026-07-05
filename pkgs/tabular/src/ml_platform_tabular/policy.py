@@ -218,8 +218,9 @@ def validate_primary_training_graph(model_cfg: dict[str, Any]) -> None:
     if _as_bool(search_cfg.get("enabled")):
         raise ValueError(
             "model.search.enabled=true is future/experimental and is not part of the "
-            "primary ClearML training pipeline graph. Remove model.search or set enabled=false for "
-            "preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models."
+            "primary training graph. Remove model.search or set enabled=false. Package stage "
+            "names are preprocess_features -> train_model* -> build_ensemble -> evaluate_models; "
+            "ClearML step labels may include model or ensemble method suffixes."
         )
 
 

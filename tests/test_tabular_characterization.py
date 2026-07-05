@@ -9,9 +9,7 @@ from ml_platform_tabular.inference import run_infer
 from ml_platform_tabular.plotting import (
     write_feature_importance_plot_if_available,
     write_leaderboard_metric_panel,
-    write_leaderboard_pareto_plot,
     write_leaderboard_table,
-    write_metrics_by_candidate_table,
     write_prediction_summary_tables,
 )
 from ml_platform_tabular.training import run_pipeline
@@ -70,42 +68,31 @@ def _assert_characterized_training_keys(result):
     assert sorted(result.artifacts) == [
         "best_model",
         "best_model_json",
-        "candidate_predictions",
         "config",
         "data_quality_summary",
-        "decision_summary",
-        "decision_summary_json",
         "evaluation_predictions",
-        "evaluation_report",
         "feature_spec",
         "feature_summary",
         "leaderboard",
         "manifest",
         "metrics",
-        "metrics_by_candidate",
         "metrics_linear",
         "metrics_ridge",
         "model_info_linear",
         "model_info_ridge",
         "model_linear",
-        "model_refs",
         "model_ridge",
         "preprocess_bundle",
     ]
     assert sorted(result.tables) == [
-        "best_vs_ensemble_summary",
-        "candidate_predictions",
         "data_quality_summary_table",
         "data_quality_warnings",
         "evaluation_predictions",
-        "evaluation_summary",
         "feature_importance_linear",
         "feature_importance_ridge",
         "feature_summary_table",
         "feature_type_counts",
         "leaderboard",
-        "leaderboard_topk",
-        "metrics_by_candidate",
         "metrics_table_linear",
         "metrics_table_ridge",
         "missing_rate_by_column",
@@ -125,13 +112,7 @@ def _assert_characterized_training_keys(result):
         "feature_importance_linear",
         "feature_importance_ridge",
         "leaderboard_metric_panel",
-        "leaderboard_pareto_rmse_r2",
-        "leaderboard_topk_score_bar",
-        "metrics_by_candidate_bar",
         "missing_rate_by_column_bar",
-        "topk_prediction_vs_actual",
-        "topk_residual_histogram",
-        "topk_residual_vs_predicted",
         "validation_prediction_vs_actual_linear",
         "validation_prediction_vs_actual_ridge",
         "validation_residual_histogram_linear",
@@ -143,6 +124,7 @@ def _assert_characterized_training_keys(result):
         "best_ensemble",
         "best_model",
         "candidate_count",
+        "code_version",
         "ensemble_count",
         "ensemble_enabled",
         "mae",
@@ -150,6 +132,7 @@ def _assert_characterized_training_keys(result):
         "report_schema_version",
         "rmse",
         "selection_metric",
+        "source_task_id",
     ]
 
 
@@ -200,62 +183,36 @@ def _assert_characterized_prediction_tables(result):
     ]
     assert set(evaluation_predictions["model_name"]) == {"linear"}
 
-    candidate_predictions = pd.read_csv(result.tables["candidate_predictions"])
-    assert candidate_predictions.columns.tolist() == [
-        "candidate_rank",
-        "candidate_name",
-        "artifact_kind",
-        "ensemble_method",
-        "source_stage",
-        "x1",
-        "x2",
-        "segment",
-        "actual",
-        "prediction",
-        "residual",
-        "abs_error",
-        "model_name",
-    ]
-    assert set(candidate_predictions["candidate_name"]) == {"linear", "ridge"}
-    assert set(candidate_predictions["artifact_kind"]) == {"model"}
-
-    evaluation_summary = pd.read_csv(result.tables["evaluation_summary"])
-    assert evaluation_summary["summary"].tolist() == ["best_overall", "best_single_model", "best_ensemble"]
-    assert evaluation_summary["model_name"].iloc[:2].tolist() == ["linear", "linear"]
-    assert pd.isna(evaluation_summary["model_name"].iloc[2])
-
 
 def _assert_characterized_decision_and_manifest(result):
-    decision_summary = read_json(result.artifacts["decision_summary_json"])
-    assert sorted(decision_summary) == [
-        "best_artifact_kind",
-        "best_ensemble",
-        "best_ensemble_method",
-        "best_metrics",
-        "best_model_name",
-        "best_single_model",
-        "best_vs_ensemble_summary",
+    best_model = read_json(result.artifacts["best_model_json"])
+    assert sorted(best_model) == [
+        "artifact_kind",
+        "best_model_artifact",
+        "candidate_selector",
         "code_version",
-        "created_at",
-        "ensemble_improved_over_best_single",
-        "leaderboard_top5",
-        "recommended_candidate_selector",
+        "ensemble_method",
+        "metrics",
+        "model_name",
+        "model_params",
+        "model_selector",
         "recommended_inference_settings",
-        "recommended_model_selector",
         "report_schema_version",
         "selection_metric",
+        "selection_value",
+        "source_artifact",
         "source_task_id",
+        "stage",
     ]
-    assert decision_summary["report_schema_version"] == "leaderboard_dashboard_v2"
-    assert decision_summary["recommended_model_selector"] == "best"
-    assert decision_summary["recommended_inference_settings"] == {
+    assert best_model["report_schema_version"] == "leaderboard_dashboard_v2"
+    assert best_model["model_selector"] == "best"
+    assert best_model["recommended_inference_settings"] == {
         "Model/source_type": "task_id",
         "Model/source_task_id": "<training_or_evaluate_task_id>",
         "Model/model_selector": "best",
     }
-    assert decision_summary["best_artifact_kind"] == "model"
-    assert decision_summary["best_ensemble"] is None
-    assert decision_summary["ensemble_improved_over_best_single"] is None
+    assert best_model["artifact_kind"] == "model"
+    assert best_model["candidate_selector"] == "linear"
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
@@ -442,20 +399,7 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
     ]
 
     leaderboard_path = write_leaderboard_table(rows, tmp_path / "leaderboard.csv")
-    metrics_path = write_metrics_by_candidate_table(
-        {
-            "linear": {
-                "artifact_kind": "model",
-                "selection_metric": "rmse",
-                "selection_value": 0.1,
-                "metrics": rows[0],
-            },
-            "ridge": {"artifact_kind": "model", "selection_metric": "rmse", "selection_value": 0.2, "metrics": rows[1]},
-        },
-        tmp_path / "metrics_by_candidate.csv",
-    )
     metric_panel_path = write_leaderboard_metric_panel(rows, tmp_path / "leaderboard_metric_panel.png")
-    pareto_path = write_leaderboard_pareto_plot(rows, tmp_path / "leaderboard_pareto_rmse_r2.png")
     feature_table_path, feature_plot_path = write_feature_importance_plot_if_available(
         _FeatureImportanceEstimator(),
         tmp_path,
@@ -474,9 +418,7 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
 
     for path in [
         leaderboard_path,
-        metrics_path,
         metric_panel_path,
-        pareto_path,
         feature_table_path,
         feature_plot_path,
         *prediction_tables.values(),
@@ -493,17 +435,6 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
         "ensemble_method",
         "selection_metric",
         "selection_value",
-        "rmse",
-        "mae",
-        "r2",
-    ]
-    assert pd.read_csv(metrics_path).columns.tolist() == [
-        "model_name",
-        "artifact_kind",
-        "ensemble_method",
-        "selection_metric",
-        "selection_value",
-        "rank",
         "rmse",
         "mae",
         "r2",

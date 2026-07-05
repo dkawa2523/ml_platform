@@ -7,8 +7,8 @@ from typing import Any
 
 from ml_platform_core.io import write_json
 
-from ..ensemble import metric_value
-from .artifacts import CandidateResult
+from ..selection import metric_value
+from .artifacts import CandidateResult, LEADERBOARD_REPORT_SCHEMA_VERSION, candidate_selector
 
 
 @dataclass(frozen=True)
@@ -18,8 +18,18 @@ class BestModelArtifacts:
     best_ensemble: dict[str, Any] | None
 
 
-def best_model_payload(best: CandidateResult, selection_metric: str, best_model_path: Path) -> dict[str, Any]:
+def best_model_payload(
+    best: CandidateResult,
+    selection_metric: str,
+    best_model_path: Path,
+    *,
+    task_id: str | None,
+    code_version: str,
+) -> dict[str, Any]:
     return {
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "code_version": code_version,
+        "source_task_id": task_id,
         "model_name": best.model_name,
         "artifact_kind": best.artifact_kind,
         "stage": best.stage,
@@ -28,6 +38,13 @@ def best_model_payload(best: CandidateResult, selection_metric: str, best_model_
         "metrics": best.metrics,
         "model_params": best.model_params,
         "ensemble_method": best.ensemble_method,
+        "model_selector": "best",
+        "candidate_selector": candidate_selector(best),
+        "recommended_inference_settings": {
+            "Model/source_type": "task_id",
+            "Model/source_task_id": task_id or "<training_or_evaluate_task_id>",
+            "Model/model_selector": "best",
+        },
         "source_artifact": str(best.artifacts["model"]),
         "best_model_artifact": str(best_model_path),
     }
@@ -55,10 +72,18 @@ def write_best_model_artifacts(
     best_ensemble: CandidateResult | None,
     selection_metric: str,
     stage_dir: Path,
+    task_id: str | None,
+    code_version: str,
 ) -> BestModelArtifacts:
     best_model_path = stage_dir / "best_model.joblib"
     shutil.copy2(best.artifacts["model"], best_model_path)
-    best_payload = best_model_payload(best, selection_metric, best_model_path)
+    best_payload = best_model_payload(
+        best,
+        selection_metric,
+        best_model_path,
+        task_id=task_id,
+        code_version=code_version,
+    )
     best_model_json_path = write_json(best_payload, stage_dir / "best_model.json")
     return BestModelArtifacts(
         artifacts={

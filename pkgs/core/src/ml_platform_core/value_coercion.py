@@ -59,35 +59,44 @@ def as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return {}
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
-            raise ValueError(f"Expected JSON object, got: {value!r}")
-        return parsed
+        return _dict_from_text(value)
     raise ValueError(f"Cannot convert value to dict: {value!r}")
 
 
+def _dict_from_text(value: str) -> dict[str, Any]:
+    text = value.strip()
+    if not text:
+        return {}
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Expected JSON object, got: {value!r}")
+    return parsed
+
+
 def as_candidates(value: Any) -> list[Any]:
+    return [_candidate_item(index, item) for index, item in enumerate(_candidate_items(value))]
+
+
+def _candidate_items(value: Any) -> list[Any]:
     if value is None or value == "":
         return []
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        value = json.loads(text)
-    if not isinstance(value, list):
+    parsed = _json_candidate_items(value) if isinstance(value, str) else value
+    if not isinstance(parsed, list):
         raise ValueError(f"Expected JSON array for candidates, got: {value!r}")
-    candidates = []
-    for index, item in enumerate(value):
-        if isinstance(item, str):
-            text = item.strip()
-            if not text:
-                raise ValueError(f"Model/candidates[{index}] must not be empty.")
-            candidates.append(text)
-        elif isinstance(item, dict):
-            candidates.append(dict(item))
-        else:
-            raise ValueError(f"Model/candidates[{index}] must be a model name or object.")
-    return candidates
+    return parsed
+
+
+def _json_candidate_items(value: str) -> list[Any]:
+    text = value.strip()
+    return [] if not text else json.loads(text)
+
+
+def _candidate_item(index: int, item: Any) -> Any:
+    if isinstance(item, str):
+        text = item.strip()
+        if not text:
+            raise ValueError(f"Model/candidates[{index}] must not be empty.")
+        return text
+    if isinstance(item, dict):
+        return dict(item)
+    raise ValueError(f"Model/candidates[{index}] must be a model name or object.")

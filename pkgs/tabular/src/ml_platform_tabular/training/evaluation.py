@@ -1,20 +1,47 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
 from typing import Any
+
+from ml_platform_core.io import write_json
 
 from .artifacts import (
     CandidateResult,
     EvaluationResult,
-    _code_version,
-    _metrics_by_candidate_payload,
-    _runtime_task_id,
+    LEADERBOARD_REPORT_SCHEMA_VERSION,
 )
-from .best_model_artifacts import BestModelArtifacts, write_best_model_artifacts
-from .decision_artifacts import DecisionArtifacts, write_decision_artifacts
-from .leaderboard_artifacts import LeaderboardArtifacts, build_leaderboard_rows, write_leaderboard_artifacts
-from .prediction_artifacts import write_candidate_predictions, write_evaluation_predictions
+from .best_model_artifacts import write_best_model_artifacts
+from .leaderboard_artifacts import build_leaderboard_rows, write_leaderboard_artifacts
+from .output_maps import evaluation_artifacts, evaluation_tables
+from .prediction_artifacts import write_evaluation_predictions
 from .ranking import ranked_results
+
+
+def _code_version() -> str:
+    try:
+        root = Path(__file__).resolve().parents[5]
+        completed = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return "unknown"
+    version = completed.stdout.strip()
+    return version or "unknown"
+
+
+def _runtime_task_id() -> str | None:
+    for name in ("CLEARML_TASK_ID", "TRAINS_TASK_ID", "TASK_ID"):
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
 
 
 def evaluate_model_candidates(
@@ -27,72 +54,76 @@ def evaluate_model_candidates(
     stage_dir = pipeline_dir / "evaluate_models"
     stage_dir.mkdir(parents=True, exist_ok=True)
     ensemble_items = _ensemble_items(ensemble_results)
-    ranked, best, best_single, ranked_ensembles, best_ensemble = _rank_candidates(
+    if not model_results and not ensemble_items:
+        raise ValueError("evaluate_models requires at least one model or ensemble candidate.")
+    ranked, best, _, _, best_ensemble = _rank_candidates(
         model_results,
         ensemble_items,
         selection_metric,
     )
-    metrics_by_candidate = _metrics_by_candidate_payload(ranked, selection_metric)
     task_id = cfg.get("runtime", {}).get("clearml_task_id") or _runtime_task_id()
-    code_version = _code_version()
+    version = _code_version()
 
     leaderboard_rows = build_leaderboard_rows(ranked, selection_metric)
     leaderboard_outputs = write_leaderboard_artifacts(
         leaderboard_rows=leaderboard_rows,
-        metrics_by_candidate=metrics_by_candidate,
-        selection_metric=selection_metric,
         stage_dir=stage_dir,
     )
     evaluation_predictions_path, prediction_plots = write_evaluation_predictions(best, stage_dir)
-    candidate_predictions_path, candidate_plots = write_candidate_predictions(ranked, stage_dir)
-    prediction_plots.update(candidate_plots)
     best_outputs = write_best_model_artifacts(
         best=best,
         best_ensemble=best_ensemble,
         selection_metric=selection_metric,
         stage_dir=stage_dir,
+        task_id=task_id,
+        code_version=version,
     )
-    decision_outputs = write_decision_artifacts(
-        stage_dir=stage_dir,
+    metrics_payload = _metrics_payload(
+        best=best,
+        best_outputs=best_outputs,
         model_results=model_results,
         ensemble_items=ensemble_items,
-        ranked_ensembles=ranked_ensembles,
-        best=best,
-        best_single=best_single,
-        best_ensemble=best_ensemble,
-        best_model_payload=best_outputs.best_model,
-        best_ensemble_payload=best_outputs.best_ensemble,
-        leaderboard_rows=leaderboard_rows,
-        metrics_by_candidate=metrics_by_candidate,
         selection_metric=selection_metric,
         task_id=task_id,
-        code_version=code_version,
-        evaluation_predictions_path=evaluation_predictions_path,
-        leaderboard_topk_path=leaderboard_outputs.tables["leaderboard_topk"],
+        code_version=version,
     )
-    artifacts = _evaluation_artifacts(
-        decision_outputs,
-        best_outputs,
-        evaluation_predictions_path,
-        candidate_predictions_path,
-    )
-    tables = _evaluation_tables(
-        leaderboard_outputs,
-        decision_outputs,
-        evaluation_predictions_path,
-        candidate_predictions_path,
-    )
-    plots = {**leaderboard_outputs.plots, **prediction_plots}
+    metrics_path = write_json(metrics_payload, stage_dir / "metrics.json")
+    artifacts = evaluation_artifacts(best_outputs, metrics_path, evaluation_predictions_path)
+    tables = evaluation_tables(leaderboard_outputs, evaluation_predictions_path)
     return EvaluationResult(
         stage="evaluate_models",
         stage_dir=stage_dir,
         best=best,
-        metrics=decision_outputs.metrics,
-        report=decision_outputs.report,
+        metrics=metrics_payload,
+        report={**metrics_payload, "ranked_models": leaderboard_rows},
         artifacts=artifacts,
         tables=tables,
-        plots=plots,
+        plots={**leaderboard_outputs.plots, **prediction_plots},
     )
+
+
+def _metrics_payload(
+    *,
+    best: CandidateResult,
+    best_outputs,
+    model_results: list[CandidateResult],
+    ensemble_items: list[CandidateResult],
+    selection_metric: str,
+    task_id: str | None,
+    code_version: str,
+) -> dict[str, Any]:
+    return {
+        **best.metrics,
+        "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
+        "code_version": code_version,
+        "source_task_id": task_id,
+        "best_model": best_outputs.best_model,
+        "best_ensemble": best_outputs.best_ensemble,
+        "selection_metric": selection_metric,
+        "candidate_count": len(model_results),
+        "ensemble_enabled": bool(ensemble_items),
+        "ensemble_count": len(ensemble_items),
+    }
 
 
 def _ensemble_items(
@@ -126,32 +157,3 @@ def _rank_candidates(
         ranked_ensembles,
         ranked_ensembles[0] if ranked_ensembles else None,
     )
-
-
-def _evaluation_artifacts(
-    decision_outputs: DecisionArtifacts,
-    best_outputs: BestModelArtifacts,
-    evaluation_predictions_path: Path | None,
-    candidate_predictions_path: Path | None,
-) -> dict[str, Path]:
-    artifacts = {**decision_outputs.artifacts, **best_outputs.artifacts}
-    _add_optional_path(artifacts, "evaluation_predictions", evaluation_predictions_path)
-    _add_optional_path(artifacts, "candidate_predictions", candidate_predictions_path)
-    return artifacts
-
-
-def _evaluation_tables(
-    leaderboard_outputs: LeaderboardArtifacts,
-    decision_outputs: DecisionArtifacts,
-    evaluation_predictions_path: Path | None,
-    candidate_predictions_path: Path | None,
-) -> dict[str, Path]:
-    tables = {**leaderboard_outputs.tables, **decision_outputs.tables}
-    _add_optional_path(tables, "evaluation_predictions", evaluation_predictions_path)
-    _add_optional_path(tables, "candidate_predictions", candidate_predictions_path)
-    return tables
-
-
-def _add_optional_path(mapping: dict[str, Path], key: str, path: Path | None) -> None:
-    if path is not None:
-        mapping[key] = path
