@@ -67,6 +67,6 @@ $$
 2. `prediction_vs_actual` で線形性・外れを確認する。
 3. `residual_histogram` で残差の偏りを見る。
 4. `residual_vs_predicted` で予測値帯ごとの誤差傾向を見る。
-5. `best_vs_ensemble_summary.csv` でアンサンブルの改善を確認する。
+5. `best_model.json` で推論に使う候補と推奨設定を確認する。
 
 単一指標だけで判断せず、業務上の誤差コスト、モデルの説明性、推論速度、運用環境依存を合わせて判断してください。

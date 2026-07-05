@@ -49,7 +49,7 @@ graph LR
 | `preprocess_features` | データ読込、分割、前処理、品質確認 | Dataset / CSV | 前処理 bundle、feature spec、processed data |
 | `train_model` | 候補モデルを学習 | preprocess artifacts | model、metrics、validation predictions |
 | `build_ensemble` | 上位モデルからアンサンブル作成 | model refs | ensemble model、members、weights |
-| `evaluate_models` | 候補比較、推奨モデル選択 | model refs / ensemble refs | leaderboard、decision summary、best model |
+| `evaluate_models` | 候補比較、推奨モデル選択 | model refs / ensemble refs | leaderboard、best model |
 
 Stage 分割により、失敗箇所を ClearML UI で追いやすく、モデル候補やアンサンブル方式の追加も Pipeline graph に反映しやすくなります。
 
@@ -62,7 +62,7 @@ Stage 分割により、失敗箇所を ClearML UI で追いやすく、モデ�
 | 拡張性 | 新モデルは `model.candidates` と `build_model` で追加できる |
 | 可読性 | ClearML 依存を `clearml/` に閉じ、処理本体は `pkgs/tabular` に集約 |
 | ユーザー利用 | ClearML UI では Basic 項目から開始できる |
-| 判断性 | `decision_summary.md` が推論への次アクションを示す |
+| 判断性 | `best_model.json` が推論への次アクションを示す |
 
 ## 注意すべき境界
 

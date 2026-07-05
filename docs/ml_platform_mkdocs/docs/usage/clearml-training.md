@@ -68,14 +68,15 @@ Basic で足りない場合は、詳細項目を編集します。
 | `preprocess_features` | `Runs/Tabular/Preprocess` | `data_quality_warnings`, `feature_summary_table` |
 | `train_<model>` | `Runs/Tabular/Train` | `metrics`, `validation_predictions`, feature importance |
 | `build_ensemble_<method>` | `Runs/Tabular/Ensemble` | ensemble metrics、members、weights |
-| `evaluate_models` | `Runs/Tabular/Evaluate` | `decision_summary.md`, `leaderboard` |
+| `evaluate_models` | `Runs/Tabular/Evaluate` | `best_model.json`, `leaderboard` |
+
+表の `train_<model>` と `build_ensemble_<method>` は ClearML step label です。実行設定の `Run/stage` は `train_model` または `build_ensemble` を使います。
 
 ## 成功判断
 
 学習 Pipeline の成功だけでなく、以下を確認してから推論に進みます。
 
 - `preprocess_features` に重大な data quality warning がない。
-- `evaluate_models/leaderboard` で最良候補の指標が妥当である。
-- `decision_summary.md` が推奨する `model_selector` を確認した。
-- アンサンブルが単体モデルより改善しているかを確認した。
+- `evaluate_models/best_model.json` で推奨 `source_task_id` と `model_selector` を確認した。
+- `evaluate_models/leaderboard` で候補比較が妥当である。
 - 推論入力データが、学習時の `feature_spec.json` と整合しそうである。

@@ -7,7 +7,7 @@ Keep changes close to the current ownership boundary.
 | Model support | `models.py`, `policy.py`, tests | Do not add model-specific templates. |
 | Feature processing | `features.py`, `training/preprocessing.py` | Preserve fit/transform consistency. |
 | Metrics or ranking | `metrics.py`, `training/ranking.py`, `training/evaluation.py` | Keep selection direction explicit; keep artifact writes out of ranking helpers. |
-| Evaluation artifacts | `training/leaderboard_artifacts.py`, `training/prediction_artifacts.py`, `training/best_model_artifacts.py`, `training/decision_artifacts.py` | Keep `training/evaluation.py` as orchestration and do not rename existing artifacts without characterization tests. |
+| Evaluation artifacts | `training/leaderboard_artifacts.py`, `training/prediction_artifacts.py`, `training/best_model_artifacts.py` | Keep `training/evaluation.py` as orchestration and do not rename existing artifacts without characterization tests. |
 | Tabular stage execution | `stage.py`, `stage_inputs.py`, `stage_result.py` | Keep stage dispatch, input resolution, and result writing separate. |
 | Inference behavior | `inference/*` | Preserve schema check and prediction column order. |
 | Plot/table output | `plotting/*` | Keep ClearML-readable tables and small, useful plots. |

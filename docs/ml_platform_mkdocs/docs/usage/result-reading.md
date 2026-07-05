@@ -8,8 +8,8 @@
 graph LR
   A[Data quality] --> B[Feature spec]
   B --> C[Model metrics]
-  C --> D[Leaderboard]
-  D --> E[Decision summary]
+  C --> D[Best model]
+  D --> E[Leaderboard]
   E --> F[Inference schema]
   F --> G[Predictions]
 ```
@@ -72,17 +72,18 @@ graph LR
 | `r2` | 決定係数 |
 | `selection_metric` | 順位付けに使った指標 |
 
-## 5. Decision summary
+## 5. Best model
 
-`decision_summary.md` は、学習結果を推論運用へつなげるための判断メモです。
+`evaluate_models/best_model.json` は、学習結果を推論運用へつなげるための判断 artifact です。
 
 確認すべき内容は以下です。
 
 - 最良候補のモデル名
 - 単体モデルかアンサンブルか
-- アンサンブルが単体モデルより改善したか
+- 選択指標と best の指標
+- 推奨 `Model/source_task_id`
 - 推奨 `Model/model_selector`
-- 推論 Task に入れるべき設定例
+- 推論 Task に入れるべき設定
 
 ## 6. 推論結果
 

@@ -7,7 +7,7 @@
 | パラメータ | 推奨 | 説明 |
 | --- | --- | --- |
 | `Model/source_type` | `task_id` | ClearML の学習結果からモデルを取得 |
-| `Model/source_task_id` | 評価または学習 Task ID | `decision_summary.md` を参照 |
+| `Model/source_task_id` | 評価または学習 Task ID | `best_model.json` の推奨設定を参照 |
 | `Model/model_selector` | `best` | 評価結果の推奨モデルを使用 |
 | `Input/clearml_dataset_id` | 推論 Dataset ID | 推論入力データ |
 | `Input/local_path` | 通常は空 | Agent から見える local path の場合のみ |

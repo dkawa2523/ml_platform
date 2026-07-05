@@ -79,7 +79,7 @@ outputs/
 | 前処理内容 | `preprocess_features/feature_spec.json` |
 | 各モデル指標 | `train_<model>/metrics.json`、`metrics_table.csv` |
 | 評価結果 | `evaluate_models/leaderboard.csv` |
-| 推論すべきモデル | `evaluate_models/decision_summary.md` |
+| 推論すべきモデル | `evaluate_models/best_model.json` |
 | 推論結果 | `predictions.csv` |
 | 推論スキーマ | `schema_check_summary.csv/json` |
 

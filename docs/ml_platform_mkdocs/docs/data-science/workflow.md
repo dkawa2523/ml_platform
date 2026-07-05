@@ -14,7 +14,7 @@ graph TB
   F --> G[Metric calculation]
   G --> H[Ensemble]
   H --> I[Leaderboard]
-  I --> J[Decision summary]
+  I --> J[Best model]
 ```
 
 ## データ品質確認
@@ -51,7 +51,7 @@ K-fold や外部 validation は現行実装では未対応です。まず holdou
 
 ## アンサンブルの位置づけ
 
-アンサンブルは、個別モデルの弱点を平均化するための候補です。ただし、常に最良とは限りません。`best_vs_ensemble_summary.csv` で単体 best と比較し、改善があるかを確認します。
+アンサンブルは、個別モデルの弱点を平均化するための候補です。ただし、常に最良とは限りません。`leaderboard.csv` で単体モデルと同じ候補として比較し、採用可否を確認します。
 
 ## 推論ワークフロー
 

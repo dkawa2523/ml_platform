@@ -12,9 +12,11 @@ ClearML UI から扱いやすい、tabular scalar regression 向けの学習・�
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
+Package stage 名は `preprocess_features`、`train_model`、`build_ensemble`、`evaluate_models` です。ClearML Pipeline 上では見分けやすさのため、step label と task name に `train_<model>` や `build_ensemble_<method>` の suffix を付けます。
+
 `preprocess_features` では、欠損、重複、ID重複、高カーディナリティ列、リーク疑いの列名などを軽量に確認できます。警告は失敗扱いにせず、致命的な入力不備だけをエラーにします。
 
-学習後は `evaluate_models/decision_summary.md` を最初に確認してください。推論タスクに設定する `Model/source_type`、`Model/source_task_id`、`Model/model_selector` が分かるようになっています。
+学習後は `evaluate_models/best_model.json` と `evaluate_models/leaderboard.csv` を確認してください。推論タスクに設定する `Model/source_type`、`Model/source_task_id`、`Model/model_selector` は `best_model.json` に集約されています。
 
 推論は学習 Pipeline とは別の user-facing task です。
 

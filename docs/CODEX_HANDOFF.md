@@ -12,6 +12,10 @@ Training graph:
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
+Package stage keys stay stable as `preprocess_features`, `train_model`,
+`build_ensemble`, and `evaluate_models`. The `<model>` and `<method>` suffixes
+are ClearML step labels/task names only.
+
 Inference is separate through `tabular_infer_template` with either:
 
 - `source_task_id + model_selector`

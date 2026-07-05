@@ -44,6 +44,10 @@ Runtime names:
 - `stage/evaluate_models/<run_name>`
 - `task/tabular_infer/<run_name>`
 
+These are ClearML task names and step labels. Package stage keys remain
+`train_model` and `build_ensemble`; the model/method suffixes are display names
+used by PipelineController.
+
 Required tags:
 
 - `domain:tabular`
@@ -164,23 +168,20 @@ Expected stage UI:
 | `preprocess_features` | feature counts | feature summary, data quality summary/warnings, missing rate, type counts | missing-rate bar |
 | `train_<model>` | rmse, mae, r2 | metrics, validation predictions, feature importance when available | prediction-vs-actual, residual histogram, residual-vs-predicted, feature importance |
 | `build_ensemble_<method>` | ensemble metrics | metrics, predictions, members, weights | method prediction/residual plots, weights, metrics bar |
-| `evaluate_models` | candidate, ensemble, best metrics | leaderboard, top-k, decision summary, evaluation predictions, candidate predictions | `leaderboard/table`, top-k scores, metric panel, Pareto, top-k prediction/residual plots |
+| `evaluate_models` | best metrics | leaderboard, best model, evaluation predictions | leaderboard metric panel, best prediction diagnostics |
 
-Compatibility alias artifacts may exist, but the UI should prefer canonical
-tables and plots. Full `candidate_predictions.csv` is evidence; the primary
-PLOTS view should stay top-k and leaderboard-focused.
+Compatibility alias artifacts may exist in old runs, but the current UI should
+prefer the minimal outputs from new runs.
 
-In `evaluate_models`, the first artifact to open is `decision_summary.md`.
-It is the canonical human-readable decision note and lists the recommended
-inference settings:
+In `evaluate_models`, the first artifact to open is `best_model.json`. It is the
+canonical inference decision artifact and lists the recommended inference
+settings:
 
 - `Model/source_type=task_id`
 - `Model/source_task_id=<training_or_evaluate_task_id>`
 - `Model/model_selector=best`
 
-`decision_summary.json` carries the same inference decision in machine-readable
-form. `evaluation_summary.csv` and `best_vs_ensemble_summary.csv` remain ClearML
-table views.
+Use `leaderboard.csv` when you need to compare all candidates.
 
 ## Inference UI
 
@@ -213,7 +214,7 @@ Inference tasks should not show candidate comparison plots.
 
 Drift/monitoring and Model Registry promotion are not current ClearML UI
 surfaces. Future monitoring should compare accumulated inference summaries;
-future registration should start from the `evaluate_models` decision summary.
+future registration should start from the `evaluate_models` best-model decision.
 
 ## P2 Items Not Shown In Current UI
 

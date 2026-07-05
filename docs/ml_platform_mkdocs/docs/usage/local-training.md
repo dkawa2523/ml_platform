@@ -55,12 +55,12 @@ graph TB
 | train | `metrics.json` | モデル単体の指標 |
 | ensemble | `ensemble_info_*.json` | アンサンブル構成 |
 | evaluate | `leaderboard.csv` | モデル比較表 |
-| evaluate | `decision_summary.md` | 推論に使うモデルの判断メモ |
+| evaluate | `best_model.json` | 推論に使うモデルと推奨設定 |
 | evaluate | `best_model.joblib` | 推論で使う推奨モデル |
 
-## `decision_summary.md` の位置づけ
+## `best_model.json` の位置づけ
 
-`evaluate_models` の `decision_summary.md` は、学習後に最初に確認する人間向けレポートです。最良候補、アンサンブル改善有無、推論 Task で指定すべき `model_selector` などを確認します。
+`evaluate_models` の `best_model.json` は、学習後に最初に確認する判断 artifact です。最良候補、選択指標、推論 Task で指定すべき `source_task_id` と `model_selector` を確認します。
 
 ## よく使う override
 
@@ -77,7 +77,6 @@ graph TB
 
 1. `preprocess_features/data_quality_warnings.csv`
 2. `preprocess_features/feature_spec.json`
-3. `evaluate_models/leaderboard.csv`
-4. `evaluate_models/decision_summary.md`
+3. `evaluate_models/best_model.json`
+4. `evaluate_models/leaderboard.csv`
 5. `evaluate_models/evaluation_predictions.csv`
-6. `evaluate_models/candidate_predictions.csv`

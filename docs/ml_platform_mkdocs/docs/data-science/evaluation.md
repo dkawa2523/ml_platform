@@ -43,20 +43,18 @@ $$
 | residual histogram | 残差の偏り、裾の重さ |
 | residual vs predicted | 予測値帯による誤差傾向 |
 | leaderboard table | 上位候補の比較 |
-| Pareto RMSE/R2 | 精度指標間のトレードオフ |
 
-## decision_summary.md
+## best_model.json
 
-`decision_summary.md` は、評価結果を運用判断へ翻訳するファイルです。データサイエンティストは、この内容を見て、推論に使う selector と注意事項を確認します。
+`best_model.json` は、評価結果を運用判断へ翻訳する canonical artifact です。データサイエンティストは、この内容を見て、推論に使う selector と参照 Task を確認します。
 
 | 項目 | 内容 |
 | --- | --- |
 | best model | 最良候補 |
 | artifact kind | model / ensemble |
 | metrics | best の指標 |
-| ensemble comparison | 単体 best との比較 |
 | recommended selector | 推論 Task の `Model/model_selector` |
-| recommended source | `source_task_id` の指定例 |
+| recommended source | 推論 Task の `Model/source_task_id` |
 
 ## 評価の限界
 

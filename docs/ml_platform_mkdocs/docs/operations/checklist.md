@@ -35,7 +35,7 @@
 - [ ] Pipeline が全 Stage 成功した。
 - [ ] `data_quality_warnings` に重大問題がない。
 - [ ] `leaderboard` を確認した。
-- [ ] `decision_summary.md` を確認した。
+- [ ] `best_model.json` を確認した。
 - [ ] 推論に使う `model_selector` を確認した。
 - [ ] 必要な Artifact が出ている。
 

@@ -15,6 +15,11 @@ Official graph:
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
+Package stage keys stay stable as `preprocess_features`, `train_model`,
+`build_ensemble`, and `evaluate_models`. ClearML Pipeline step labels add model
+or ensemble method suffixes, such as `train_ridge` and
+`build_ensemble_weighted`, for operator readability.
+
 Primary task configs:
 
 - `config/tasks/tabular_pipeline.yaml`
@@ -81,22 +86,16 @@ that can be compared in `evaluate_models`.
 `evaluate_models` is the comparison dashboard. It owns:
 
 - `leaderboard.csv`
-- `leaderboard_topk.csv`
-- `evaluation_summary.csv`
-- `best_vs_ensemble_summary.csv`
-- `metrics_by_candidate.json` and `.csv`
+- `best_model.joblib`
 - `best_model.json`
-- `evaluation_report.json`
 - `evaluation_predictions.csv`
-- `candidate_predictions.csv`
-- `decision_summary.md` / `decision_summary.json` as the canonical inference
-  decision note
 - `manifest.json`
 
-ClearML PLOTS should focus on readable leaderboard views: table, top-k score
-bar, metric panel, Pareto scatter, top-k prediction-vs-actual, top-k residual
-histogram, and top-k residual-vs-predicted. Full candidate predictions stay as
-table/artifact evidence, not a noisy all-series plot.
+`best_model.json` is the canonical inference decision artifact. It carries the
+recommended `Model/source_type`, `Model/source_task_id`, and
+`Model/model_selector`. `leaderboard.csv` is the single detailed comparison
+table. ClearML PLOTS should focus on the leaderboard metric panel and best-model
+prediction diagnostics.
 
 ## Inference
 
@@ -145,8 +144,8 @@ The following items are intentionally not implemented in the current release and
 are tracked in `docs/ROADMAP.md`:
 
 - HPO / hyperparameter optimization behind a small Basic-level control.
-- Model Registry flow from `evaluate_models` decision summaries to approved model
-  registration.
+- Model Registry flow from `evaluate_models` best-model decisions to approved
+  model registration.
 - Drift / monitoring from accumulated inference summaries.
 - Task Registry for non-scalar outputs such as 1D/2D output or mode
   decomposition.

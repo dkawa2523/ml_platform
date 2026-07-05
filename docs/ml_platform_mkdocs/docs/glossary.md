@@ -14,7 +14,7 @@
 | feature_spec | 学習時の特徴量仕様を記録した JSON |
 | preprocess_bundle | 学習時に fit した前処理 transformer を含む joblib |
 | leaderboard | 候補モデルとアンサンブルの比較表 |
-| decision_summary | 評価結果から推論設定を判断するための要約 |
+| best_model.json | 評価結果から推論設定を判断するための canonical artifact |
 | schema_check_summary | 推論入力が学習時特徴量仕様と整合しているかの確認結果 |
 | Basic/model_suite | ClearML UI で候補モデル群を選ぶ基本パラメータ |
 | Basic/quality_mode | モデルパラメータ preset を選ぶ基本パラメータ。HPO ではない |

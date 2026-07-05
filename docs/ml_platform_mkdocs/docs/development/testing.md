@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Unit | 小さな関数 | split、feature config、metric、model candidate |
 | Smoke | Local pipeline | 小さな CSV で学習・評価・推論が通る |
-| Contract light | Artifact 存在 | `leaderboard.csv`、`decision_summary.md`、`predictions.csv` |
+| Contract light | Artifact 存在 | `best_model.json`、`leaderboard.csv`、`predictions.csv` |
 | ClearML dry-run | Pipeline plan | テンプレート同期前の plan 確認 |
 | Manual ClearML | UI / Queue / Dataset | 実サーバー上の表示と実行確認 |
 
@@ -42,7 +42,7 @@ uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearm
 | split | `random`、`group`、`time`、`fixed` が期待通り分割される |
 | data quality | 欠損、重複、リーク疑いが軽量に検出される |
 | model suite | `fast`、`interpretable`、`tree`、`custom` の候補が正しい |
-| evaluate | `leaderboard` と `decision_summary` が出る |
+| evaluate | `best_model.json` と `leaderboard` が出る |
 | inference | schema check と slim な `predictions.csv` が出る |
 | ClearML boundary | `pkgs/core` と `pkgs/tabular` が ClearML SDK に依存しない |
 
@@ -62,5 +62,5 @@ uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearm
 - PipelineController が controller queue で動く。
 - Stage が stage queue で動く。
 - Dataset ID と dataset file が解決できる。
-- `evaluate_models/decision_summary.md` が読める。
+- `evaluate_models/best_model.json` が読める。
 - `template/tabular_infer` で `schema_check_summary` と `predictions.csv` が出る。
