@@ -41,6 +41,11 @@ GBM candidates when their packages are installed.
 
 ## Artifact Checklist
 
+This dated run predates the lean artifact cleanup. Its transformed feature
+matrices were present at the time, but current runs no longer emit
+`train_features.csv` or `valid_features.csv`; the files were unused downstream
+and could grow prohibitively large for high-cardinality data.
+
 | artifact | result |
 | --- | --- |
 | `preprocess_features/preprocess_bundle.joblib` | present |
@@ -48,8 +53,6 @@ GBM candidates when their packages are installed.
 | `preprocess_features/data_quality_summary.json` | present |
 | `preprocess_features/data_quality_summary_table.csv` | present |
 | `preprocess_features/data_quality_warnings.csv` | present |
-| `preprocess_features/train_features.csv` | present |
-| `preprocess_features/valid_features.csv` | present |
 | `preprocess_features/processed_train.csv` | present |
 | `preprocess_features/processed_valid.csv` | present |
 | `train_linear/model.joblib` | present |

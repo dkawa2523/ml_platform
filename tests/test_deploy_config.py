@@ -1,35 +1,54 @@
 from pathlib import Path
 import importlib.util
 
+import yaml
 
-def test_execution_image_installs_gbm_extras():
+
+def test_execution_image_does_not_bake_repository_code():
     dockerfile = Path("deploy/base/Dockerfile").read_text(encoding="utf-8")
 
     assert "libgomp1" in dockerfile
-    assert '-e "pkgs/tabular[gbm]"' in dockerfile
+    assert "COPY . ." not in dockerfile
+    assert "pkgs/tabular" not in dockerfile
 
 
-def test_agent_config_exposes_execution_image_site_packages():
-    configmap = Path("deploy/base/configmap.yaml").read_text(encoding="utf-8")
+def test_agent_uses_isolated_task_environment():
     dockerfile = Path("deploy/base/Dockerfile").read_text(encoding="utf-8")
-    manifest = Path("deploy/base/clearml-agent.yaml").read_text(encoding="utf-8")
+    manifests = "\n".join(path.read_text(encoding="utf-8") for path in Path("deploy").rglob("*.yaml"))
 
-    assert "CLEARML_AGENT_FORCE_SYSTEM_SITE_PACKAGES" in configmap
-    assert '"true"' in configmap
-    assert "agent.package_manager.system_site_packages: true" in dockerfile
-    assert "--config-file /tmp/clearml-agent.conf" in dockerfile
-    assert "agent.package_manager.system_site_packages: true" in manifest
-    assert "--config-file /tmp/clearml-agent.conf" in manifest
+    assert "system_site_packages" not in dockerfile
+    assert "system_site_packages" not in manifests
 
 
-def test_profiles_define_pullable_execution_image_reference():
+def test_agent_deployments_separate_controller_and_worker_queues():
+    controller = yaml.safe_load(Path("deploy/base/controller.yaml").read_text(encoding="utf-8"))
+    worker = yaml.safe_load(Path("deploy/base/worker.yaml").read_text(encoding="utf-8"))
+
+    assert controller["metadata"]["name"] == "ml-platform-clearml-controller"
+    assert worker["metadata"]["name"] == "ml-platform-clearml-worker"
+    assert controller["spec"]["template"]["spec"]["containers"][0]["env"][0]["value"] == "controller"
+    assert worker["spec"]["template"]["spec"]["containers"][0]["env"][0]["value"] == "default"
+
+
+def test_local_compose_matches_profile_queue_split_without_persistent_agent_home():
+    compose = yaml.safe_load(Path("deploy/local/compose.yaml").read_text(encoding="utf-8"))
+
+    assert compose["services"]["controller"]["environment"]["CLEARML_AGENT_QUEUE"] == "controller"
+    assert compose["services"]["worker"]["environment"]["CLEARML_AGENT_QUEUE"] == "default"
+    assert "volumes" not in compose["services"]["controller"]
+    assert "volumes" not in compose["services"]["worker"]
+
+
+def test_profiles_define_environment_specific_execution_image_reference():
     dev_profile = Path("config/profiles/clearml-dev.yaml").read_text(encoding="utf-8")
     prod_profile = Path("config/profiles/clearml-prod.yaml").read_text(encoding="utf-8")
 
     assert "execution:" in dev_profile
-    assert "image: registry.example.com/ml-platform/clearml-agent:dev" in dev_profile
+    assert "image: ml-platform-clearml-agent:dev" in dev_profile
     assert "execution:" in prod_profile
-    assert "image: registry.example.com/ml-platform/clearml-agent:prod" in prod_profile
+    assert "image: ${ML_PLATFORM_CLEARML_IMAGE}" in prod_profile
+    assert "python_binary: python3.11" in dev_profile
+    assert "revision: HEAD" in dev_profile
 
 
 def test_gbm_packages_are_not_required_runtime_dependencies():

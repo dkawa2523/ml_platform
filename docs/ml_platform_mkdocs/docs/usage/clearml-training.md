@@ -28,13 +28,18 @@ graph LR
 
 ## データ入力
 
-Remote 実行では、次の 3 つを設定します。
+Remote 実行では、まず `Input/clearml_dataset_id` を設定します。データ形式に
+応じて、残りの入力は次のどちらか一方を使います。
 
-| パラメータ | 必須 | 説明 |
-| --- | --- | --- |
-| `Input/clearml_dataset_id` | はい | ClearML Dataset ID |
-| `Input/dataset_file` | はい | Dataset 内の CSV/Parquet ファイル名 |
-| `Input/target_column` | はい | 学習対象の目的変数 |
+| データ形式 | 設定するパラメータ |
+| --- | --- |
+| 1 ファイルのスカラー目的変数 | `Input/dataset_file` と `Input/target_column` |
+| 目的変数ごとに分かれた表 | `Input/source_manifest` |
+
+`Input/source_manifest` は Dataset ルートからの相対パスです。複数表を使う場合、
+`Input/dataset_file` と `Input/target_column` は空にします。各表の列名は
+manifest で共通の座標名と値に対応付けるため、元ファイル間で同じである必要は
+ありません。
 
 `Input/local_path` は Local または Agent 上にマウントされたファイルを使う場合のみ指定します。通常の Remote 実行では空にします。
 
@@ -59,23 +64,27 @@ Basic で足りない場合は、詳細項目を編集します。
 | Model | `Model/candidates` | `custom` 相当の直接指定。モデル名は対応表を参照 |
 | Model params | `Model/model_params_by_name` | 明示した場合は `Basic/quality_mode` より優先 |
 | Ensemble | `Model/ensemble_methods`, `Model/ensemble_top_k` | `mean_topk`, `weighted`, `median` を指定可能 |
-| Output | `Output/report_plots` | Plot 出力を抑制したい場合に `false` |
+| Output | `Output/upload_plots` | Plot 画像の ClearML アップロードを抑制したい場合に `false` |
+
+乱数seedは `Run/seed` だけを使用します。モデル別パラメータ内の
+`random_state` / `random_seed` はstage生成時に `Run/seed` へ統一されます。
 
 ## 実行後に見る場所
 
 | Stage | Project | 最初に見るもの |
 | --- | --- | --- |
-| `preprocess_features` | `Runs/Tabular/Preprocess` | `data_quality_warnings`, `feature_summary_table` |
-| `train_<model>` | `Runs/Tabular/Train` | `metrics`, `validation_predictions`, feature importance |
-| `build_ensemble_<method>` | `Runs/Tabular/Ensemble` | ensemble metrics、members、weights |
-| `evaluate_models` | `Runs/Tabular/Evaluate` | `decision_summary.md`, `leaderboard` |
+| `preprocess_features` | `Runs/Tabular/Preprocess` | `data_quality_summary`, `data_quality_warnings` |
+| `train_<model>` | `Runs/Tabular/Train` | `metrics`, `validation_predictions` |
+| `build_ensemble_<method>` | `Runs/Tabular/Ensemble` | ensemble metrics、members |
+| `evaluate_models` | `Runs/Tabular/Evaluate` | `best_model.json`, `leaderboard` |
+
+表の `train_<model>` と `build_ensemble_<method>` は ClearML step label です。実行設定の `Run/stage` は `train_model` または `build_ensemble` を使います。
 
 ## 成功判断
 
 学習 Pipeline の成功だけでなく、以下を確認してから推論に進みます。
 
 - `preprocess_features` に重大な data quality warning がない。
-- `evaluate_models/leaderboard` で最良候補の指標が妥当である。
-- `decision_summary.md` が推奨する `model_selector` を確認した。
-- アンサンブルが単体モデルより改善しているかを確認した。
+- `evaluate_models/best_model.json` で推奨 `source_task_id` と `model_selector` を確認した。
+- `evaluate_models/leaderboard` で候補比較が妥当である。
 - 推論入力データが、学習時の `feature_spec.json` と整合しそうである。

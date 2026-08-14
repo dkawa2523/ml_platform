@@ -1,13 +1,14 @@
 # ml_platform Development Charter
 
-`ml_platform` is a ClearML-based product foundation for tabular scalar
-regression. Keep it easy to run from ClearML UI, easy to inspect after a run,
-and easy for data scientists to extend without copying legacy repository
-structure.
+`ml_platform` is a ClearML-based product foundation for tabular regression.
+It supports a scalar table and a sparse collection of target-specific tables
+with a shared coordinate schema. Keep it easy to run from ClearML UI, easy to
+inspect after a run, and easy for data scientists to extend without copying
+legacy repository structure.
 
 ## Product Boundary
 
-- `pkgs/core`: ClearML-free config, IO, result, registry, and artifact helpers.
+- `pkgs/core`: ClearML-free config, IO, result, and artifact helpers.
 - `pkgs/tabular`: ClearML-free tabular data, features, models, ensembles,
   metrics, plots, evaluation, and inference.
 - `clearml/`: ClearML SDK boundary: Task, Dataset, PipelineController,
@@ -57,8 +58,10 @@ environments may run the dependency-free subset by overriding `model.candidates`
 Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 
 Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
-Optimization, stacking, task registries, and non-scalar outputs are P2 roadmap
-items. Do not implement them in the current product flow.
+Sparse target collections use one independent scalar model per target inside a
+single model bundle; they do not align, fill, or pivot target coordinates.
+Optimization, stacking, broad task registries, and joint tensor outputs are P2
+roadmap items. Do not implement them in the current product flow.
 
 ## Extension Rules
 
@@ -103,10 +106,10 @@ A successful run is not enough. ClearML UI must show:
 For product-flow changes, run:
 
 ```powershell
-python scripts/make_sample_data.py
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python scripts/make_sample_data.py
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; uv run python -m pytest -q
 ```
 
 Boundary check:
@@ -114,3 +117,17 @@ Boundary check:
 ```powershell
 rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular
 ```
+
+## Review Response Rules
+
+- Do not run `git push` from this repository unless the user explicitly requests it.
+- Do not display, create, or commit secrets, credentials, ClearML API keys, or `.env` contents.
+- Keep each change focused on one purpose. Do not mix review responses with unrelated improvements.
+- Include `Review-Refs: Rxx` in the body of commits that address review comments.
+- Put review-external improvements on `feature/non-review-improvements`.
+- After each review response task, update `docs/review/PR28_REVIEW_MAP.md` and `docs/review/CODEX_WORK_LOG.md`.
+- Add characterization tests before large refactors.
+- Split `pipeline.py`, `infer.py`, and `plots.py` only after existing-output compatibility tests are in place.
+- If ClearML localhost UI or Kubernetes verification cannot be run, record `manual verification required`.
+- Prefer `pyproject.toml` / uv-managed dependencies for dependency changes.
+- Edit requirements files only for compatibility reasons, and record the reason in the work log.

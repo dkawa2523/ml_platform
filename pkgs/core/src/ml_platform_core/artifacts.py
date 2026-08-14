@@ -59,13 +59,21 @@ def write_config_snapshot(config: dict[str, Any], run_dir: str | Path) -> Path:
     return path
 
 
-def _artifact_entry(path: str | Path) -> dict[str, Any]:
+def _artifact_entry(path: str | Path, hashes: dict[str, str]) -> dict[str, Any]:
     p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Manifest output does not exist: {p}")
+    key = str(p.resolve())
+    if p.is_file() and key not in hashes:
+        hashes[key] = file_hash(p)
     return {
         "path": str(p),
-        "exists": p.exists(),
-        "sha256": file_hash(p) if p.exists() and p.is_file() else None,
+        "sha256": hashes.get(key),
     }
+
+
+def _artifact_entries(paths: dict[str, str | Path] | None, hashes: dict[str, str]) -> dict[str, dict[str, Any]]:
+    return {name: _artifact_entry(path, hashes) for name, path in (paths or {}).items()}
 
 
 def write_manifest(
@@ -80,6 +88,7 @@ def write_manifest(
 ) -> Path:
     """Write a small manifest for reproducibility and handoff inspection."""
     run_dir = Path(run_dir)
+    hashes: dict[str, str] = {}
     manifest = {
         "created_at": utc_timestamp(),
         "task": config.get("task"),
@@ -88,9 +97,9 @@ def write_manifest(
         "run_dir": str(run_dir),
         "config_meta": config.get("_meta", {}),
         "metrics": metrics or {},
-        "artifacts": {name: _artifact_entry(path) for name, path in (artifacts or {}).items()},
-        "tables": {name: _artifact_entry(path) for name, path in (tables or {}).items()},
-        "plots": {name: _artifact_entry(path) for name, path in (plots or {}).items()},
+        "artifacts": _artifact_entries(artifacts, hashes),
+        "tables": _artifact_entries(tables, hashes),
+        "plots": _artifact_entries(plots, hashes),
         "extra": extra or {},
     }
     return write_json(manifest, run_dir / "manifest.json")

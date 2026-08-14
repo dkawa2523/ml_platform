@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-platform-clearml-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-platform-clearml-controller
+  template:
+    metadata:
+      labels:
+        app: ml-platform-clearml-controller
+    spec:
+      containers:
+        - name: clearml-agent
+          image: ml-platform-clearml-agent:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CLEARML_AGENT_QUEUE
+              value: controller
+          envFrom:
+            - secretRef:
+                name: clearml-credentials

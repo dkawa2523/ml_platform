@@ -74,11 +74,13 @@ graph TB
 | `preprocess_features` | `data_quality_warnings` | 致命的な警告がない |
 | `train_<model>` | `metrics`, `validation_predictions` | 指標と残差が妥当 |
 | `build_ensemble_<method>` | `ensemble_metrics_table`, weights | 単体 best と比較する |
-| `evaluate_models` | `decision_summary.md`, `leaderboard` | 推論に使う候補が明確 |
+| `evaluate_models` | `best_model.json`, `leaderboard` | 推論に使う候補が明確 |
+
+`train_<model>` と `build_ensemble_<method>` は ClearML 上の step label です。package stage key は `train_model` と `build_ensemble` のまま固定します。
 
 ## 推奨運用
 
 - 初回は `Basic/model_suite=fast` で worker と Dataset の疎通を確認する。
 - 問題なければ `default` または目的に応じた suite に広げる。
 - GBM 系が dependency error で失敗する場合は、ClearML Agent image または remote package sync を見直す。
-- `decision_summary.md` を読んでから推論 Task を作る。
+- `best_model.json` の推奨推論設定を確認してから推論 Task を作る。

@@ -1,6 +1,6 @@
 # Inference Task Reference Verification
 
-Date: 2026-06-16
+Date: 2026-08-14
 
 ## Scope
 
@@ -33,10 +33,9 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 Expected artifacts:
 
 - `predictions`
+- `schema_check_summary`
 - `manifest`
-- optional `model_info`
-- optional `feature_spec`
-- optional `preprocess_bundle`
+- `model_info`
 
 Expected behavior:
 
@@ -45,8 +44,7 @@ Expected behavior:
 - `model_selector=best` resolves `evaluate_models/best_model.joblib`
 - `model_selector=ensemble` resolves the best ensemble artifact
 - `model_selector=ensemble:<method>` resolves the named ensemble method artifact
-- feature alignment uses explicit feature columns, model metadata,
-  `feature_spec.json`, or `preprocess_bundle` metadata when available
+- feature alignment uses `model_info.json` and the serialized estimator
 
 Observed local result:
 
@@ -54,17 +52,12 @@ Observed local result:
 - resolved model:
   `outputs\latest_training_pipeline\evaluate_models\best_model.joblib`
 - resolved metadata:
-  `outputs\latest_training_pipeline\evaluate_models\best_model.json`
-- resolved feature spec:
-  `outputs\latest_training_pipeline\preprocess_features\feature_spec.json`
-- resolved preprocess bundle:
-  `outputs\latest_training_pipeline\preprocess_features\preprocess_bundle.joblib`
+  `outputs\latest_training_pipeline\evaluate_models\model_info.json`
 - predictions:
   `outputs\latest_infer\predictions.csv`
 - current local contract writes `schema_check_summary.json` and
-  `schema_check_summary.csv`; `predictions.csv` is slim and contains
-  `row_index`, available ID columns, `prediction`, and lightweight model
-  metadata instead of all input features
+  `schema_check_summary.csv`; `predictions.csv` contains only `row_index`,
+  available ID columns, and `prediction`
 - pytest coverage confirms `model_selector=ensemble` and
   `model_selector=ensemble:<method>` resolve ensemble artifacts with artifact
   kind `ensemble`.
@@ -86,7 +79,6 @@ Expected primary UI parameters on `tabular_infer_template`:
 - `Model/model_selector`
 - `Model/local_model_path`
 - `Output/prediction_name`
-- `Output/chunk_size`
 
 Result: pass
 
@@ -107,16 +99,23 @@ Command:
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Result: `89 passed`
+Result: see the current repository test run; historical counts are not a release gate.
 
 ## Remote Verification
 
-Result: not run
+Result: pass for `source_type=task_id`, `model_selector=best`
 
-Remote dev server execution still needs to be performed for:
+- synced inference template: `ecd6aebae5b746ce88b4f63f770a16c7`
+- completed inference task: `448867d1353d4582b7d422a0e6cd13fd`
+- clean-image verification task: `bef08e98a3b54ecdac10f44f67917244`
+- source evaluate task: `aa8c9d0bc3c1448ebd3419ab9810a6bd`
+- resolved model: `linear`; schema status: `ok`
+- required/provided features: 3/3; missing and extra columns: none
+- predictions: 200 rows, zero null values
+- template and both runs used commit
+  `e06b0fdd83ab1a8e691014acf551919bb574002f`, `python3.11`, and
+  `ml-platform-clearml-agent:dev`
+- clean Agent execution reported zero Git editable requirements
 
-- `source_type=task_id`, `model_selector=best`
-- `source_type=task_id`, `model_selector=ensemble`
-
-Remote execution evidence remains the release gate for ClearML server behavior;
-the template contract and local behavior are covered by dry-run and tests.
+`model_selector=ensemble` remains a separate scenario because this P1/P2
+verification intentionally disabled ensemble construction.

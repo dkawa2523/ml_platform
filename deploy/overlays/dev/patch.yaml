@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ml-platform-clearml-agent-config
-data:
-  CLEARML_AGENT_QUEUE: default

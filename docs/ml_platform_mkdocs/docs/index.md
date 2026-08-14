@@ -34,7 +34,7 @@ graph LR
   C2 --> E
   C3 --> E
   D --> E
-  E --> F[decision_summary]
+  E --> F[best_model.json]
   F --> G[tabular_infer]
   G --> H[predictions.csv]
 ```

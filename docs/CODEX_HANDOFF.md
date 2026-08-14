@@ -12,6 +12,10 @@ Training graph:
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
+Package stage keys stay stable as `preprocess_features`, `train_model`,
+`build_ensemble`, and `evaluate_models`. The `<model>` and `<method>` suffixes
+are ClearML step labels/task names only.
+
 Inference is separate through `tabular_infer_template` with either:
 
 - `source_task_id + model_selector`
@@ -49,10 +53,10 @@ Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 Use dependency-free candidates unless GBM extras are installed locally:
 
 ```powershell
-python scripts/make_sample_data.py
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python scripts/make_sample_data.py
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+uv run python -m pytest -q
 ```
 
 ## ClearML Checks
@@ -60,14 +64,14 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
 Dry-run:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 Real sync:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
 Template sync intentionally recreates the Pipeline draft. ClearML stores the
@@ -75,9 +79,10 @@ graph separately from task parameters, so updating an existing draft can leave
 New Run inputs current while the graph stays old. Do not rely on old run clones
 when validating template changes.
 
-Before remote execution, verify the profile `repository`, `branch`,
-`working_dir`, `controller_queue`, `stage_queue`, and optional
-`artifact_output_uri`. Run the PipelineController on `controller_queue`; stages
+Before remote execution, verify `clearml.execution` (`repository`, `revision`,
+`working_dir`, `image`, and `python_binary`), `controller_queue`, `stage_queue`,
+and optional `artifact_output_uri`. Sync resolves `revision` to one commit used
+by all templates. Run the PipelineController on `controller_queue`; stages
 run on `stage_queue`. Remote runs should use `Input/clearml_dataset_id`,
 `Input/dataset_file`, and `Input/target_column`; `Input/local_path` works only
 when the Agent can see that path.
@@ -92,12 +97,10 @@ Old ClearML tasks may remain on the server until manually archived.
 
 ## Import Safety Notes
 
-The repository keeps a top-level `clearml/` operations directory for now because
-synced templates execute `clearml/app.py` and `clearml/pipelines.py` directly.
-Those entrypoints use `clearml/_entrypoint_bootstrap.py` only to locate sibling
-operations modules and editable package source roots. Official SDK imports must
-continue to go through `adapter.import_clearml_sdk()`, which temporarily removes
-the repo root from `sys.path` to avoid local-directory shadowing.
+The repository keeps a top-level `clearml/` operations directory because synced
+templates execute `clearml/app.py` and `clearml/pipelines.py` directly. Official
+SDK imports must continue to go through `adapter.import_clearml_sdk()` so the
+local operations directory does not shadow the external `clearml` package.
 
 Do not rename `clearml/` in a small maintenance change. A safe future migration
 should add new script/module entrypoints first, sync templates to the new

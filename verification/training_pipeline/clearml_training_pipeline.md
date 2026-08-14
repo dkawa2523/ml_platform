@@ -1,6 +1,6 @@
 # ClearML Training Pipeline Verification
 
-Date: 2026-06-16
+Date: 2026-08-14
 
 ## Scope
 
@@ -63,27 +63,27 @@ Result: pass
 - `evaluate_models` receives JSON `Input/model_refs` and `Input/ensemble_refs`
 - Pipeline UI params do not expose `Model/search_*`, `Run/pipeline_mode`, or
   `Model/ensemble_method`
-- `Model/ensemble_enabled` remains a blank detailed override; explicit values
-  take precedence over `Basic/use_ensemble`
+- `Basic/use_ensemble` is the single public ensemble switch
 
 ## Expected Stage Artifacts
 
-- `preprocess_features`: `preprocess_bundle`, `feature_spec`, `data_quality_summary`, `data_quality_summary_table`, `data_quality_warnings`, `processed_train`, `processed_valid`, `train_features`, `valid_features`
+- `preprocess_features`: `preprocess_bundle`, `feature_spec`, `data_quality_summary`, `data_quality_summary_table`, `data_quality_warnings`, `processed_train`, `processed_valid`
 - `train_<model>`: `model`, `model_info`, `validation_predictions`, `metrics`, lightweight validation plots
 - `build_ensemble_<method>`: `model_<method>`, `model_info_<method>`, `ensemble_info_<method>`, `ensemble_predictions_<method>`, `metrics_<method>`, lightweight ensemble plots
 - `evaluate_models`: `leaderboard`, `best_model`, `best_model_json`, `ensemble_refs`, `ensemble_info_by_method`, `evaluation_report`, `metrics`, `manifest`
 
 ## Remote Verification
 
-Result: not run
+Result: pass
 
-Remote dev server execution still needs to be performed from the ClearML
-Pipeline tab:
-
-- `tabular_train_pipeline_template`
-- candidates: `linear`, `ridge`, `lasso`, `elasticnet`, `random_forest`,
-  `extra_trees`, `gradient_boosting`, `lightgbm`, `xgboost`, `catboost`
-- ensemble methods: `mean_topk`, `weighted`, `median`
-
-Remote execution evidence remains the release gate. Slim/custom workers may
-remove the optional GBM candidates when those packages are not installed.
+- synced Pipeline template: `808d1808618c419ea302eb1320a96143`
+- completed Pipeline: `3290c45a3f7041b5a91f23027ba87266`
+- completed evaluate stage: `aa8c9d0bc3c1448ebd3419ab9810a6bd`
+- graph: preprocess 1, fast-suite train 7, evaluate 1; all 9 stages completed
+- controller, stage templates, and all stage runs used commit
+  `e06b0fdd83ab1a8e691014acf551919bb574002f`, `python3.11`, and
+  `ml-platform-clearml-agent:dev`
+- Pipeline template exposed 33 `Args/*` inputs and no duplicate top-level
+  `Basic/*`, `Input/*`, `Model/*`, or other runtime inputs
+- the clean execution image build context contained no repository source; a
+  clean Agent task reported zero Git editable requirements

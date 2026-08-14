@@ -15,7 +15,4 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt clearml-agent
 
-COPY . .
-RUN pip install --no-cache-dir -e pkgs/core -e "pkgs/tabular[gbm]"
-
-CMD ["sh", "-lc", "printf 'agent.package_manager.system_site_packages: true\\n' > /tmp/clearml-agent.conf && clearml-agent --config-file /tmp/clearml-agent.conf daemon --queue \"$CLEARML_AGENT_QUEUE\""]
+CMD ["sh", "-lc", "clearml-agent daemon --queue \"${CLEARML_AGENT_QUEUE:-default}\""]

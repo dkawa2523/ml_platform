@@ -44,6 +44,10 @@ Runtime names:
 - `stage/evaluate_models/<run_name>`
 - `task/tabular_infer/<run_name>`
 
+These are ClearML task names and step labels. Package stage keys remain
+`train_model` and `build_ensemble`; the model/method suffixes are display names
+used by PipelineController.
+
 Required tags:
 
 - `domain:tabular`
@@ -55,8 +59,11 @@ Required tags:
 
 ## Training New Run Parameters
 
-Remote runs should use `Input/clearml_dataset_id`, `Input/dataset_file`, and
-`Input/target_column`. `Input/local_path` is for local or mounted-path runs.
+Scalar remote runs use `Input/clearml_dataset_id`, `Input/dataset_file`, and
+`Input/target_column`. Sparse target collections use a Dataset directory with
+`Input/source_manifest`; `Input/dataset_file` and `Input/target_column` are
+left empty. `Input/local_path` is for local or mounted-path runs. The target
+collection keeps one Pipeline step per model candidate, not per target.
 
 Basic parameters are the recommended first-run surface:
 
@@ -88,6 +95,9 @@ or search:
 If `Model/model_params_by_name` or `Model/params` is explicitly edited, that
 detailed value takes precedence. With `Basic/model_suite=custom`, candidates and
 params stay driven by the detailed `Model/*` fields.
+
+`Run/seed` is the only random-seed control. Model-specific `random_state` and
+`random_seed` values are normalized to `Run/seed` before stage execution.
 
 HPO/search settings are not part of the user-facing Pipeline New Run surface.
 Future optimization should remain behind a small Basic-level control rather
@@ -122,7 +132,7 @@ Detailed user-facing parameters remain available:
 - `Model/ensemble_top_k`
 - `Model/evaluation_metrics`
 - `Model/selection_metric`
-- `Output/report_plots`
+- `Output/upload_plots`
 
 `Split/method` values are `random`, `group`, `time`, and `fixed`. `random` uses
 the existing seeded holdout behavior. `group` requires `Split/group_column` and
@@ -139,10 +149,11 @@ all supported models:
 ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting", "lightgbm", "xgboost", "catboost"]
 ```
 
-The selected profile sets `clearml.execution.image`. Synced templates also add
-GBM packages to the remote execution venv so the 10-model default can run on
-the standard Agent image. `Basic/model_suite=gbm` can fail in local or slim
-custom environments unless LightGBM, XGBoost, and CatBoost are installed.
+The selected profile sets the repository revision, image, and Python binary in
+`clearml.execution`. Sync pins the resolved commit on the controller, stage,
+and inference templates. Synced templates add GBM packages to the isolated
+remote task venv. `Basic/model_suite=gbm` can fail in local or slim custom
+environments unless LightGBM, XGBoost, and CatBoost are installed.
 Slim/custom runs may choose `Basic/model_suite=fast` or remove GBM names from
 `Model/candidates`.
 
@@ -164,24 +175,20 @@ Expected stage UI:
 | `preprocess_features` | feature counts | feature summary, data quality summary/warnings, missing rate, type counts | missing-rate bar |
 | `train_<model>` | rmse, mae, r2 | metrics, validation predictions, feature importance when available | prediction-vs-actual, residual histogram, residual-vs-predicted, feature importance |
 | `build_ensemble_<method>` | ensemble metrics | metrics, predictions, members, weights | method prediction/residual plots, weights, metrics bar |
-| `evaluate_models` | candidate, ensemble, best metrics | leaderboard, top-k, decision summary, evaluation predictions, candidate predictions | `leaderboard/table`, top-k scores, metric panel, Pareto, top-k prediction/residual plots |
+| `evaluate_models` | best metrics | leaderboard, best model, evaluation predictions | leaderboard metric panel, best prediction diagnostics |
 
-Compatibility alias artifacts may exist, but the UI should prefer canonical
-tables and plots. Full `candidate_predictions.csv` is evidence; the primary
-PLOTS view should stay top-k and leaderboard-focused.
+Compatibility alias artifacts may exist in old runs, but the current UI should
+prefer the minimal outputs from new runs.
 
-In `evaluate_models`, the first artifact to open is `decision_summary.md`.
-It is the canonical human-readable decision note and lists the recommended
-inference settings:
+In `evaluate_models`, the first artifact to open is `best_model.json`. It is the
+canonical inference decision artifact and lists the recommended inference
+settings:
 
 - `Model/source_type=task_id`
 - `Model/source_task_id=<training_or_evaluate_task_id>`
 - `Model/model_selector=best`
 
-`decision_summary.json` carries the same recommendation in machine-readable
-form. `recommendation.json` remains as a compatibility artifact, while
-`leaderboard_decision_summary.csv` and `best_vs_ensemble_summary.csv` remain
-ClearML table views.
+Use `leaderboard.csv` when you need to compare all candidates.
 
 ## Inference UI
 
@@ -200,21 +207,21 @@ Expected inference outputs:
 - `schema_check_summary.csv` / `schema_check_summary.json`
 - `prediction_summary.csv`
 - `prediction_preview.csv`
-- `source_summary.csv`
 - prediction distribution plot
 - `manifest.json`
 
 `schema_check_summary` should be visible as a ClearML table. It shows whether
-the input schema is `ok`, `warning`, or `error`; missing required features fail
-the run, while extra columns and unseen categories are warnings. `predictions.csv`
-should stay slim: `row_index`, ID columns when available, `prediction`, and
-lightweight model metadata only.
+the input schema is `ok`, `warning`, or `error`; missing required features and
+invalid/non-finite values in learned numeric roles fail the run, while extra
+columns and unseen categories are warnings. `predictions.csv` should stay slim:
+`row_index`, ID columns when available, `prediction`, and lightweight model
+metadata only.
 
 Inference tasks should not show candidate comparison plots.
 
 Drift/monitoring and Model Registry promotion are not current ClearML UI
 surfaces. Future monitoring should compare accumulated inference summaries;
-future registration should start from the `evaluate_models` recommendation.
+future registration should start from the `evaluate_models` best-model decision.
 
 ## P2 Items Not Shown In Current UI
 

@@ -3,11 +3,11 @@
 ## 初回セットアップ
 
 - [ ] Python 3.10 以上を用意した。
-- [ ] `uv pip install -e pkgs/core -e pkgs/tabular -r requirements-dev.txt` を実行した。
-- [ ] `python scripts/make_sample_data.py` が成功した。
+- [ ] `uv sync --group dev` を実行した。
+- [ ] `uv run python scripts/make_sample_data.py` が成功した。
 - [ ] Local training smoke が成功した。
 - [ ] Local inference smoke が成功した。
-- [ ] `pytest -q` が通った。
+- [ ] `uv run python -m pytest -q` が通った。
 
 ## ClearML テンプレート同期
 
@@ -35,14 +35,14 @@
 - [ ] Pipeline が全 Stage 成功した。
 - [ ] `data_quality_warnings` に重大問題がない。
 - [ ] `leaderboard` を確認した。
-- [ ] `decision_summary.md` を確認した。
+- [ ] `best_model.json` を確認した。
 - [ ] 推論に使う `model_selector` を確認した。
 - [ ] 必要な Artifact が出ている。
 
 ## 推論 Run 実行後
 
 - [ ] `schema_check_summary.status` が `error` でない。
-- [ ] `source_summary` が意図したモデルを示している。
+- [ ] `manifest.json` が意図したモデルを示している。
 - [ ] `prediction_summary` の分布が妥当。
 - [ ] `predictions.csv` に `row_index` または ID列がある。
 - [ ] 業務データとの結合キーを確認した。

@@ -57,12 +57,12 @@ graph TB
 | `row_index` | 入力データの行 index |
 | ID columns | `data.id_columns` または学習時 `feature_spec` から取得した ID列 |
 | `prediction` | 予測値 |
-| `model_name` | 解決されたモデル名 |
-| `artifact_kind` | `model` または `ensemble` |
-| `model_artifact_id` | モデル情報から生成される軽量 ID |
-| `prediction_run_id` | 推論 Run 識別子 |
+モデル由来情報は全行へ複製せず `manifest.json` に記録します。全特徴量もコピーしません。必要に応じて、`row_index` や ID 列で元データと結合します。
 
-全特徴量はコピーしません。必要に応じて、`row_index` や ID 列で元データと結合します。
+`data.source_manifest`を使う複数target推論では、結果を元の疎な観測へ
+対応付けるため`target`、正規化済み座標列、`source_row`も保持します。
+`prediction_summary.csv`はtarget別に集計し、異なる単位を混ぜた分布plotは
+生成しません。
 
 ## 推論後に見る成果物
 
@@ -72,13 +72,12 @@ graph TB
 | `schema_check_summary.csv/json` | 入力スキーマの確認 |
 | `prediction_summary.csv` | 予測値の集計 |
 | `prediction_preview.csv` | 先頭行のプレビュー |
-| `source_summary.csv` | モデル取得元、selector、モデル種別など |
-| `prediction_distribution_histogram.png` | 予測分布の確認 |
+| `prediction_distribution.png` | 予測分布の確認 |
 | `manifest.json` | 出力成果物の一覧と実行メタ情報 |
 
 ## 推論結果の確認手順
 
 1. `schema_check_summary` が `error` でないことを確認する。
-2. `source_summary` で意図した学習 Run / モデルが使われたことを確認する。
+2. `manifest.json` で意図した学習 Run / モデルが使われたことを確認する。
 3. `prediction_summary` で分布が極端にずれていないか確認する。
 4. `predictions.csv` を業務側 ID と結合する。

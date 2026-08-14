@@ -6,9 +6,13 @@ behavior remains in `docs/CLEARML_UI_SPEC.md`.
 
 ## Current Release Scope
 
-- Tabular scalar regression only.
+- Tabular scalar regression and sparse target-specific table collections.
+- Target collections use independent scalar models in one bundle; aligned
+  tensors, interpolation, and joint multi-task learning are not included.
 - Stage-based training graph:
   `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`.
+- `train_<model>` and `build_ensemble_<method>` are ClearML step labels; package
+  stage keys remain `train_model` and `build_ensemble`.
 - Separate user-facing inference task: `template/tabular_infer`.
 - ClearML-free core packages under `pkgs/core` and `pkgs/tabular`.
 - Basic ClearML training controls:
@@ -16,8 +20,8 @@ behavior remains in `docs/CLEARML_UI_SPEC.md`.
 - `Basic/quality_mode` uses fixed bounded parameter presets. It is not HPO.
 - Holdout validation only: `random`, `group`, `time`, and `fixed`.
 - Lightweight data-quality checks in preprocess.
-- `evaluate_models/decision_summary.md` as the canonical inference decision
-  artifact.
+- `evaluate_models/best_model.json` as the canonical inference decision
+  artifact, with `leaderboard.csv` for candidate comparison.
 - Lightweight inference schema checks and slim predictions.
 
 ## P2: Future, Not Implemented
@@ -40,9 +44,8 @@ Status: not implemented.
 
 - No approved-model registry, promotion workflow, or registry-specific template
   exists today.
-- Future behavior should start from `evaluate_models` outputs:
-  `decision_summary.md`, `decision_summary.json`, and `recommendation.json`.
-- A later flow may turn an accepted recommendation into an approved registered
+- Future behavior should start from the `evaluate_models` best-model decision.
+- A later flow may turn an accepted best-model decision into an approved registered
   model, but training and inference should continue to work without registry
   services.
 
@@ -53,8 +56,7 @@ Status: not implemented.
 - No monitoring service, scheduled drift job, alerting, or dashboard is part of
   the current product.
 - Future behavior should build on accumulated inference artifacts, especially
-  `schema_check_summary.csv/json`, `prediction_summary.csv`, and
-  `source_summary.csv`.
+  `schema_check_summary.json`, `prediction_summary.csv`, and `manifest.json`.
 - Keep checks lightweight and decision-oriented before adding dedicated
   monitoring infrastructure.
 
@@ -62,10 +64,11 @@ Status: not implemented.
 
 Status: not implemented.
 
-- Current task scope is tabular scalar regression.
+- Current task scope is scalar regression plus sparse independent target
+  collections, both using the same tabular pipeline.
 - Do not introduce a broad task registry for this release.
-- Revisit a task registry only when adding non-scalar outputs, such as 1D/2D
-  outputs or mode decomposition, and only if it reduces user-facing ambiguity.
+- Revisit a task registry only when adding aligned 1D/2D tensor outputs, joint
+  models, or mode decomposition, and only if it reduces user-facing ambiguity.
 
 ### External Validation And CV
 

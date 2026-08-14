@@ -14,7 +14,7 @@ graph TB
   F --> G[Metric calculation]
   G --> H[Ensemble]
   H --> I[Leaderboard]
-  I --> J[Decision summary]
+  I --> J[Best model]
 ```
 
 ## データ品質確認
@@ -24,13 +24,13 @@ graph TB
 | 観点 | 内容 | 目的 |
 | --- | --- | --- |
 | 行数・列数 | `row_count`, `column_count` | データサイズ把握 |
-| target 欠損 | `target_missing_count` | 学習対象の妥当性確認 |
-| target 数値性 | `target_is_numeric` | 回帰タスクとして扱えるか |
 | 重複 | `duplicate_row_count` | データ重複の影響確認 |
 | ID 重複 | `id_duplicate_count` | 推論結果との結合リスク確認 |
 | 高欠損列 | `high_missing_columns` | 欠損処理や列除外判断 |
 | 高 cardinality | `high_cardinality_columns` | one-hot 膨張リスク確認 |
-| リーク疑い | `possible_leakage_columns` | target/予測由来列の混入確認 |
+
+target の欠損・数値変換は診断レポートより前の入力契約で検証します。
+列名だけからリークを推測する警告は誤検知が多いため生成しません。
 
 ## 分割設計
 
@@ -51,7 +51,7 @@ K-fold や外部 validation は現行実装では未対応です。まず holdou
 
 ## アンサンブルの位置づけ
 
-アンサンブルは、個別モデルの弱点を平均化するための候補です。ただし、常に最良とは限りません。`best_vs_ensemble_summary.csv` で単体 best と比較し、改善があるかを確認します。
+アンサンブルは、個別モデルの弱点を平均化するための候補です。ただし、常に最良とは限りません。`leaderboard.csv` で単体モデルと同じ候補として比較し、採用可否を確認します。
 
 ## 推論ワークフロー
 

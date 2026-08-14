@@ -24,8 +24,8 @@ ClearML 自体の概念は公式ドキュメントを参照してください。
 テンプレート同期は、ClearML UI で利用する Task/Pipeline テンプレートを作成または更新します。
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
 `--dry-run` では、実際に ClearML サーバーを更新せず、作成されるテンプレートや Pipeline 計画を確認できます。
@@ -72,19 +72,22 @@ sequenceDiagram
 
 ## Dataset の扱い
 
-ClearML Agent の実行環境から、リポジトリ内の `data/sample_train.csv` が必ず見えるとは限りません。そのため、Remote training では次の設定を使います。
+ClearML Agent の実行環境から、リポジトリ内の `data/sample_train.csv` が必ず見えるとは限りません。そのため、Remote training では ClearML Dataset を入力にします。
 
-| UI パラメータ | 説明 |
+| データ形式 | UI パラメータ |
 | --- | --- |
-| `Input/clearml_dataset_id` | ClearML Dataset の ID |
-| `Input/dataset_file` | Dataset 内の対象ファイル名 |
-| `Input/target_column` | 目的変数列 |
+| 共通 | `Input/clearml_dataset_id`: ClearML Dataset の ID |
+| 1 ファイルのスカラー目的変数 | `Input/dataset_file`: 対象ファイル名、`Input/target_column`: 目的変数列 |
+| 目的変数ごとに分かれた表 | `Input/source_manifest`: Dataset ルートからの manifest 相対パス |
+
+複数表を使う場合は、`Input/dataset_file` と `Input/target_column` を空にします。
+manifest が各ファイル、座標列、値列の対応を定義します。
 
 `Input/local_path` は Local 実行または Agent にマウント済みのパスを使う場合に限ります。
 
 ## Docker image と optional dependency
 
-`lightgbm`、`xgboost`、`catboost` を含む default / gbm suite を ClearML 上で使うには、Agent の実行環境にこれらのパッケージが必要です。標準 profile では `clearml.execution.image` を参照し、テンプレート同期時に GBM package を remote execution venv に追加する想定です。
+`lightgbm`、`xgboost`、`catboost` を含む default / gbm suite を ClearML 上で使うには、remote task venv にこれらのパッケージが必要です。標準 profile の `clearml.execution` は repository revision、image、Python を一括指定し、同期時に revision を固定 commit へ解決します。GBM package は template が task venv に追加し、Agent image に repository の別コピーは持ちません。
 
 GBM 依存を使えない場合は、ClearML UI で次のいずれかを選びます。
 

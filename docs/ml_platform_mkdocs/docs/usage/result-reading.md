@@ -8,8 +8,8 @@
 graph LR
   A[Data quality] --> B[Feature spec]
   B --> C[Model metrics]
-  C --> D[Leaderboard]
-  D --> E[Decision summary]
+  C --> D[Best model]
+  D --> E[Leaderboard]
   E --> F[Inference schema]
   F --> G[Predictions]
 ```
@@ -20,13 +20,11 @@ graph LR
 
 | 成果物 | 見るポイント |
 | --- | --- |
-| `data_quality_summary.json` | 行数、列数、目的変数欠損、ID重複、特徴量数 |
-| `data_quality_summary_table.csv` | ClearML UI で見やすい table 形式 |
-| `data_quality_warnings.csv` | 高欠損、重複、リーク疑い列など |
+| `data_quality_summary.json` | 行数、列数、ID重複、特徴量数、列役割 |
+| `data_quality_warnings.csv` | 高欠損、重複、高 cardinality など |
 | `missing_rate_by_column.csv` | 欠損率上位列 |
-| `feature_type_counts.csv` | 数値・カテゴリ・passthrough の内訳 |
 
-警告は必ずしも失敗理由ではありません。ただし、目的変数欠損、ID重複、リーク疑い列は、評価結果の信頼性を大きく下げる可能性があります。
+警告は必ずしも失敗理由ではありません。ただし、ID重複や高欠損列は評価結果の信頼性を下げる可能性があります。
 
 ## 2. 特徴量仕様
 
@@ -72,17 +70,18 @@ graph LR
 | `r2` | 決定係数 |
 | `selection_metric` | 順位付けに使った指標 |
 
-## 5. Decision summary
+## 5. Best model
 
-`decision_summary.md` は、学習結果を推論運用へつなげるための判断メモです。
+`evaluate_models/best_model.json` は、学習結果を推論運用へつなげるための判断 artifact です。
 
 確認すべき内容は以下です。
 
 - 最良候補のモデル名
 - 単体モデルかアンサンブルか
-- アンサンブルが単体モデルより改善したか
+- 選択指標と best の指標
+- 推奨 `Model/source_task_id`
 - 推奨 `Model/model_selector`
-- 推論 Task に入れるべき設定例
+- 推論 Task に入れるべき設定
 
 ## 6. 推論結果
 
@@ -90,8 +89,8 @@ graph LR
 
 | 確認順 | 成果物 | 見るポイント |
 | --- | --- | --- |
-| 1 | `schema_check_summary.csv/json` | 必須列不足がないか |
-| 2 | `source_summary.csv` | 意図したモデルを使ったか |
+| 1 | `schema_check_summary.json` | 必須列不足がないか |
+| 2 | `manifest.json` | 意図したモデルを使ったか |
 | 3 | `prediction_summary.csv` | 予測分布が極端でないか |
 | 4 | `prediction_preview.csv` | ID と予測値の見た目 |
 | 5 | `predictions.csv` | 業務利用する最終結果 |

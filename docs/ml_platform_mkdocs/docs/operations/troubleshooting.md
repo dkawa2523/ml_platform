@@ -22,7 +22,7 @@
 | GBM Stage が失敗 | Agent 環境に依存なし | template sync、Docker image、model_suite を確認 |
 | New Run に Basic 項目がない | 古い template clone を使っている | 最新 `template/tabular_train_pipeline` を開く |
 | Artifact が保存されない | artifact storage 未設定 | `artifact_output_uri` または ClearML server 設定を確認 |
-| 推論 source_task_id が解決できない | 参照 Task が違う | `decision_summary.md` の推奨設定を確認 |
+| 推論 source_task_id が解決できない | 参照 Task が違う | `best_model.json` の推奨設定を確認 |
 
 ## schema_check の warning
 
