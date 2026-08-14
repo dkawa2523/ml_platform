@@ -388,7 +388,7 @@ def _secret_counter(report: Mapping[str, Any]) -> Counter[str]:
     for filename, findings in report.get("results", {}).items():
         for finding in findings:
             key = json.dumps(
-                [Path(filename).as_posix(), finding.get("type"), finding.get("hashed_secret")],
+                [str(filename).replace("\\", "/"), finding.get("type"), finding.get("hashed_secret")],
                 separators=(",", ":"),
             )
             counter[key] += 1

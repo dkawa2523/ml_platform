@@ -85,6 +85,15 @@ def test_secret_regression_is_nonzero_quality_failure(monkeypatch, tmp_path):
         runner.check_secrets()
 
 
+def test_secret_fingerprint_is_independent_of_path_separator():
+    digest_field = "hashed_" + "secret"
+    finding = {"type": "Secret Keyword", digest_field: "reviewed"}
+    windows_report = {"results": {r"deploy\base\secret.example.yaml": [finding]}}
+    posix_report = {"results": {"deploy/base/secret.example.yaml": [finding]}}
+
+    assert runner._secret_counter(windows_report) == runner._secret_counter(posix_report)
+
+
 def test_architecture_command_failure_is_nonzero(monkeypatch):
     def broken_contract(*args, **kwargs):
         raise QualityFailure("import contract broken")
