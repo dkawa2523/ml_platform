@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shlex
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 MAX_REPORT_TABLE_ROWS = 1000
@@ -9,7 +10,12 @@ MAX_REPORT_TABLE_ROWS = 1000
 
 def existing_task_tags(task: Any) -> list[str]:
     get_tags = getattr(task, "get_tags", None)
-    return list(get_tags() or []) if callable(get_tags) else []
+    if not callable(get_tags):
+        return []
+    tags = get_tags()
+    if not isinstance(tags, (list, tuple, set)):
+        return []
+    return [str(tag) for tag in tags]
 
 
 def apply_task_tags(task: Any, tags: list[str], *, replace: bool = False) -> None:
@@ -67,15 +73,15 @@ def delete_task(task: Any) -> None:
         delete(delete_artifacts_and_models=False, raise_on_error=True)
 
 
-def script_args(cli_args: dict[str, str | Path]) -> str:
+def script_args(cli_args: Mapping[str, str | Path]) -> str:
     return shlex.join(_cli_parts(cli_args))
 
 
-def script_entry_point(entry_point: str, cli_args: dict[str, str | Path]) -> str:
+def script_entry_point(entry_point: str, cli_args: Mapping[str, str | Path]) -> str:
     return shlex.join([entry_point, *_cli_parts(cli_args)])
 
 
-def _cli_parts(cli_args: dict[str, str | Path]) -> list[str]:
+def _cli_parts(cli_args: Mapping[str, str | Path]) -> list[str]:
     return [part for key, value in cli_args.items() for part in (key, Path(value).as_posix())]
 
 

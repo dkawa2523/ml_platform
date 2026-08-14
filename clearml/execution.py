@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -55,7 +56,7 @@ def set_task_script(
     execution: ExecutionSpec,
     *,
     entry_point: str,
-    cli_args: dict[str, str | Path],
+    cli_args: Mapping[str, str | Path],
 ) -> None:
     task.set_script(
         repository=execution.repository,

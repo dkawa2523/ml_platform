@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -72,19 +73,19 @@ def _artifact_entry(path: str | Path, hashes: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def _artifact_entries(paths: dict[str, str | Path] | None, hashes: dict[str, str]) -> dict[str, dict[str, Any]]:
+def _artifact_entries(paths: Mapping[str, str | Path] | None, hashes: dict[str, str]) -> dict[str, dict[str, Any]]:
     return {name: _artifact_entry(path, hashes) for name, path in (paths or {}).items()}
 
 
 def write_manifest(
     run_dir: str | Path,
     *,
-    config: dict[str, Any],
-    metrics: dict[str, Any] | None = None,
-    artifacts: dict[str, str | Path] | None = None,
-    tables: dict[str, str | Path] | None = None,
-    plots: dict[str, str | Path] | None = None,
-    extra: dict[str, Any] | None = None,
+    config: Mapping[str, Any],
+    metrics: Mapping[str, Any] | None = None,
+    artifacts: Mapping[str, str | Path] | None = None,
+    tables: Mapping[str, str | Path] | None = None,
+    plots: Mapping[str, str | Path] | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> Path:
     """Write a small manifest for reproducibility and handoff inspection."""
     run_dir = Path(run_dir)

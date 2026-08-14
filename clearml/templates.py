@@ -83,7 +83,12 @@ def _template_note(task_name: str, execution: ExecutionSpec | None = None) -> st
 
 
 def _template_tags(task_name: str) -> list[str]:
-    return clearml_tags("template", **TEMPLATE_TAG_OPTIONS.get(task_name, {}))
+    options = TEMPLATE_TAG_OPTIONS.get(task_name, {})
+    return clearml_tags(
+        "template",
+        user_facing=bool(options.get("user_facing")),
+        internal=bool(options.get("internal")),
+    )
 
 
 def _apply_task_metadata(task: Any, task_name: str, execution: ExecutionSpec | None = None) -> None:

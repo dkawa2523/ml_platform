@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import importlib
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
@@ -66,17 +66,17 @@ class OptionalDependencyError(RuntimeError):
 
 
 class FrameTransformer(Protocol):
-    def transform(self, X: pd.DataFrame) -> object: ...
+    def transform(self, X: pd.DataFrame, /) -> np.ndarray: ...
 
 
 class Regressor(Protocol):
-    def fit(self, X: object, y: object) -> object: ...
+    def fit(self, X: np.ndarray, y: object, /) -> object: ...
 
-    def predict(self, X: object) -> np.ndarray: ...
+    def predict(self, X: np.ndarray, /) -> np.ndarray: ...
 
 
 class Predictor(Protocol):
-    def predict(self, X: pd.DataFrame) -> np.ndarray: ...
+    def predict(self, X: pd.DataFrame, /) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)
@@ -176,7 +176,7 @@ def _add_unique_candidate(candidates: list[ModelCandidate], seen: set[str], cand
 class LinearRegressor:
     coef_: np.ndarray | None = None
 
-    def fit(self, X: np.ndarray, y: object) -> "LinearRegressor":
+    def fit(self, X: np.ndarray, y: object) -> LinearRegressor:
         y_arr = np.asarray(y, dtype=float)
         design = np.c_[np.ones(X.shape[0]), X]
         self.coef_ = np.linalg.pinv(design) @ y_arr
@@ -194,7 +194,7 @@ class RidgeRegressor:
     alpha: float = 1.0
     coef_: np.ndarray | None = None
 
-    def fit(self, X: np.ndarray, y: object) -> "RidgeRegressor":
+    def fit(self, X: np.ndarray, y: object) -> RidgeRegressor:
         y_arr = np.asarray(y, dtype=float)
         design = np.c_[np.ones(X.shape[0]), X]
         penalty = np.eye(design.shape[1]) * float(self.alpha)

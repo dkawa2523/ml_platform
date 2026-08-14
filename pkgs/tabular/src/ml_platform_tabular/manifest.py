@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from ml_platform_core.contracts import ArtifactSpec, PackageManifest, ParameterSpec, PipelineSpec, StageSpec, TaskSpec
+from ml_platform_core.contracts import (
+    ArtifactKind,
+    ArtifactSpec,
+    PackageManifest,
+    ParameterSpec,
+    ParameterValueType,
+    PipelineSpec,
+    StageSpec,
+    TaskSpec,
+)
 
 from .ensemble import SUPPORTED_ENSEMBLE_METHODS
 from .models import SUPPORTED_MODELS
@@ -15,11 +24,18 @@ TABULAR_INFER_RUNNER = "ml_platform_tabular.inference:run_infer"
 TRAINING_STAGE_KEYS = ("preprocess_features", "train_model", "build_ensemble", "evaluate_models")
 
 
-def _artifact(name: str, kind: str, *, required: bool = True) -> ArtifactSpec:
+def _artifact(name: str, kind: ArtifactKind, *, required: bool = True) -> ArtifactSpec:
     return ArtifactSpec(name=name, kind=kind, required=required)
 
 
-def _param(name, value_type, *, required=False, default=None, choices=()) -> ParameterSpec:
+def _param(
+    name: str,
+    value_type: ParameterValueType,
+    *,
+    required: bool = False,
+    default: object | None = None,
+    choices: tuple[str, ...] = (),
+) -> ParameterSpec:
     return ParameterSpec(name=name, value_type=value_type, required=required, default=default, choices=choices)
 
 

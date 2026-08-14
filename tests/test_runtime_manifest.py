@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from typing import cast
 
 import pytest
 
-from ml_platform_core.contracts import ArtifactSpec, PackageManifest, ParameterSpec
+from ml_platform_core.contracts import (
+    ArtifactKind,
+    ArtifactSpec,
+    PackageManifest,
+    ParameterSpec,
+    ParameterValueType,
+)
 from ml_platform_tabular.domain_plan import build_tabular_domain_plan
 from ml_platform_tabular.manifest import (
     TABULAR_PREPROCESS_STAGE,
@@ -106,9 +113,9 @@ def test_package_manifest_rejects_duplicate_stage_keys():
 
 def test_contract_specs_validate_supported_kinds():
     with pytest.raises(ValueError, match="ArtifactSpec.kind"):
-        ArtifactSpec(name="bad", kind="unsupported")  # type: ignore[arg-type]
+        ArtifactSpec(name="bad", kind=cast(ArtifactKind, "unsupported"))
     with pytest.raises(ValueError, match="ParameterSpec.value_type"):
-        ParameterSpec(name="bad", value_type="object")  # type: ignore[arg-type]
+        ParameterSpec(name="bad", value_type=cast(ParameterValueType, "object"))
     with pytest.raises(ValueError, match="enum type but no choices"):
         ParameterSpec(name="mode", value_type="enum")
 

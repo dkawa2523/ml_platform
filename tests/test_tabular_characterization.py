@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -15,7 +18,7 @@ from ml_platform_tabular.plotting import (
 from ml_platform_tabular.training import run_pipeline
 
 
-def _write_characterization_data(tmp_path, *, rows: int = 36) -> tuple[pd.DataFrame, object, object]:
+def _write_characterization_data(tmp_path: Path, *, rows: int = 36) -> tuple[pd.DataFrame, Path, Path]:
     rng = np.random.default_rng(42)
     df = pd.DataFrame(
         {
@@ -46,7 +49,7 @@ def _run_characterized_training(tmp_path):
     return run_pipeline(cfg), infer_path
 
 
-def _assert_all_paths_exist(paths: dict[str, object]) -> None:
+def _assert_all_paths_exist(paths: Mapping[str, Path]) -> None:
     for key, path in paths.items():
         assert path.exists(), key
 
@@ -340,6 +343,8 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
         tmp_path,
     )
 
+    assert feature_table_path is not None
+    assert feature_plot_path is not None
     for path in [
         leaderboard_path,
         metric_panel_path,
@@ -348,7 +353,6 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
         *prediction_tables.values(),
         *prediction_plots.values(),
     ]:
-        assert path is not None
         assert path.exists()
         assert path.stat().st_size > 0
 

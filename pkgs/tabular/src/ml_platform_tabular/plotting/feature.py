@@ -106,9 +106,13 @@ def write_feature_importance_plot_if_available(estimator: Any, output_dir: Path)
         return None, None
     table_path = write_table(frame, output_dir / "feature_importance.csv")
     plot_path = write_metrics_bar_plot(
-        [(row.feature, row.importance) for row in frame.itertuples(index=False)],
+        [(str(row.feature), _as_float(row.importance)) for row in frame.itertuples(index=False)],
         output_dir / "feature_importance.png",
         title="Feature importance",
         value_label="importance",
     )
     return table_path, plot_path
+
+
+def _as_float(value: Any) -> float:
+    return float(value)

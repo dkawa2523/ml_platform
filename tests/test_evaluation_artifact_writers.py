@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from ml_platform_core.io import read_json
 from ml_platform_tabular.training.artifacts import CandidateResult
 from ml_platform_tabular.training.best_model_artifacts import write_best_model_artifacts
 from ml_platform_tabular.training.evaluation import evaluate_model_candidates
+
+
+class _UnusedPredictor:
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        return np.zeros(len(X), dtype=float)
 
 
 def _candidate(tmp_path, name: str, *, rmse: float, prediction_offset: float = 0.0) -> CandidateResult:
@@ -29,7 +35,7 @@ def _candidate(tmp_path, name: str, *, rmse: float, prediction_offset: float = 0
         model_name=name,
         artifact_kind="model",
         model_params={},
-        estimator=object(),
+        estimator=_UnusedPredictor(),
         metrics={"rmse": rmse, "mae": rmse / 2, "r2": 0.9 - rmse},
         artifacts={
             "model": model_path,

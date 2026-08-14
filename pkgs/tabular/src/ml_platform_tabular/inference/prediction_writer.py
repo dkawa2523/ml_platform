@@ -13,7 +13,7 @@ def _prediction_input(df, features: list[str], estimator):
         estimators = getattr(estimator, "estimators", None)
         if estimators:
             target_column = getattr(estimators[0], "target_column", None)
-    if target_column in df.columns and target_column not in columns:
+    if isinstance(target_column, str) and target_column in df.columns and target_column not in columns:
         columns.append(target_column)
     return df[columns]
 

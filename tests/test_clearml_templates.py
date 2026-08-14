@@ -123,11 +123,13 @@ def test_clearml_execution_pins_commit_python_and_quotes_entry_point_args():
         },
     )
 
-    assert task.script["repository"] == "https://example.invalid/repo.git"
-    assert task.script["branch"] == ""
-    assert task.script["commit"] == "a" * 40
-    assert task.script["binary"] == "python3.11"
-    assert task.script["entry_point"] == (
+    assert task.script is not None
+    script = task.script
+    assert script["repository"] == "https://example.invalid/repo.git"
+    assert script["branch"] == ""
+    assert script["commit"] == "a" * 40
+    assert script["binary"] == "python3.11"
+    assert script["entry_point"] == (
         "clearml/app.py --task config/tasks/tabular_stage.yaml --profile 'config/profiles/clearml dev.yaml'"
     )
 

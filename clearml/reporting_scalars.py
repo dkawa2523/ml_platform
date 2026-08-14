@@ -83,7 +83,7 @@ def _report_ensemble_metrics_table(adapter, path: str | Path) -> None:
     if frame is None or "ensemble_method" not in frame.columns:
         return
     for row in frame.to_dict(orient="records"):
-        _report_ensemble_metric_row(adapter, row)
+        _report_ensemble_metric_row(adapter, {str(key): value for key, value in row.items()})
 
 
 def _report_ensemble_metric_row(adapter, row: dict[str, Any]) -> None:

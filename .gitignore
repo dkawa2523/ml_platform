@@ -1,6 +1,13 @@
 .venv/
+.venv-wsl/
 __pycache__/
 .pytest_cache/
+.coverage
+.coverage.*
+.quality/reports/
+.quality/mutation-workspace/
+.mutmut-cache
+mutants/
 outputs/
 data/
 verification/raw/

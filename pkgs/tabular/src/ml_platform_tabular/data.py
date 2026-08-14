@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.config import load_yaml
 from ml_platform_core.io import read_table
 from ml_platform_core.value_coercion import as_str_list
@@ -237,7 +236,7 @@ def _valid_size(cfg: dict[str, Any]) -> float:
     return valid_size
 
 
-def _require_split_column(df: pd.DataFrame | None, column: Any, *, setting: str) -> str:
+def _require_split_column(df: pd.DataFrame | None, column: Any, *, setting: str) -> tuple[pd.DataFrame, str]:
     if df is None:
         raise ValueError(f"{setting} requires the original dataframe for splitting.")
     if column is None or str(column).strip() == "":
@@ -245,7 +244,7 @@ def _require_split_column(df: pd.DataFrame | None, column: Any, *, setting: str)
     name = str(column)
     if name not in df.columns:
         raise ValueError(f"{setting} not found: {name}")
-    return name
+    return df, name
 
 
 def _check_non_empty_split(train_idx, valid_idx, *, method: str) -> None:
@@ -269,7 +268,7 @@ def _random_split_indices(
     rng = np.random.default_rng(seed)
     indices = np.arange(row_count)
     rng.shuffle(indices)
-    valid_count = max(1, int(round(len(indices) * valid_size)))
+    valid_count = max(1, round(len(indices) * valid_size))
     valid_idx = indices[:valid_count]
     train_idx = indices[valid_count:]
     if len(train_idx) == 0:
@@ -292,7 +291,7 @@ def _coordinate_split_indices(
     coordinate_hashes = np.unique(row_hashes)
     if len(coordinate_hashes) < 2:
         raise ValueError("Coordinate-based random split requires at least two distinct coordinates.")
-    valid_count = max(1, int(round(len(coordinate_hashes) * valid_size)))
+    valid_count = max(1, round(len(coordinate_hashes) * valid_size))
     valid_count = min(valid_count, len(coordinate_hashes) - 1)
     valid_hashes = set(np.sort(coordinate_hashes)[:valid_count].tolist())
     valid_mask = np.fromiter((value in valid_hashes for value in row_hashes), dtype=bool, count=len(row_hashes))
@@ -305,8 +304,7 @@ def _coordinate_split_indices(
 
 def _group_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     split_cfg = cfg.get("split", {}) or {}
-    group_column = _require_split_column(df, split_cfg.get("group_column"), setting="split.group_column")
-    assert df is not None
+    df, group_column = _require_split_column(df, split_cfg.get("group_column"), setting="split.group_column")
     groups = df[group_column].astype("object").where(df[group_column].notna(), "<MISSING>")
     unique_groups = np.array(sorted(groups.unique(), key=lambda value: str(value)), dtype=object)
     if len(unique_groups) < 2:
@@ -316,7 +314,7 @@ def _group_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[
     rng = np.random.default_rng(seed)
     shuffled = unique_groups.copy()
     rng.shuffle(shuffled)
-    valid_group_count = max(1, int(round(len(shuffled) * valid_size)))
+    valid_group_count = max(1, round(len(shuffled) * valid_size))
     if valid_group_count >= len(shuffled):
         valid_group_count = len(shuffled) - 1
     valid_groups = set(shuffled[:valid_group_count])
@@ -330,14 +328,13 @@ def _group_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[
 
 def _time_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     split_cfg = cfg.get("split", {}) or {}
-    time_column = _require_split_column(df, split_cfg.get("time_column"), setting="split.time_column")
-    assert df is not None
+    df, time_column = _require_split_column(df, split_cfg.get("time_column"), setting="split.time_column")
     values = pd.to_datetime(df[time_column], errors="coerce")
     invalid_count = int(values.isna().sum())
     if invalid_count:
         raise ValueError(f"split.time_column contains {invalid_count} values that cannot be parsed as datetimes.")
     valid_size = _valid_size(cfg)
-    target_valid_rows = max(1, int(round(len(values) * valid_size)))
+    target_valid_rows = max(1, round(len(values) * valid_size))
     counts = values.value_counts(sort=False).sort_index()
     if len(counts) < 2:
         raise ValueError("split.method=time requires at least two distinct timestamps.")
@@ -353,7 +350,7 @@ def _time_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[n
 
 def _fixed_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     split_cfg = cfg.get("split", {}) or {}
-    filter_column = _require_split_column(
+    df, filter_column = _require_split_column(
         df,
         split_cfg.get("valid_filter_column"),
         setting="split.valid_filter_column",
@@ -361,7 +358,6 @@ def _fixed_split_indices(df: pd.DataFrame | None, cfg: dict[str, Any]) -> tuple[
     filter_value = split_cfg.get("valid_filter_value")
     if filter_value is None or str(filter_value) == "":
         raise ValueError("split.valid_filter_value is required for split.method=fixed.")
-    assert df is not None
     valid_mask = df[filter_column].astype(str).eq(str(filter_value)).to_numpy()
     indices = np.arange(len(df))
     valid_idx = indices[valid_mask]

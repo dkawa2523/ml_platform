@@ -145,12 +145,12 @@ def test_clearml_runtime_validation_checks_expected_sdk_contract():
     FakeSdk = type("FakeSdk", (), {"__version__": "2.1.7", "Task": object, "StorageManager": object})
     FakeAutomation = type("FakeAutomation", (), {"PipelineController": object})
 
-    adapter.import_clearml_sdk = lambda: FakeSdk
-    adapter.import_clearml_automation = lambda: FakeAutomation
+    setattr(adapter, "import_clearml_sdk", lambda: FakeSdk)
+    setattr(adapter, "import_clearml_automation", lambda: FakeAutomation)
     adapter.validate_clearml_runtime()
     adapter.validate_clearml_runtime(require_automation=True)
 
-    FakeSdk.__version__ = "2.0.0"
+    setattr(FakeSdk, "__version__", "2.0.0")
     with pytest.raises(adapter.ClearMLUnavailable, match="2.1"):
         adapter.validate_clearml_runtime()
 

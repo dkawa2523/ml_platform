@@ -19,9 +19,9 @@ class LeaderboardArtifacts:
 
 
 def build_leaderboard_rows(results: list[CandidateResult], selection_metric: str) -> list[dict[str, Any]]:
-    rows = []
+    rows: list[dict[str, Any]] = []
     for rank, item in enumerate(results, start=1):
-        row = {
+        row: dict[str, Any] = {
             "rank": rank,
             "model_name": item.model_name,
             "artifact_kind": item.artifact_kind,

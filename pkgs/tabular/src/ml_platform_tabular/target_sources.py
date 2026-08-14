@@ -210,9 +210,13 @@ def _is_invalid_number(value: Any) -> bool:
     if isinstance(value, Complex) and not isinstance(value, Real):
         return True
     try:
-        return not math.isfinite(float(value))
+        return not math.isfinite(_number_as_float(value))
     except (TypeError, ValueError, OverflowError):
         return True
+
+
+def _number_as_float(value: Any) -> float:
+    return float(value)
 
 
 def _is_unhashable(value: Any) -> bool:

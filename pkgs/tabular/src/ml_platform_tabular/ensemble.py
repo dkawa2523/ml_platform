@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
 import json
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ml_platform_core.value_coercion import as_bool
 
-from .selection import metric_value as _metric_value, metric_weight_value
+from .selection import metric_value as _metric_value
+from .selection import metric_weight_value
 
 WEIGHT_EPSILON = 1e-12
 SUPPORTED_ENSEMBLE_METHODS = ("mean_topk", "weighted", "median")
@@ -23,7 +24,8 @@ class EnsembleConfig:
 
 
 class MetricsCarrier(Protocol):
-    metrics: dict[str, float]
+    @property
+    def metrics(self) -> dict[str, float]: ...
 
 
 def ensemble_config(model_cfg: dict[str, Any]) -> EnsembleConfig:

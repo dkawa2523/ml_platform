@@ -107,7 +107,7 @@ def _runtime_clearml_metadata(cfg: dict) -> tuple[str | None, str, list[str], st
 def _clearml_target(cfg: dict, *, keep_prefixed_run_name: bool) -> tuple[str, str, list[str], str]:
     clearml_cfg = cfg.get("clearml", {})
     projects = clearml_projects(clearml_cfg)
-    task = cfg.get("task")
+    task = str(cfg.get("task") or "")
     run = cfg.get("run", {}) or {}
     run_name = str(run.get("name") or task or "run")
     handlers = {
