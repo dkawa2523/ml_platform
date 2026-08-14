@@ -29,7 +29,7 @@
 | 出力 | 確認内容 |
 | --- | --- |
 | `schema_check_summary` | 入力列が学習時仕様と合うか |
-| `source_summary` | 参照した Task と selector が意図通りか |
+| `manifest` | 参照した Task と selector が意図通りか |
 | `prediction_summary` | 予測値の最小、最大、平均、分位など |
 | `prediction_preview` | 先頭行の ID と予測値 |
 | `predictions.csv` | 業務利用する予測結果 |
@@ -39,7 +39,7 @@
 ```mermaid
 graph TB
   A[Inference input] --> B[Required features]
-  B --> C{Missing?}
+  B --> C{Missing or invalid numeric?}
   C -->|yes| X[error: fail task]
   C -->|no| D{Extra columns or unseen categories?}
   D -->|yes| W[warning: continue]
@@ -51,6 +51,6 @@ graph TB
 ## 実務利用時の注意
 
 - `predictions.csv` は全特徴量を含まないため、必要な業務列は `id_columns` に指定する。
-- `source_summary.csv` を保存し、どの学習 Run 由来の予測か追跡できるようにする。
+- `manifest.json` を保存し、どの学習 Run 由来の予測か追跡できるようにする。
 - `schema_check_summary.status=warning` の場合は、予測結果をそのまま利用せず、余剰列や未学習カテゴリの内容を確認する。
 - 本番的な継続運用では、`prediction_summary.csv` を蓄積して分布変化を確認する。

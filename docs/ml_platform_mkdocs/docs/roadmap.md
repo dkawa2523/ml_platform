@@ -7,6 +7,7 @@
 | 項目 | 状態 |
 | --- | --- |
 | tabular scalar regression | 実装済み |
+| 疎な複数target tableの独立model bundle | 実装済み |
 | Stage-based training pipeline | 実装済み |
 | ClearML UI からの学習 | 実装済み |
 | ClearML UI からの推論 | 実装済み |
@@ -47,7 +48,7 @@
 | --- | --- |
 | 現状 | 未実装 |
 | 入れないもの | 定期監視 service、alert、dashboard |
-| 将来方針 | `schema_check_summary`, `prediction_summary`, `source_summary` の蓄積から始める |
+| 将来方針 | `schema_check_summary`, `prediction_summary`, manifest の蓄積から始める |
 | 実装前提 | 比較対象、閾値、通知先、保存期間を決める |
 
 ### Task Registry
@@ -56,7 +57,7 @@
 | --- | --- |
 | 現状 | 未実装 |
 | 入れないもの | 汎用 Task Registry、抽象 class 階層 |
-| 将来方針 | 1D/2D 出力や mode decomposition 追加時に再検討 |
+| 将来方針 | 整列済み1D/2D tensor、joint model、mode decomposition追加時に再検討 |
 | 実装前提 | problem type ごとの入力、出力、評価、推論契約を定義する |
 
 ### External validation / CV

@@ -75,7 +75,7 @@ def _assert_training_leaderboard_outputs(result):
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(validation_predictions.columns)
     assert _expected_training_plots_present() <= set(result.plots)
     assert _expected_training_plots_absent().isdisjoint(result.plots)
-    assert result.plots["feature_importance_bar_linear"].suffix == ".png"
+    assert result.plots["best_feature_importance"].suffix == ".png"
 
     evaluation_predictions = pd.read_csv(result.tables["evaluation_predictions"])
     assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(evaluation_predictions.columns)
@@ -98,7 +98,6 @@ def _assert_training_best_model_decision(result):
 
 def _assert_training_reference_artifacts(result):
     best_model = read_json(result.artifacts["best_model_json"])
-    assert best_model["best_model_artifact"] == str(result.artifacts["best_model"])
     assert result.artifacts["best_model"].exists()
     assert result.extra["best_model"]["model_name"] == best_model["model_name"]
 
@@ -111,20 +110,16 @@ def _assert_training_feature_and_manifest_outputs(result, tmp_path):
     assert feature_spec["passthrough_columns"] == []
     assert feature_spec["split"]["method"] == "random"
     assert feature_spec["split"]["train_rows"] + feature_spec["split"]["valid_rows"] == 80
-    feature_summary = read_json(result.artifacts["feature_summary"])
-    assert feature_summary["feature_config"]["categorical_encoder"] == "onehot"
-    assert feature_summary["passthrough_feature_count"] == 0
     data_quality_summary = read_json(result.artifacts["data_quality_summary"])
     assert data_quality_summary["row_count"] == 80
     assert data_quality_summary["target_column"] == "target"
-    assert data_quality_summary["target_is_numeric"] is True
+    assert data_quality_summary["numeric_feature_count"] == 2
     assert data_quality_summary["split"]["method"] == "random"
 
     manifest = read_json(result.artifacts["manifest"])
     assert manifest["extra"]["pipeline_kind"] == "training"
     assert manifest["extra"]["report_schema_version"] == "leaderboard_dashboard_v2"
     assert "infer_predictions" not in manifest["tables"]
-    assert "data_quality_summary_table" in manifest["tables"]
     assert "data_quality_warnings" in manifest["tables"]
     assert "leaderboard_metric_panel" in manifest["plots"]
     assert "best_prediction_vs_actual" in manifest["plots"]
@@ -149,17 +144,13 @@ def _expected_training_artifacts():
     return [
         "preprocess_bundle",
         "feature_spec",
-        "feature_summary",
         "data_quality_summary",
-        "leaderboard",
         "best_model",
         "best_model_json",
-        "evaluation_predictions",
         "metrics",
         "manifest",
         "config",
         "ensemble",
-        "ensemble_info",
         "ensemble_refs",
         "ensemble_mean_topk",
         "ensemble_weighted",
@@ -169,15 +160,10 @@ def _expected_training_artifacts():
 
 def _expected_training_tables():
     return [
-        "feature_summary_table",
         "missing_rate_by_column",
-        "feature_type_counts",
-        "data_quality_summary_table",
         "data_quality_warnings",
         "processed_train",
         "processed_valid",
-        "train_features",
-        "valid_features",
         "leaderboard",
         "evaluation_predictions",
         "metrics_table_linear",
@@ -188,8 +174,7 @@ def _expected_training_tables():
         "validation_predictions_random_forest",
         "validation_predictions_extra_trees",
         "validation_predictions_gradient_boosting",
-        "feature_importance_linear",
-        "feature_importance_ridge",
+        "feature_importance",
         "ensemble_predictions",
         "ensemble_metrics_table",
         "ensemble_predictions_mean_topk",
@@ -198,9 +183,6 @@ def _expected_training_tables():
         "ensemble_members_mean_topk",
         "ensemble_members_weighted",
         "ensemble_members_median",
-        "ensemble_weights_mean_topk",
-        "ensemble_weights_weighted",
-        "ensemble_weights_median",
     ]
 
 
@@ -210,15 +192,9 @@ def _expected_training_candidates():
 
 def _expected_training_plots_present():
     return {
-        "validation_prediction_vs_actual_linear",
-        "validation_residual_histogram_linear",
-        "validation_residual_vs_predicted_linear",
         "leaderboard_metric_panel",
         "missing_rate_by_column_bar",
-        "feature_importance_bar_linear",
-        "ensemble_weights_mean_topk",
-        "ensemble_weights_weighted",
-        "ensemble_metrics_bar",
+        "best_feature_importance",
         "best_prediction_vs_actual",
         "best_residual_histogram",
         "best_residual_vs_predicted",
@@ -293,18 +269,15 @@ def test_training_pipeline_feature_drop_passthrough_and_infer_alignment(tmp_path
 
     infer_result = run_infer(infer_cfg)
     assert infer_result.tables["predictions"].exists()
-    assert infer_result.tables["schema_check_summary"].exists()
     assert infer_result.tables["prediction_summary"].exists()
     assert infer_result.tables["prediction_preview"].exists()
-    assert infer_result.tables["source_summary"].exists()
     predictions = pd.read_csv(infer_result.tables["predictions"])
-    assert {"row_index", "prediction", "model_name", "artifact_kind"} <= set(predictions.columns)
+    assert {"row_index", "prediction"} <= set(predictions.columns)
     assert "unused" not in predictions.columns
     assert "raw_numeric" not in predictions.columns
     schema_check = read_json(infer_result.artifacts["schema_check_summary"])
     assert schema_check["status"] == "ok"
     assert "prediction_distribution" in infer_result.plots
-    assert "prediction_distribution_histogram" in infer_result.plots
 
 
 def test_local_training_pipeline_without_ensemble(tmp_path):
@@ -356,40 +329,30 @@ def _assert_best_local_pipeline_inference(best_result):
     best_manifest = read_json(best_result.artifacts["manifest"])
     assert best_manifest["extra"]["source_type"] == "local_path"
     assert best_manifest["extra"]["model_selector"] == "best"
-    assert best_manifest["extra"]["feature_spec_path"]
-    assert best_manifest["extra"]["preprocess_bundle_path"]
-    assert best_manifest["extra"]["resolved_model_path"].endswith(
-        "evaluate_models\\best_model.joblib"
-    ) or best_manifest["extra"]["resolved_model_path"].endswith("evaluate_models/best_model.joblib")
+    assert best_result.artifacts["model_info"].parent.name == "evaluate_models"
     assert best_result.tables["predictions"].exists()
-    assert best_result.tables["schema_check_summary"].exists()
     assert best_result.tables["prediction_summary"].exists()
     assert best_result.tables["prediction_preview"].exists()
-    assert best_result.tables["source_summary"].exists()
     best_predictions = pd.read_csv(best_result.tables["predictions"])
     assert {"row_index", "id", "prediction"} <= set(best_predictions.columns)
     assert "x1" not in best_predictions.columns
     best_schema_check = read_json(best_result.artifacts["schema_check_summary"])
     assert best_schema_check["status"] == "ok"
     assert "prediction_distribution" in best_result.plots
-    assert "prediction_distribution_histogram" in best_result.plots
 
 
 def _assert_ensemble_local_pipeline_inference(ensemble_result):
     ensemble_manifest = read_json(ensemble_result.artifacts["manifest"])
     assert ensemble_manifest["extra"]["model_selector"] == "ensemble"
     assert ensemble_manifest["extra"]["artifact_kind"] == "ensemble"
-    assert "build_ensemble" in ensemble_manifest["extra"]["resolved_model_path"]
-    assert "model_" in ensemble_manifest["extra"]["resolved_model_path"]
+    assert ensemble_result.artifacts["model_info"].parent.name == "build_ensemble"
 
 
 def _assert_median_local_pipeline_inference(median_result):
     median_manifest = read_json(median_result.artifacts["manifest"])
     assert median_manifest["extra"]["model_selector"] == "ensemble:median"
     assert median_manifest["extra"]["ensemble_method"] == "median"
-    assert median_manifest["extra"]["resolved_model_path"].endswith(
-        "build_ensemble\\model_median.joblib"
-    ) or median_manifest["extra"]["resolved_model_path"].endswith("build_ensemble/model_median.joblib")
+    assert median_result.artifacts["model_info"].name == "model_info_median.json"
 
 
 def test_infer_rejects_unknown_local_training_pipeline_selector(tmp_path):

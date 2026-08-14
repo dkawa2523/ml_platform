@@ -10,6 +10,7 @@ run:
 data:
   local_path: data/sample_infer.csv
   clearml_dataset_id: null
+  source_manifest: null
   target_column: null
   feature_columns: null
   id_columns: []
@@ -29,4 +30,3 @@ model:
 
 output:
   prediction_name: predictions.csv
-  chunk_size: null

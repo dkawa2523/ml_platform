@@ -70,14 +70,12 @@ def _assert_characterized_training_keys(result):
         "best_model_json",
         "config",
         "data_quality_summary",
-        "evaluation_predictions",
         "feature_spec",
-        "feature_summary",
-        "leaderboard",
         "manifest",
         "metrics",
         "metrics_linear",
         "metrics_ridge",
+        "model_info",
         "model_info_linear",
         "model_info_ridge",
         "model_linear",
@@ -85,55 +83,27 @@ def _assert_characterized_training_keys(result):
         "preprocess_bundle",
     ]
     assert sorted(result.tables) == [
-        "data_quality_summary_table",
         "data_quality_warnings",
         "evaluation_predictions",
-        "feature_importance_linear",
-        "feature_importance_ridge",
-        "feature_summary_table",
-        "feature_type_counts",
+        "feature_importance",
         "leaderboard",
         "metrics_table_linear",
         "metrics_table_ridge",
         "missing_rate_by_column",
         "processed_train",
         "processed_valid",
-        "train_features",
-        "valid_features",
         "validation_predictions_linear",
         "validation_predictions_ridge",
     ]
     assert sorted(result.plots) == [
+        "best_feature_importance",
         "best_prediction_vs_actual",
         "best_residual_histogram",
         "best_residual_vs_predicted",
-        "feature_importance_bar_linear",
-        "feature_importance_bar_ridge",
-        "feature_importance_linear",
-        "feature_importance_ridge",
         "leaderboard_metric_panel",
         "missing_rate_by_column_bar",
-        "validation_prediction_vs_actual_linear",
-        "validation_prediction_vs_actual_ridge",
-        "validation_residual_histogram_linear",
-        "validation_residual_histogram_ridge",
-        "validation_residual_vs_predicted_linear",
-        "validation_residual_vs_predicted_ridge",
     ]
-    assert sorted(result.metrics) == [
-        "best_ensemble",
-        "best_model",
-        "candidate_count",
-        "code_version",
-        "ensemble_count",
-        "ensemble_enabled",
-        "mae",
-        "r2",
-        "report_schema_version",
-        "rmse",
-        "selection_metric",
-        "source_task_id",
-    ]
+    assert sorted(result.metrics) == ["mae", "r2", "rmse"]
 
 
 def _assert_characterized_training_extra(result):
@@ -188,7 +158,6 @@ def _assert_characterized_decision_and_manifest(result):
     best_model = read_json(result.artifacts["best_model_json"])
     assert sorted(best_model) == [
         "artifact_kind",
-        "best_model_artifact",
         "candidate_selector",
         "code_version",
         "ensemble_method",
@@ -200,7 +169,6 @@ def _assert_characterized_decision_and_manifest(result):
         "report_schema_version",
         "selection_metric",
         "selection_value",
-        "source_artifact",
         "source_task_id",
         "stage",
     ]
@@ -245,20 +213,16 @@ def test_tabular_inference_output_contract_before_module_split(tmp_path):
 def _assert_characterized_inference_keys(result):
     assert sorted(result.artifacts) == [
         "config",
-        "feature_spec",
         "manifest",
         "model_info",
-        "preprocess_bundle",
         "schema_check_summary",
     ]
     assert sorted(result.tables) == [
         "prediction_preview",
         "prediction_summary",
         "predictions",
-        "schema_check_summary",
-        "source_summary",
     ]
-    assert sorted(result.plots) == ["prediction_distribution", "prediction_distribution_histogram"]
+    assert sorted(result.plots) == ["prediction_distribution"]
     assert result.metrics == {}
 
 
@@ -268,15 +232,9 @@ def _assert_characterized_inference_predictions(result):
         "row_index",
         "id",
         "prediction",
-        "model_name",
-        "artifact_kind",
-        "model_artifact_id",
-        "prediction_run_id",
     ]
     assert predictions["row_index"].tolist() == [0, 1, 2, 3, 4]
     assert predictions["id"].tolist() == [0, 1, 2, 3, 4]
-    assert set(predictions["model_name"]) == {"linear"}
-    assert set(predictions["artifact_kind"]) == {"model"}
     assert "x1" not in predictions.columns
     assert "x2" not in predictions.columns
     assert "segment" not in predictions.columns
@@ -302,55 +260,22 @@ def _assert_characterized_inference_schema_and_summary(result):
     ]
     assert int(prediction_summary.loc[prediction_summary["metric"] == "prediction_rows", "value"].iloc[0]) == 5
 
-    source_summary = pd.read_csv(result.tables["source_summary"])
-    assert source_summary["field"].tolist() == [
-        "source_type",
-        "source_task_id",
-        "model_selector",
-        "resolved_model_name",
-        "artifact_kind",
-        "model_name",
-        "ensemble_method",
-        "target_column",
-        "feature_preset",
-        "schema_check_status",
-        "resolved_model_path",
-        "model_artifact_id",
-        "feature_spec_path",
-        "preprocess_bundle_path",
-    ]
-
 
 def _assert_characterized_inference_manifest(result):
     manifest = read_json(result.artifacts["manifest"])
     assert sorted(manifest["extra"]) == [
         "artifact_kind",
-        "chunk_size",
         "ensemble_method",
-        "feature_columns",
-        "feature_preset",
-        "feature_spec_path",
-        "id_columns",
-        "local_model_path",
         "model_artifact_id",
-        "model_info_path",
         "model_name",
         "model_selector",
-        "model_source",
-        "prediction_file",
         "prediction_rows",
         "prediction_schema_version",
-        "prediction_summary",
-        "preprocess_bundle_path",
-        "resolved_model_path",
         "schema_check_status",
-        "schema_check_summary",
         "source_task_id",
         "source_type",
-        "target_column",
     ]
-    assert manifest["extra"]["prediction_schema_version"] == "v2.3"
-    assert manifest["extra"]["prediction_file"] == "predictions.csv"
+    assert manifest["extra"]["prediction_schema_version"] == "v3"
     assert manifest["extra"]["prediction_rows"] == 5
     assert manifest["extra"]["model_selector"] == "best"
     assert manifest["extra"]["schema_check_status"] == "ok"
@@ -413,7 +338,6 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
     prediction_tables, prediction_plots = write_prediction_summary_tables(
         predictions_path,
         tmp_path,
-        target_column="actual",
     )
 
     for path in [
@@ -444,9 +368,4 @@ def test_tabular_plot_writer_contracts_before_module_split(tmp_path):
     assert feature_importance["feature"].tolist() == ["x1", "raw", "segment=a", "segment=b"]
     assert feature_importance["source"].tolist() == ["coef_"] * 4
     assert sorted(prediction_tables) == ["prediction_preview", "prediction_summary"]
-    assert sorted(prediction_plots) == [
-        "prediction_distribution_histogram",
-        "prediction_vs_actual",
-        "residual_histogram",
-        "residual_vs_predicted",
-    ]
+    assert sorted(prediction_plots) == ["prediction_distribution"]

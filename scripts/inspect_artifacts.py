@@ -7,7 +7,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect manifest.json from a run directory.")
-    parser.add_argument("run_dir", nargs="?", default="outputs/latest")
+    parser.add_argument("run_dir", nargs="?", default="outputs/latest_training_pipeline")
     args = parser.parse_args()
 
     manifest_path = Path(args.run_dir) / "manifest.json"

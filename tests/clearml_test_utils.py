@@ -39,10 +39,8 @@ def load_clearml_params_module():
         bindings_for_config=bindings.bindings_for_config,
         build_default_connected_params=defaults.build_default_connected_params,
         coerce_connected_params=transport.coerce_connected_params,
-        connected_params_from_task=transport.connected_params_from_task,
         group_connected_params=transport.group_connected_params,
         normalize_clearml_param_value=transport.normalize_clearml_param_value,
-        prefixed_connected_params=transport.prefixed_connected_params,
         unique_specs=bindings._unique_specs,
     )
 
@@ -51,8 +49,20 @@ def load_clearml_templates_module():
     return load_module("clearml/templates.py", "ml_platform_clearml_templates_test")
 
 
+def load_clearml_execution_module():
+    return load_module("clearml/execution.py", "ml_platform_clearml_execution_test")
+
+
 def load_clearml_pipeline_plan_module():
     return load_module("clearml/pipeline_plan.py", "ml_platform_clearml_pipeline_plan_test")
+
+
+def load_clearml_pipeline_params_module():
+    return load_module("clearml/pipeline_params.py", "ml_platform_clearml_pipeline_params_test")
+
+
+def load_clearml_pipeline_steps_module():
+    return load_module("clearml/pipeline_steps.py", "ml_platform_clearml_pipeline_steps_test")
 
 
 def load_clearml_pipeline_controller_module():

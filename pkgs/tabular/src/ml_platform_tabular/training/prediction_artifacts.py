@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..plotting import (
+    write_feature_importance_plot_if_available,
     write_prediction_vs_actual_plot,
     write_residual_histogram,
     write_residual_vs_predicted_plot,
@@ -31,18 +32,30 @@ def _prediction_frame(item: CandidateResult) -> pd.DataFrame | None:
     return frame
 
 
-def write_evaluation_predictions(best: CandidateResult, stage_dir: Path) -> tuple[Path | None, dict[str, Path]]:
+def write_evaluation_diagnostics(
+    best: CandidateResult,
+    stage_dir: Path,
+) -> tuple[Path | None, dict[str, Path], dict[str, Path]]:
     source = prediction_table_path(best)
     if source is None or not source.exists():
-        return None, {}
+        return None, {}, {}
     frame = _prediction_frame(best)
     destination = stage_dir / "evaluation_predictions.csv"
     if source != destination:
         shutil.copy2(source, destination)
-    return destination, _best_prediction_plots(frame, stage_dir) if frame is not None else {}
+    tables: dict[str, Path] = {}
+    plots = _best_prediction_plots(frame, stage_dir) if frame is not None else {}
+    importance_table, importance_plot = write_feature_importance_plot_if_available(best.estimator, stage_dir)
+    if importance_table is not None:
+        tables["feature_importance"] = importance_table
+    if importance_plot is not None:
+        plots["best_feature_importance"] = importance_plot
+    return destination, tables, plots
 
 
 def _best_prediction_plots(frame: pd.DataFrame, stage_dir: Path) -> dict[str, Path]:
+    if "target" in frame.columns and frame["target"].nunique() > 1:
+        return {}
     scatter = write_prediction_vs_actual_plot(
         frame["actual"],
         frame["prediction"],

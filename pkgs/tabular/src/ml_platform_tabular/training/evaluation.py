@@ -15,7 +15,7 @@ from .artifacts import (
 from .best_model_artifacts import write_best_model_artifacts
 from .leaderboard_artifacts import build_leaderboard_rows, write_leaderboard_artifacts
 from .output_maps import evaluation_artifacts, evaluation_tables
-from .prediction_artifacts import write_evaluation_predictions
+from .prediction_artifacts import write_evaluation_diagnostics
 from .ranking import ranked_results
 
 
@@ -69,7 +69,7 @@ def evaluate_model_candidates(
         leaderboard_rows=leaderboard_rows,
         stage_dir=stage_dir,
     )
-    evaluation_predictions_path, prediction_plots = write_evaluation_predictions(best, stage_dir)
+    evaluation_predictions_path, diagnostic_tables, diagnostic_plots = write_evaluation_diagnostics(best, stage_dir)
     best_outputs = write_best_model_artifacts(
         best=best,
         best_ensemble=best_ensemble,
@@ -78,8 +78,7 @@ def evaluate_model_candidates(
         task_id=task_id,
         code_version=version,
     )
-    metrics_payload = _metrics_payload(
-        best=best,
+    summary = _evaluation_summary(
         best_outputs=best_outputs,
         model_results=model_results,
         ensemble_items=ensemble_items,
@@ -87,24 +86,22 @@ def evaluate_model_candidates(
         task_id=task_id,
         code_version=version,
     )
-    metrics_path = write_json(metrics_payload, stage_dir / "metrics.json")
-    artifacts = evaluation_artifacts(best_outputs, metrics_path, evaluation_predictions_path)
+    metrics_path = write_json({**best.metrics, **summary}, stage_dir / "metrics.json")
+    artifacts = evaluation_artifacts(best_outputs, metrics_path)
     tables = evaluation_tables(leaderboard_outputs, evaluation_predictions_path)
+    tables.update(diagnostic_tables)
     return EvaluationResult(
-        stage="evaluate_models",
-        stage_dir=stage_dir,
         best=best,
-        metrics=metrics_payload,
-        report={**metrics_payload, "ranked_models": leaderboard_rows},
+        metrics=dict(best.metrics),
+        summary=summary,
         artifacts=artifacts,
         tables=tables,
-        plots={**leaderboard_outputs.plots, **prediction_plots},
+        plots={**leaderboard_outputs.plots, **diagnostic_plots},
     )
 
 
-def _metrics_payload(
+def _evaluation_summary(
     *,
-    best: CandidateResult,
     best_outputs,
     model_results: list[CandidateResult],
     ensemble_items: list[CandidateResult],
@@ -113,7 +110,6 @@ def _metrics_payload(
     code_version: str,
 ) -> dict[str, Any]:
     return {
-        **best.metrics,
         "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
         "code_version": code_version,
         "source_task_id": task_id,

@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .config_models import RunConfig, parse_run_config
+from .config_validation import validate_run_config
 
 OverrideInput = list[str] | dict[str, Any] | None
 
@@ -126,15 +126,5 @@ def load_run_config(
         "profile_config": str(profile_path),
         "overrides": parse_overrides(overrides) if isinstance(overrides, list) else (overrides or {}),
     }
-    parse_run_config(cfg)
+    validate_run_config(cfg)
     return cfg
-
-
-def load_typed_run_config(
-    task_path: str | Path,
-    profile_path: str | Path,
-    *,
-    overrides: OverrideInput = None,
-) -> RunConfig:
-    """Load, merge, override, and parse a run config into the typed boundary."""
-    return parse_run_config(load_run_config(task_path, profile_path, overrides=overrides))

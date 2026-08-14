@@ -24,13 +24,13 @@ graph TB
 | 観点 | 内容 | 目的 |
 | --- | --- | --- |
 | 行数・列数 | `row_count`, `column_count` | データサイズ把握 |
-| target 欠損 | `target_missing_count` | 学習対象の妥当性確認 |
-| target 数値性 | `target_is_numeric` | 回帰タスクとして扱えるか |
 | 重複 | `duplicate_row_count` | データ重複の影響確認 |
 | ID 重複 | `id_duplicate_count` | 推論結果との結合リスク確認 |
 | 高欠損列 | `high_missing_columns` | 欠損処理や列除外判断 |
 | 高 cardinality | `high_cardinality_columns` | one-hot 膨張リスク確認 |
-| リーク疑い | `possible_leakage_columns` | target/予測由来列の混入確認 |
+
+target の欠損・数値変換は診断レポートより前の入力契約で検証します。
+列名だけからリークを推測する警告は誤検知が多いため生成しません。
 
 ## 分割設計
 

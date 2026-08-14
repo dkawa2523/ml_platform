@@ -117,7 +117,7 @@ def _candidate_matches_named_model(candidate: Path, directory: Path, selector: s
     if candidate.parent != directory:
         return True
     info = _read_json_if_exists(candidate.parent / "model_info.json")
-    name = str(info.get("model_name") or info.get("best_model_name") or "")
+    name = str(info.get("model_name") or "")
     return not name or name == selector
 
 

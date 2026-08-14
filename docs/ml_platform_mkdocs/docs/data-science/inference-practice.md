@@ -7,7 +7,7 @@
 | 観点 | 確認する成果物 | 理由 |
 | --- | --- | --- |
 | 入力スキーマ | `schema_check_summary` | 学習時と同じ特徴量で推論しているか |
-| モデル由来 | `source_summary` | どの Run / selector を使ったか |
+| モデル由来 | `manifest.json` | どの Run / selector を使ったか |
 | 結果結合 | `predictions.csv` | ID列または row_index で業務データに戻せるか |
 | 予測分布 | `prediction_summary` | 極端な分布変化がないか |
 
@@ -21,6 +21,7 @@
 | 余剰列がある | warning。推論は継続 |
 | ID列が不足 | warning。結果結合に注意 |
 | 必須特徴量が不足 | error。Task 失敗 |
+| 数値特徴量に変換不能値または無限値がある | error。Task 失敗 |
 | 未学習カテゴリがある | warning。推論は継続 |
 
 ## predictions.csv の結合
@@ -40,7 +41,7 @@ graph LR
 
 ## 継続運用時の推奨
 
-- 推論 Task ごとに `source_summary.csv` を保存する。
+- 推論 Task ごとに `manifest.json` を保存する。
 - `schema_check_summary.status` が warning の Run を一覧できるようにする。
 - `prediction_summary.csv` を時系列で蓄積する。
 - 業務側で利用した `predictions.csv` と Task ID を紐づける。
@@ -48,4 +49,4 @@ graph LR
 
 ## 将来の Drift Monitoring
 
-現行リリースでは Drift Monitoring は実装していません。将来は、蓄積された `schema_check_summary`、`prediction_summary`、`source_summary` をもとに、入力分布と予測分布の変化を比較する方針です。
+現行リリースでは Drift Monitoring は実装していません。将来は、蓄積された `schema_check_summary`、`prediction_summary`、manifest をもとに、入力分布と予測分布の変化を比較する方針です。

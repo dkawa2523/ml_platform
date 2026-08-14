@@ -40,7 +40,7 @@ ClearML では、Scalars、Artifacts、Plots、Tables を使って結果を確�
 | `best_model.joblib` | 推奨推論モデル | `best_model.json`, `feature_spec.json` |
 | `preprocess_bundle.joblib` | 前処理器 | `feature_spec.json` |
 | `best_model.json` | 推論判断 | `leaderboard.csv` |
-| `schema_check_summary.json` | 推論検証 | `source_summary.csv` |
+| `schema_check_summary.json` | 推論検証 | `manifest.json` |
 
 ## 古い Task が残る場合
 

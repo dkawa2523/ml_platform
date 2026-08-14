@@ -53,7 +53,7 @@ graph TB
 | train | `model.joblib` | 学習済み estimator |
 | train | `model_info.json` | モデル名、特徴量、パラメータ |
 | train | `metrics.json` | モデル単体の指標 |
-| ensemble | `ensemble_info_*.json` | アンサンブル構成 |
+| ensemble | `model_info_*.json` | アンサンブル構成 |
 | evaluate | `leaderboard.csv` | モデル比較表 |
 | evaluate | `best_model.json` | 推論に使うモデルと推奨設定 |
 | evaluate | `best_model.joblib` | 推論で使う推奨モデル |

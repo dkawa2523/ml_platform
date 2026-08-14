@@ -1,9 +1,10 @@
 # ml_platform Development Charter
 
-`ml_platform` is a ClearML-based product foundation for tabular scalar
-regression. Keep it easy to run from ClearML UI, easy to inspect after a run,
-and easy for data scientists to extend without copying legacy repository
-structure.
+`ml_platform` is a ClearML-based product foundation for tabular regression.
+It supports a scalar table and a sparse collection of target-specific tables
+with a shared coordinate schema. Keep it easy to run from ClearML UI, easy to
+inspect after a run, and easy for data scientists to extend without copying
+legacy repository structure.
 
 ## Product Boundary
 
@@ -57,8 +58,10 @@ environments may run the dependency-free subset by overriding `model.candidates`
 Out-of-scope models are `knn`, `svr`, `mlp`, `gaussian_process`, and `tabpfn`.
 
 Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
-Optimization, stacking, task registries, and non-scalar outputs are P2 roadmap
-items. Do not implement them in the current product flow.
+Sparse target collections use one independent scalar model per target inside a
+single model bundle; they do not align, fill, or pivot target coordinates.
+Optimization, stacking, broad task registries, and joint tensor outputs are P2
+roadmap items. Do not implement them in the current product flow.
 
 ## Extension Rules
 

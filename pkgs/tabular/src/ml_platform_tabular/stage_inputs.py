@@ -7,6 +7,7 @@ from typing import Any
 
 from ml_platform_core.io import load_joblib, read_json, read_table
 
+from .target_sources import SOURCE_ROW_COLUMN, TARGET_COLUMN
 from .training.artifacts import CandidateResult, PreprocessResult, safe_name
 
 
@@ -38,36 +39,38 @@ def required_path(inputs: dict[str, Any], key: str) -> Path:
 def load_preprocess(cfg: dict[str, Any]) -> PreprocessResult:
     inputs = stage_inputs(cfg)
     bundle_path = required_path(inputs, "preprocess_bundle")
-    feature_spec_path = required_path(inputs, "feature_spec")
     processed_train_path = required_path(inputs, "processed_train")
     processed_valid_path = required_path(inputs, "processed_valid")
 
     bundle = load_joblib(bundle_path)
-    spec = read_json(feature_spec_path)
     train_df = read_table(processed_train_path)
     valid_df = read_table(processed_valid_path)
-    target_column = spec.get("target_column") or bundle.get("target_column")
+    target_column = bundle.get("target_column")
     if not target_column:
-        raise ValueError("feature_spec.target_column is required.")
-    feature_columns = spec.get("feature_columns") or bundle.get("feature_columns")
+        raise ValueError("preprocess_bundle.target_column is required.")
+    feature_columns = bundle.get("feature_columns")
     if not feature_columns:
         feature_columns = [col for col in train_df.columns if col != target_column]
+    metadata_columns = [column for column in (TARGET_COLUMN, SOURCE_ROW_COLUMN) if column in train_df.columns]
+    input_columns = [*feature_columns, *metadata_columns]
+    target_names = bundle.get("target_names") or [target_column]
+    coordinate_columns = bundle.get("coordinate_columns") or []
 
     return PreprocessResult(
-        stage="preprocess_features",
-        stage_dir=bundle_path.parent,
         transformer=bundle["transformer"],
         feature_columns=list(feature_columns),
         target_column=target_column,
-        feature_preset=bundle.get("feature_preset") or spec.get("feature_preset", "basic"),
-        feature_config=bundle.get("feature_config") or spec.get("feature_config", {}),
-        X_train=train_df[list(feature_columns)],
-        X_valid=valid_df[list(feature_columns)],
+        target_names=[str(name) for name in target_names],
+        coordinate_columns=[str(name) for name in coordinate_columns],
+        id_columns=[str(name) for name in (bundle.get("id_columns") or [])],
+        feature_preset=bundle.get("feature_preset", "basic"),
+        feature_config=bundle.get("feature_config", {}),
+        X_train=train_df[input_columns],
+        X_valid=valid_df[input_columns],
         y_train=train_df[target_column],
         y_valid=valid_df[target_column],
         artifacts={
             "preprocess_bundle": bundle_path,
-            "feature_spec": feature_spec_path,
         },
         tables={
             "processed_train": processed_train_path,
@@ -112,13 +115,11 @@ def _model_ref(item: dict[str, Any]) -> CandidateResult:
     model_params = _model_params(item, model_info, model_name)
     return CandidateResult(
         stage=str(item.get("stage") or f"train_{safe_name(model_name)}"),
-        stage_dir=model_path.parent,
         model_name=model_name,
         ensemble_method=item.get("ensemble_method"),
         model_params=dict(model_params),
         artifact_kind=str(item.get("artifact_kind") or model_info.get("artifact_kind") or "model"),
         estimator=load_joblib(model_path),
-        predictions=None,
         metrics=metrics,
         artifacts={
             "model": model_path,
@@ -174,10 +175,7 @@ def _ensemble_reference(item: dict[str, Any]) -> CandidateResult:
     ref = replace(_model_ref(item), artifact_kind="ensemble")
     artifacts = dict(ref.artifacts)
     tables = dict(ref.tables)
-    ensemble_info = _optional_path(item, "ensemble_info", label="Ensemble info ref")
     ensemble_predictions = _optional_path(item, "ensemble_predictions", label="Ensemble predictions ref")
-    if ensemble_info is not None:
-        artifacts["ensemble_info"] = ensemble_info
     if ensemble_predictions is not None:
         tables["ensemble_predictions"] = ensemble_predictions
     return replace(ref, artifacts=artifacts, tables=tables)

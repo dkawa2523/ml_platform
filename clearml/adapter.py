@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from ml_platform_core.io import find_table_file
 from ml_platform_core.stages import StageName, as_stage_name
 from param_transport import group_connected_params
 from source_resolution import resolve_infer_model_source_config, resolve_stage_inputs_config
@@ -66,21 +65,6 @@ def _project_defaults(
         "tasks": tasks,
         "experiments": f"{root}/Experiments/Tabular",
     }
-
-
-def clearml_execution_image(clearml_cfg: dict[str, Any] | None) -> str | None:
-    clearml_cfg = clearml_cfg or {}
-    execution = clearml_cfg.get("execution") or {}
-    if not isinstance(execution, dict):
-        execution = {}
-    return execution.get("image")
-
-
-def apply_execution_image(task: Any, image: str | None) -> None:
-    if not image:
-        return
-    task.set_base_docker(docker_image=image)
-    task.update_parameters({"Execution/docker_image": image})
 
 
 def clearml_stage_project(projects: dict[str, str], stage: StageName | str) -> str:
@@ -312,18 +296,16 @@ class ClearMLAdapter:
         self,
         dataset_id: str | None,
         fallback_local_path: str | None,
-        *,
-        dataset_file: str | None = None,
     ) -> str:
         if dataset_id is None or not str(dataset_id).strip():
             if not fallback_local_path:
                 raise ValueError("Either clearml_dataset_id or local_path is required.")
-            return str(find_table_file(fallback_local_path, preferred_name=dataset_file))
+            return str(fallback_local_path)
 
         dataset_id_text = str(dataset_id).strip()
         Dataset = import_clearml_symbol("Dataset")
         dataset = Dataset.get(dataset_id=dataset_id_text)
-        return str(find_table_file(Path(dataset.get_local_copy()), preferred_name=dataset_file))
+        return str(dataset.get_local_copy())
 
     def resolve_artifact_path(self, artifact_path: str | Path | None) -> str | None:
         if not artifact_path:
@@ -356,33 +338,6 @@ class ClearMLAdapter:
 
     def report_table(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         self.logger.report_table(title, series, path, iteration=iteration)
-
-    def report_scatter(self, title: str, series: str, points: list[tuple[float, float]], iteration: int = 0) -> None:
-        self.logger.report_scatter(title, series, points, iteration=iteration)
-
-    def report_plotly(self, title: str, series: str, figure: dict[str, Any], iteration: int = 0) -> None:
-        self.logger.report_plotly(title, series, figure, iteration=iteration)
-
-    def report_histogram(
-        self,
-        title: str,
-        series: str,
-        values: list[float],
-        iteration: int = 0,
-        *,
-        xaxis: str | None = None,
-        yaxis: str | None = None,
-        mode: str | None = None,
-    ) -> None:
-        self.logger.report_histogram(
-            title,
-            series,
-            values,
-            iteration=iteration,
-            xaxis=xaxis,
-            yaxis=yaxis,
-            mode=mode,
-        )
 
     def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         self.logger.report_media(title, series, path, iteration=iteration)

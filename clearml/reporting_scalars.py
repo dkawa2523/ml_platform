@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-from numbers import Real
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
 from support import read_csv_for_reporting
 
 MODEL_METRICS = ("rmse", "mae", "r2")
-FEATURE_SUMMARY_SCALARS = (
-    "input_rows",
+DATA_QUALITY_SCALARS = (
+    "row_count",
     "train_rows",
     "valid_rows",
     "feature_count",
@@ -23,7 +23,7 @@ FEATURE_SUMMARY_SCALARS = (
 
 def report_result_metrics(adapter, metrics_payload: dict[str, Any]) -> None:
     for name, value in metrics_payload.items():
-        if isinstance(value, Real):
+        if isinstance(value, Real) and not isinstance(value, Integral):
             adapter.report_scalar("metrics", name, float(value), iteration=0)
     _report_best_model_metrics(adapter, metrics_payload)
 
@@ -31,7 +31,7 @@ def report_result_metrics(adapter, metrics_payload: dict[str, Any]) -> None:
 def report_artifact_scalars(adapter, name: str, path: str | Path) -> None:
     reporters = {
         "metrics": _report_metrics_artifact,
-        "feature_summary": _report_feature_summary_metrics,
+        "data_quality_summary": _report_data_quality_metrics,
     }
     reporter = reporters.get(name)
     if reporter is not None:
@@ -39,18 +39,12 @@ def report_artifact_scalars(adapter, name: str, path: str | Path) -> None:
 
 
 def report_table_scalars(adapter, name: str, path: str | Path) -> None:
-    if _is_metrics_table(name):
-        _report_metrics_table(adapter, path)
-    elif name == "ensemble_metrics_table":
+    if name == "ensemble_metrics_table":
         _report_ensemble_metrics_table(adapter, path)
 
 
 def _report_metrics_artifact(adapter, path: str | Path) -> None:
-    _report_plain_metrics(adapter, _read_json(path))
-
-
-def _is_metrics_table(name: str) -> bool:
-    return name == "metrics_table" or name.startswith("metrics_table_")
+    _report_best_model_metrics(adapter, _read_json(path))
 
 
 def _read_json(path: str | Path) -> dict[str, Any]:
@@ -76,34 +70,12 @@ def _report_best_model_metrics(adapter, metrics_payload: dict[str, Any]) -> None
         adapter.report_scalar(f"best_model/{metric_name}", series, value, iteration=0)
 
 
-def _report_feature_summary_metrics(adapter, path: str | Path) -> None:
+def _report_data_quality_metrics(adapter, path: str | Path) -> None:
     payload = _read_json(path)
-    for key in FEATURE_SUMMARY_SCALARS:
+    for key in DATA_QUALITY_SCALARS:
         value = payload.get(key)
         if isinstance(value, Real):
             adapter.report_scalar("features", key, float(value), iteration=0)
-
-
-def _report_plain_metrics(adapter, payload: dict[str, Any], *, title: str = "metrics") -> None:
-    for metric_name, value in _numeric_metrics(payload).items():
-        adapter.report_scalar(title, metric_name, value, iteration=0)
-    _report_best_model_metrics(adapter, payload)
-
-
-def _report_metrics_table(adapter, path: str | Path, *, title: str = "metrics") -> None:
-    frame = read_csv_for_reporting(path)
-    if frame is None or not {"metric", "value"} <= set(frame.columns):
-        return
-    for row in frame.itertuples(index=False):
-        _report_metric_row(adapter, row, title=title)
-
-
-def _report_metric_row(adapter, row: Any, *, title: str) -> None:
-    try:
-        value = float(row.value)
-    except (TypeError, ValueError):
-        return
-    adapter.report_scalar(title, str(row.metric), value, iteration=0)
 
 
 def _report_ensemble_metrics_table(adapter, path: str | Path) -> None:

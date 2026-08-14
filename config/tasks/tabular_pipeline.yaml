@@ -8,9 +8,11 @@ run:
 # Default graph: preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models.
 # Each ClearML ensemble node runs the internal build_ensemble stage with one method.
 # Inference remains a separate tabular_infer_template task.
-# Required local inputs: Input/local_path and Input/target_column.
-# Required ClearML remote inputs: Input/clearml_dataset_id, Input/dataset_file,
-# and Input/target_column. clearml-dev profile provides dev Dataset defaults.
+# Scalar input uses Input/local_path and Input/target_column.
+# Sparse target collections use a dataset directory plus Input/source_manifest.
+# ClearML remote input always needs Input/clearml_dataset_id. Scalar input also
+# needs Input/dataset_file and Input/target_column; sparse collections use
+# Input/source_manifest instead. clearml-dev profile provides dev Dataset defaults.
 # ClearML UI examples:
 #   Basic/model_suite: default | fast | interpretable | tree | gbm | custom
 #   Basic/quality_mode: fast | standard | quality
@@ -31,6 +33,7 @@ data:
   local_path: data/sample_train.csv
   clearml_dataset_id: null
   dataset_file: null
+  source_manifest: null
   target_column: target
   feature_columns: null
   id_columns: [id]
@@ -64,11 +67,9 @@ model:
       alpha: 1.0
     random_forest:
       n_estimators: 20
-      random_state: 42
       n_jobs: 1
     gradient_boosting:
       n_estimators: 20
-      random_state: 42
     lasso:
       alpha: 0.01
       max_iter: 5000
@@ -76,24 +77,19 @@ model:
       alpha: 0.01
       l1_ratio: 0.5
       max_iter: 5000
-      random_state: 42
     extra_trees:
       n_estimators: 20
-      random_state: 42
       n_jobs: 1
     lightgbm:
       n_estimators: 100
-      random_state: 42
       n_jobs: 1
     xgboost:
       n_estimators: 100
-      random_state: 42
       n_jobs: 1
       objective: reg:squarederror
       verbosity: 0
     catboost:
       iterations: 100
-      random_seed: 42
       verbose: false
   candidates:
     - linear

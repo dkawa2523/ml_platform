@@ -12,6 +12,18 @@ def _resolver(adapter, tasks):
     return resolver
 
 
+def test_clearml_dataset_resolution_keeps_dataset_root_for_tabular_loader(tmp_path):
+    adapter = load_clearml_adapter_module()
+    root = tmp_path / "dataset"
+    root.mkdir()
+    (root / "first.csv").write_text("x\n1\n", encoding="utf-8")
+    (root / "second.csv").write_text("x\n2\n", encoding="utf-8")
+
+    resolved = adapter.ClearMLAdapter(task=None).resolve_dataset(None, str(root))
+
+    assert resolved == str(root)
+
+
 def test_clearml_resolves_infer_source_from_pipeline_controller_best_task():
     adapter = load_clearml_adapter_module()
     resolver = _resolver(
@@ -19,21 +31,12 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_best_task():
         [
             FakeTask("pipe", "tabular_train_pipeline_template"),
             FakeTask(
-                "preprocess",
-                "preprocess_features",
-                artifacts={
-                    "feature_spec": FakeArtifact("feature_spec.json"),
-                    "preprocess_bundle": FakeArtifact("preprocess_bundle.joblib"),
-                },
-                params={"Run/stage": "preprocess_features"},
-                parent="pipe",
-            ),
-            FakeTask(
                 "eval",
                 "evaluate_models",
                 artifacts={
                     "best_model": FakeArtifact("best_model.joblib"),
                     "best_model_json": FakeArtifact("best_model.json"),
+                    "model_info": FakeArtifact("model_info.json"),
                 },
                 params={"Run/stage": "evaluate_models"},
                 parent="pipe",
@@ -49,9 +52,7 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_best_task():
     )
 
     assert resolved["model"]["artifact_path"] == "best_model.joblib"
-    assert resolved["model"]["info_path"] == "best_model.json"
-    assert resolved["model"]["feature_spec_path"] == "feature_spec.json"
-    assert resolved["model"]["preprocess_bundle_path"] == "preprocess_bundle.joblib"
+    assert resolved["model"]["info_path"] == "model_info.json"
     assert resolved["model"]["resolved_source_task_name"] == "evaluate_models"
     assert resolved["model"]["resolved_source_artifact"] == "best_model"
 
@@ -68,7 +69,6 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_ensemble_task():
                 artifacts={
                     "model": FakeArtifact("ensemble.joblib"),
                     "model_info": FakeArtifact("ensemble_model_info.json"),
-                    "ensemble_info": FakeArtifact("ensemble_info.json"),
                 },
                 params={"Run/stage": "build_ensemble"},
                 parent="pipe",
@@ -100,7 +100,6 @@ def test_clearml_resolves_infer_source_from_pipeline_controller_ensemble_method_
                 artifacts={
                     "model_weighted": FakeArtifact("ensemble_weighted.joblib"),
                     "model_info_weighted": FakeArtifact("ensemble_weighted_model_info.json"),
-                    "ensemble_info_weighted": FakeArtifact("ensemble_weighted_info.json"),
                 },
                 params={"Run/stage": "build_ensemble"},
                 parent="pipe",

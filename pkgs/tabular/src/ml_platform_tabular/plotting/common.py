@@ -7,9 +7,6 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
-PALETTE = ("#2878b8", "#e17c45", "#59a14f", "#b07aa1", "#edc948")
-
-
 def _font():
     return ImageFont.load_default()
 

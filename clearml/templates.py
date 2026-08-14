@@ -16,19 +16,19 @@ add_clearml_entrypoint_paths()
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 from adapter import (
-    apply_execution_image,
-    clearml_execution_image,
     clearml_projects,
     clearml_tags,
     clearml_template_name,
     import_clearml_sdk,
     validate_clearml_runtime,
 )
+from execution import ExecutionSpec, apply_task_execution, load_execution_spec, set_task_script
 from ml_platform_core.config import load_run_config, load_yaml
 from param_defaults import build_default_connected_params
 from pipeline_controller import sync_pipeline_draft
-from pipeline_plan import build_pipeline_plan, pipeline_runtime_params
-from support import delete_task, replace_task_tags, script_args, script_entry_point, set_task_comment, set_task_script
+from pipeline_params import pipeline_runtime_params
+from pipeline_plan import build_pipeline_plan
+from support import delete_task, replace_task_tags, script_args, script_entry_point, set_task_comment
 
 
 TASK_TEMPLATES = [
@@ -53,7 +53,8 @@ TEMPLATE_NOTES = {
         "USER-FACING training Pipeline-tab draft: preprocess_features -> train_<model>* "
         "-> build_ensemble_<method>* -> evaluate_models. Package stage keys stay "
         "train_model/build_ensemble; suffixes are ClearML step labels. Set remote inputs with "
-        "Input/clearml_dataset_id, Input/dataset_file, and Input/target_column; "
+        "Input/clearml_dataset_id plus either Input/dataset_file/Input/target_column "
+        "or Input/source_manifest; "
         "start with Basic/model_suite and Basic/use_ensemble. Advanced users can "
         "still edit Model/candidates and Model/ensemble_methods. Synced templates "
         "install GBM packages into the remote execution venv."
@@ -70,23 +71,29 @@ def _task_type(Task: Any, name: str):
     return getattr(Task.TaskTypes, name, getattr(Task.TaskTypes, "training", None))
 
 
-def _template_note(task_name: str, execution_image: str | None = None) -> str:
-    image_note = f" Execution image: {execution_image}." if execution_image else ""
-    return f"{TEMPLATE_NOTES.get(task_name, 'Unsupported template name for the current product surface')}{image_note}"
+def _template_note(task_name: str, execution: ExecutionSpec | None = None) -> str:
+    execution_note = (
+        f" Revision: {execution.commit}. Image: {execution.image}. Python: {execution.python_binary}."
+        if execution
+        else ""
+    )
+    return (
+        f"{TEMPLATE_NOTES.get(task_name, 'Unsupported template name for the current product surface')}{execution_note}"
+    )
 
 
 def _template_tags(task_name: str) -> list[str]:
     return clearml_tags("template", **TEMPLATE_TAG_OPTIONS.get(task_name, {}))
 
 
-def _apply_task_metadata(task: Any, task_name: str, execution_image: str | None = None) -> None:
+def _apply_task_metadata(task: Any, task_name: str, execution: ExecutionSpec | None = None) -> None:
     replace_task_tags(
         task,
         _template_tags(task_name),
         remove_tags={"internal:true", "user_facing:true"},
         remove_prefixes=("run_type:",),
     )
-    set_task_comment(task, _template_note(task_name, execution_image))
+    set_task_comment(task, _template_note(task_name, execution))
 
 
 def _entry_point(task_name: str) -> str:
@@ -148,26 +155,6 @@ def _infer_dataset_defaults(cfg: dict[str, Any]) -> tuple[Any, Any]:
     )
 
 
-def _set_script(
-    task: Any,
-    *,
-    repository: str,
-    branch: str,
-    working_dir: str,
-    entry_point: str,
-    task_config: str,
-    profile_path: str | Path,
-) -> None:
-    set_task_script(
-        task,
-        repository=repository,
-        branch=branch,
-        working_dir=working_dir,
-        entry_point=entry_point,
-        cli_args=_cli_args(task_config, profile_path),
-    )
-
-
 def _find_editable_template(Task: Any, project_name: str, task_name: str):
     tasks = Task.get_tasks(project_name=project_name, task_name=task_name, allow_archived=False)
     editable = [task for task in tasks if getattr(task, "status", None) == "created"]
@@ -187,9 +174,7 @@ def _sync_template_task(
     project_name: str,
     task_name: str,
     task_type: Any,
-    repository: str,
-    branch: str,
-    working_dir: str,
+    execution: ExecutionSpec,
     entry_point: str,
     task_config: str,
     profile_path: str | Path,
@@ -202,22 +187,21 @@ def _sync_template_task(
             project_name=project_name,
             task_name=task_name,
             task_type=task_type,
-            repo=repository,
-            branch=branch,
+            repo=execution.repository,
+            branch="",
+            commit=execution.commit,
             script=script_entry_point(entry_point, _cli_args(task_config, profile_arg)),
-            working_directory=working_dir,
+            working_directory=execution.working_dir,
             packages=_remote_packages(),
             add_task_init_call=False,
+            binary=execution.python_binary,
         )
     else:
-        _set_script(
+        set_task_script(
             task,
-            repository=repository,
-            branch=branch,
-            working_dir=working_dir,
+            execution,
             entry_point=entry_point,
-            task_config=task_config,
-            profile_path=profile_arg,
+            cli_args=_cli_args(task_config, profile_arg),
         )
     _replace_template_params(task, params)
     return task
@@ -246,10 +230,7 @@ def _template_sync_settings(profile_path: str | Path) -> dict[str, Any]:
         "clearml_cfg": clearml_cfg,
         "project_name": projects["templates"],
         "pipeline_project_name": projects["pipelines"],
-        "execution_image": clearml_execution_image(clearml_cfg),
-        "repository": clearml_cfg.get("repository", "."),
-        "branch": clearml_cfg.get("branch", "main"),
-        "working_dir": clearml_cfg.get("working_dir", "."),
+        "execution": load_execution_spec(profile),
     }
 
 
@@ -278,20 +259,22 @@ def _print_task_template_dry_run(
     cfg = load_run_config(task_config, settings["profile_path"])
     runtime_params = _task_runtime_params(task_name, cfg)
     entry_point = _entry_point(task_name)
+    execution = settings["execution"]
     print(
         "DRY-RUN template: "
         f"project={settings['project_name']} "
         f"name={clearml_template_name(task_name)} "
         f"type={task_type_name} "
-        f"repository={settings['repository']} "
-        f"branch={settings['branch']} "
-        f"working_dir={settings['working_dir']} "
-        f"execution_image={settings['execution_image'] or ''} "
+        f"repository={execution.repository} "
+        f"revision={execution.commit} "
+        f"working_dir={execution.working_dir} "
+        f"execution_image={execution.image} "
+        f"python={execution.python_binary} "
         f"entry_point={entry_point} "
         f'args="{script_args(_cli_args(task_config, settings["profile_path"]))}" '
         f"params=[{', '.join(runtime_params)}] "
         f"tags={_template_tags(task_name)} "
-        f'note="{_template_note(task_name, settings["execution_image"])}"'
+        f'note="{_template_note(task_name, execution)}"'
     )
 
 
@@ -304,21 +287,23 @@ def _print_pipeline_template_dry_run(
         profile_path=settings["profile_path"],
         runtime_params=runtime_params,
     )
+    execution = settings["execution"]
     print(
         "DRY-RUN pipeline template: "
         f"project={plan['project']} "
         f"name={clearml_template_name(task_name)} "
         f"type={task_type_name} "
-        f"repository={settings['repository']} "
-        f"branch={settings['branch']} "
-        f"working_dir={settings['working_dir']} "
-        f"execution_image={settings['execution_image'] or ''} "
+        f"repository={execution.repository} "
+        f"revision={execution.commit} "
+        f"working_dir={execution.working_dir} "
+        f"execution_image={execution.image} "
+        f"python={execution.python_binary} "
         f"entry_point={_entry_point(task_name)} "
         f'args="{script_args(_cli_args(task_config, settings["profile_path"]))}" '
         f"params=[{', '.join(runtime_params)}] "
         f"steps={' -> '.join(step['name'] for step in plan['steps'])} "
         f"tags={_template_tags(task_name)} "
-        f'note="{_template_note(task_name, settings["execution_image"])}"'
+        f'note="{_template_note(task_name, execution)}"'
     )
 
 
@@ -333,21 +318,19 @@ def _sync_task_templates(Task: Any, settings: dict[str, Any]) -> None:
             project_name=settings["project_name"],
             task_name=display_name,
             task_type=_task_type(Task, task_type_name),
-            repository=settings["repository"],
-            branch=settings["branch"],
-            working_dir=settings["working_dir"],
+            execution=settings["execution"],
             entry_point=entry_point,
             task_config=task_config,
             profile_path=settings["profile_path"],
             params=params,
         )
-        apply_execution_image(task, settings["execution_image"])
-        _apply_task_metadata(task, task_name, settings["execution_image"])
+        apply_task_execution(task, settings["execution"])
+        _apply_task_metadata(task, task_name, settings["execution"])
         _delete_stale_created_templates(Task, settings["project_name"], display_name, task.id)
         print(
             f"Synced template: {settings['project_name']}/{display_name} "
-            f"id={task.id} image={settings['execution_image'] or '-'} "
-            f"({_template_note(task_name, settings['execution_image'])})"
+            f"id={task.id} revision={settings['execution'].commit} image={settings['execution'].image} "
+            f"({_template_note(task_name, settings['execution'])})"
         )
 
 
@@ -357,15 +340,12 @@ def _sync_pipeline_templates(settings: dict[str, Any]) -> None:
             task_path=task_config,
             profile_path=settings["profile_path"],
             template_name=task_name,
-            repository=settings["repository"],
-            branch=settings["branch"],
-            working_dir=settings["working_dir"],
+            execution=settings["execution"],
             packages=_remote_packages(),
-            execution_image=settings["execution_image"],
         )
         print(
             "Synced pipeline template: "
             f"{settings['pipeline_project_name']}/{clearml_template_name(task_name)} "
-            f"id={task.id} image={settings['execution_image'] or '-'} "
-            f"({_template_note(task_name, settings['execution_image'])})"
+            f"id={task.id} revision={settings['execution'].commit} image={settings['execution'].image} "
+            f"({_template_note(task_name, settings['execution'])})"
         )

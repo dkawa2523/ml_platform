@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-import numpy as np
 import pandas as pd
 
+from ..features import FeatureTransformer
+from ..models import Predictor
 from ..selection import REPORT_METRICS
 
 
@@ -18,19 +19,6 @@ LEADERBOARD_REPORT_SCHEMA_VERSION = "leaderboard_dashboard_v2"
 def safe_name(value: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in value)
     return safe or "model"
-
-
-class FeatureTransformer(Protocol):
-    def transform(self, X: pd.DataFrame) -> object: ...
-
-
-class Predictor(Protocol):
-    def predict(self, X: pd.DataFrame) -> np.ndarray: ...
-
-
-FeatureFrame = pd.DataFrame
-TargetVector = pd.Series
-PredictionArray = np.ndarray
 
 
 @dataclass(frozen=True)
@@ -59,17 +47,18 @@ def ensemble_member_rows(members: list[EnsembleMember]) -> list[dict[str, Any]]:
 
 @dataclass(frozen=True)
 class PreprocessResult:
-    stage: str
-    stage_dir: Path
     transformer: FeatureTransformer
     feature_columns: list[str]
     target_column: str
+    target_names: list[str]
+    coordinate_columns: list[str]
+    id_columns: list[str]
     feature_preset: str
     feature_config: dict[str, Any]
-    X_train: FeatureFrame
-    X_valid: FeatureFrame
-    y_train: TargetVector
-    y_valid: TargetVector
+    X_train: pd.DataFrame
+    X_valid: pd.DataFrame
+    y_train: pd.Series
+    y_valid: pd.Series
     artifacts: dict[str, Path]
     tables: dict[str, Path]
     plots: dict[str, Path] = field(default_factory=dict)
@@ -78,12 +67,10 @@ class PreprocessResult:
 @dataclass(frozen=True)
 class CandidateResult:
     stage: str
-    stage_dir: Path
     model_name: str
     model_params: dict[str, Any]
     artifact_kind: str
     estimator: Predictor
-    predictions: PredictionArray | None
     metrics: dict[str, float]
     artifacts: dict[str, Path]
     tables: dict[str, Path]
@@ -92,16 +79,6 @@ class CandidateResult:
     artifact_name: str = "model"
     selected_base_models: list[EnsembleMember] = field(default_factory=list)
     ensemble_results: list["CandidateResult"] = field(default_factory=list)
-    best_ensemble: "CandidateResult | None" = None
-    ensemble_refs: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class CandidateTrainingResult:
-    stage: str
-    stage_dir: Path
-    model_results: list[CandidateResult]
-    artifacts: dict[str, Path] = field(default_factory=dict)
 
 
 def candidate_selector(item: CandidateResult) -> str:
@@ -132,11 +109,9 @@ def _path_text(value: object | None) -> str | None:
 
 @dataclass(frozen=True)
 class EvaluationResult:
-    stage: str
-    stage_dir: Path
     best: CandidateResult
-    metrics: dict[str, Any]
-    report: dict[str, Any]
+    metrics: dict[str, float]
+    summary: dict[str, Any]
     artifacts: dict[str, Path]
     tables: dict[str, Path]
     plots: dict[str, Path]

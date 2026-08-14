@@ -13,7 +13,8 @@ from _entrypoint_bootstrap import add_clearml_entrypoint_paths
 
 add_clearml_entrypoint_paths()
 
-from ml_platform_core.config import apply_overrides, load_run_config
+from ml_platform_core.config import load_run_config
+from ml_platform_core.config_validation import validate_run_config
 from ml_platform_core.value_coercion import as_bool, as_str_list
 from ml_platform_tabular import run_task
 
@@ -210,11 +211,9 @@ def _connect_runtime_params(adapter: ClearMLAdapter, cfg: dict) -> dict:
 def _resolved_dataset_path(adapter: ClearMLAdapter, cfg: dict, connected: dict) -> str | None:
     if not _needs_dataset_resolution(cfg, connected):
         return None
-    dataset_file = connected.get("Input/dataset_file") or cfg.get("data", {}).get("dataset_file")
     return adapter.resolve_dataset(
         connected.get("Input/clearml_dataset_id"),
         connected.get("Input/local_path"),
-        dataset_file=dataset_file,
     )
 
 
@@ -231,7 +230,9 @@ def _runtime_task_config(adapter: ClearMLAdapter, cfg: dict, connected: dict) ->
     task_id = adapter.task.id
     if task_id:
         cfg.setdefault("runtime", {})["clearml_task_id"] = task_id
-    return _resolve_runtime_sources(adapter, cfg)
+    cfg = _resolve_runtime_sources(adapter, cfg)
+    validate_run_config(cfg)
+    return cfg
 
 
 def _resolve_runtime_sources(adapter: ClearMLAdapter, cfg: dict) -> dict:
@@ -246,7 +247,7 @@ def _resolve_runtime_sources(adapter: ClearMLAdapter, cfg: dict) -> dict:
 
 def main() -> None:
     args = _parse_args()
-    cfg = apply_overrides(load_run_config(args.task, args.profile), args.overrides)
+    cfg = load_run_config(args.task, args.profile, overrides=args.overrides)
     adapter = _init_adapter(cfg)
     try:
         connected = _connect_runtime_params(adapter, cfg)

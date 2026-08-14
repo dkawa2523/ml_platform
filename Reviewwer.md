@@ -50,7 +50,9 @@ flowchart TB
   subgraph Ops["ClearML operations boundary"]
     Adapter["adapter.py"]
     Params["param_bindings/defaults/transport/apply.py"]
+    ParamsPlan["pipeline_params.py"]
     Plan["pipeline_plan.py"]
+    StepsPlan["pipeline_steps.py"]
     Controller["pipeline_controller.py"]
     Reports["reports.py"]
   end
@@ -64,8 +66,11 @@ flowchart TB
   ClearMLApp --> Adapter
   ClearMLApp --> Params
   ClearMLApp --> Tabular
-  ClearMLPipeline --> Plan
+  ClearMLPipeline --> ParamsPlan
+  ParamsPlan --> Plan
   Plan --> DomainPlan
+  DomainPlan --> StepsPlan
+  StepsPlan --> Controller
   ClearMLPipeline --> Controller
   Controller --> ClearMLApp
   Training --> Result
@@ -142,9 +147,11 @@ flowchart TB
   Template["template/tabular_train_pipeline"] --> NewRun["ClearML New Run"]
   NewRun --> PipelineTask["PipelineController task"]
   PipelineTask --> Args["Args/* runtime params"]
-  Args --> Plan["clearml/pipeline_plan.py"]
+  Args --> ParamsPlan["clearml/pipeline_params.py"]
+  ParamsPlan --> Plan["clearml/pipeline_plan.py"]
   Plan --> DomainPlan["ml_platform_tabular.domain_plan"]
-  DomainPlan --> Steps["ClearML add_step graph"]
+  DomainPlan --> StepRender["clearml/pipeline_steps.py"]
+  StepRender --> Steps["ClearML add_step graph"]
   Steps --> StageTemplate["internal/tabular_stage"]
   StageTemplate --> StageTask["clearml/app.py -- task tabular_stage"]
   StageTask --> StageRunner["ml_platform_tabular.stage.run_stage"]
@@ -164,9 +171,8 @@ flowchart TB
   Data --> Schema["schema_check_summary"]
   Schema -->|missing required feature| Error["write schema_check_summary then raise ValueError"]
   Schema -->|ok or warning| Predict["write predictions.csv"]
-  Predict --> Summary["prediction_summary + preview + histogram"]
-  Summary --> Source["source_summary.csv"]
-  Source --> Manifest["manifest.json"]
+  Predict --> Summary["prediction_summary + preview + distribution plot"]
+  Summary --> Manifest["manifest.json"]
   Manifest --> Result["RunResult"]
 ```
 
@@ -234,7 +240,9 @@ flowchart LR
 | `app.py` | stage/infer task entrypoint | package runner を呼ぶだけに寄せる |
 | `pipelines.py` | PipelineController CLI entrypoint | pipeline sync/run の入口 |
 | `templates.py` | ClearML template task sync | user-facing/internal template 管理 |
-| `pipeline_plan.py` | PipelineController の step plan 生成 | domain plan を ClearML step に変換 |
+| `pipeline_params.py` | Pipeline New Run parameter のdefault・正規化 | manifest由来の公開契約だけを扱う |
+| `pipeline_plan.py` | training plan の組立・dry-run表示 | domain plan生成を調停する |
+| `pipeline_steps.py` | artifact handoffとClearML step生成 | domain planをClearML stepへ変換する |
 | `pipeline_controller.py` | PipelineController draft sync と step registration | ClearML 側の graph 実体化 |
 | `source_resolution.py` | source_task_id / model_selector から artifact path を解決 | 推論時だけ使う |
 | `reports.py` | `RunResult` を ClearML に upload/report | package は ClearML を知らない |
@@ -291,9 +299,9 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `preprocess_features` | `preprocess` | `preprocess_features` | raw data, split, features config | `preprocess_bundle`, `feature_spec`, `processed_train`, `processed_valid` |
 | `train_model` | `train` | `train_<model>` | preprocess artifacts, `Model/name`, `Model/params` | `model`, `model_info`, `metrics`, `validation_predictions` |
-| `build_ensemble` | `ensemble` | `build_ensemble_<method>` | preprocess artifacts, `Input/model_refs` | `model`, `model_info`, `ensemble_info`, `metrics`, `ensemble_predictions` |
-| `evaluate_models` | `evaluate` | `evaluate_models` | `Input/model_refs`, optional `Input/ensemble_refs` | `leaderboard`, `best_model`, `best_model_json`, `metrics`, `evaluation_predictions` |
-| `infer` | `infer` | `tabular_infer` | inference data, model source | `predictions`, `schema_check_summary`, `prediction_summary`, `prediction_preview`, `source_summary`, `prediction_distribution_histogram`, `manifest` |
+| `build_ensemble` | `ensemble` | `build_ensemble_<method>` | preprocess artifacts, `Input/model_refs` | `model`, `model_info`, `metrics`, `ensemble_predictions` |
+| `evaluate_models` | `evaluate` | `evaluate_models` | `Input/model_refs`, optional `Input/ensemble_refs` | `leaderboard`, `best_model`, `model_info`, `best_model_json`, `metrics`, `evaluation_predictions` |
+| `infer` | `infer` | `tabular_infer` | inference data, model source | `predictions`, `schema_check_summary`, `prediction_summary`, `prediction_preview`, `prediction_distribution`, `manifest` |
 
 ### 5.4 Runtime parameter groups
 
@@ -309,7 +317,7 @@ flowchart LR
 | `Model` | `Model/candidates`, `Model/model_params_by_name` | `model.candidates`, `model.params` | `Model/params` は stage 単体用 |
 | `Model` | `Model/source_type`, `Model/source_task_id`, `Model/model_selector` | `model.*` | 推論 source resolution 用 |
 | `Model` | `Model/ensemble_methods`, `Model/ensemble_top_k` | `model.ensemble.*` | Pipeline ensemble 用 |
-| `Output` | `Output/prediction_name`, `Output/chunk_size`, `Output/upload_plots` | `output.*` | 推論 chunk / plot upload 制御 |
+| `Output` | `Output/prediction_name`, `Output/upload_plots` | `output.*` | 推論ファイル名 / plot upload 制御 |
 
 ### 5.5 `RunResult` contract
 
@@ -385,7 +393,7 @@ flowchart TB
   TrainRun --> TrainDirs["train_<model>/"]
   TrainRun --> EnsembleDir["build_ensemble/"]
   TrainRun --> EvalDir["evaluate_models/"]
-  InferRun --> InferFiles["predictions + schema + source + manifest"]
+  InferRun --> InferFiles["predictions + schema + manifest"]
 ```
 
 `latest*` は symlink ではなく copy です。Windows / ClearML Agent / mounted PVC の差異を避けるためです。
@@ -395,18 +403,16 @@ flowchart TB
 | Stage | 種別 | 名前 | 見る理由 |
 | --- | --- | --- | --- |
 | preprocess | artifact | `preprocess_bundle` | transformer と前処理情報 |
-| preprocess | artifact | `feature_spec` | 推論で feature/id/target を復元する基準 |
-| preprocess | artifact | `feature_summary`, `data_quality_summary` | feature と data quality の JSON 診断 |
+| preprocess | artifact | `feature_spec` | 学習時の feature/id/target 契約 |
+| preprocess | artifact | `data_quality_summary` | data quality の JSON 診断 |
 | preprocess | table | `processed_train`, `processed_valid` | split 後 raw frame |
-| preprocess | table | `train_features`, `valid_features` | transformed feature matrix |
-| preprocess | table | `data_quality_summary_table`, `data_quality_warnings` | 品質診断 |
+| preprocess | table | `data_quality_warnings`, `missing_rate_by_column` | 対応可能な品質診断 |
 | train | artifact | `model_<name>`, `model_info_<name>`, `metrics_<name>` | model 実体・metadata・metric |
 | train | table | `validation_predictions_<name>` | validation prediction 詳細 |
-| train | plot | `validation_prediction_vs_actual_<name>`, residual plots | model 診断 |
-| ensemble | artifact | `ensemble_<method>`, `ensemble_info`, `ensemble_refs` | ensemble 実体・参照 |
-| ensemble | table | `ensemble_predictions_<method>`, `ensemble_members_<method>`, `ensemble_weights_<method>` | ensemble 内訳 |
+| ensemble | artifact | `ensemble_<method>`, `model_info_<method>`, `ensemble_refs` | ensemble 実体・参照 |
+| ensemble | table | `ensemble_predictions_<method>`, `ensemble_members_<method>` | ensemble 内訳 |
 | evaluate | table/artifact | `leaderboard` | 全候補比較の中心 |
-| evaluate | artifact | `best_model`, `best_model_json` | 推論に渡す canonical decision |
+| evaluate | artifact | `best_model`, `model_info`, `best_model_json` | 推論に渡す canonical decision |
 | evaluate | table | `evaluation_predictions` | best candidate の prediction 詳細 |
 | evaluate | plot | `leaderboard_metric_panel`, best prediction/residual plots | ClearML UI で最初に見る診断 |
 | all | artifact | `manifest` | 出力索引と sha256 |
@@ -415,12 +421,11 @@ flowchart TB
 
 | 種別 | 名前 | 内容 |
 | --- | --- | --- |
-| table | `predictions` | `row_index`, ID 列, `prediction`, `model_name`, `artifact_kind`, `model_artifact_id`, `prediction_run_id` |
+| table | `predictions` | `row_index`, ID 列, `prediction` |
 | artifact/table | `schema_check_summary` | feature/id/category の schema 診断 |
 | table | `prediction_summary` | 予測値の集計 |
 | table | `prediction_preview` | 予測結果の先頭行 |
-| table | `source_summary` | model source, selector, resolved path, feature preset など |
-| plot | `prediction_distribution_histogram` | 予測分布 |
+| plot | `prediction_distribution` | 予測分布 |
 | artifact | `manifest` | 推論 run の出力索引 |
 
 `predictions.csv` は intentionally slim です。入力 feature 全列はコピーしません。
@@ -430,12 +435,8 @@ flowchart TB
 | 列 | 内容 |
 | --- | --- |
 | `row_index` | 入力 dataframe 上の行番号 |
-| configured / learned ID columns | `data.id_columns` または `feature_spec.id_columns` に存在する列 |
+| configured / learned ID columns | `data.id_columns` または `model_info.id_columns` に存在する列 |
 | `prediction` | 予測値 |
-| `model_name` | 解決された model 名 |
-| `artifact_kind` | `model` または `ensemble` |
-| `model_artifact_id` | model_info と model path から作る軽量 ID |
-| `prediction_run_id` | 推論 run directory 名 |
 
 予約列に入力データが衝突する場合は `ValueError` になります。
 
@@ -445,11 +446,9 @@ flowchart TB
 
 | 出力 | 観点 |
 | --- | --- |
-| `data_quality_summary.json` | row count, target column, numeric target, split metadata |
-| `data_quality_summary_table.csv` | ClearML UI に出す summary table |
-| `data_quality_warnings.csv` | 欠損、重複、ID 重複、高 cardinality、leak 疑いなどの警告 |
+| `data_quality_summary.json` | row count, target column, feature type, split metadata |
+| `data_quality_warnings.csv` | 欠損、重複、ID 重複、高 cardinality などの対応可能な警告 |
 | `missing_rate_by_column.csv` / plot | 欠損率 |
-| `feature_summary.json` / table | feature config, transformed column, passthrough/drop 状態 |
 
 警告は基本的に失敗扱いではありません。致命的な入力不備だけが例外になります。
 
@@ -493,23 +492,9 @@ stateDiagram-v2
 | `unseen_category_columns` | unseen category を含む列 |
 | `status` | `ok`, `warning`, `error` |
 
-### 7.4 Source diagnostics
+### 7.4 Source provenance
 
-`source_summary.csv` は、推論結果がどの学習成果物から来たかを追跡するための table です。
-
-| field | 内容 |
-| --- | --- |
-| `source_type` | `task_id` or `local_path` |
-| `source_task_id` | ClearML source task ID |
-| `model_selector` | `best`, model name, `ensemble`, `ensemble:<method>` |
-| `resolved_model_name` | 実際に使った model 名 |
-| `artifact_kind` | `model` or `ensemble` |
-| `ensemble_method` | ensemble の method |
-| `target_column` | 学習時 target |
-| `feature_preset` | feature config preset |
-| `schema_check_status` | schema check の最終 status |
-| `resolved_model_path` | 実体 model artifact path |
-| `model_artifact_id` | prediction にも入る ID |
+推論元の task、selector、model metadata は `config_resolved.yaml`、`model_info.json`、`manifest.json` に一度だけ記録します。専用の `source_summary.csv` は生成しません。
 
 ## 8. ClearML UI でレビューするポイント
 
@@ -520,7 +505,7 @@ stateDiagram-v2
 | Pipeline graph | `preprocess_features`, `train_<model>`, `build_ensemble_<method>`, `evaluate_models` | stage key と label の違いが意図どおり |
 | Stage task | artifacts/tables/plots | `RunResult` の各 dict と一致 |
 | Evaluate task | `leaderboard`, `best_model_json`, metrics plots | 推論に必要な selector が分かる |
-| Infer task | `schema_check_summary`, `predictions`, `source_summary` | model source と schema status が追える |
+| Infer task | `schema_check_summary`, `predictions`, `manifest` | model source と schema status が追える |
 
 ## 9. 変更レビュー時のチェックリスト
 
@@ -599,7 +584,6 @@ uv run --group docs python -m mkdocs build --config-file docs/ml_platform_mkdocs
 | architecture | `pkgs/core` / `pkgs/tabular` / `clearml` の境界は守られている |
 | manifest | stage/task/artifact/parameter contract は実装と一致している |
 | training | local pipeline と ClearML dry-run graph が同じ product graph を表す |
-| inference | `schema_check_summary` と `source_summary` で入力・model source を追跡できる |
+| inference | `schema_check_summary` と `manifest` で入力・model source を追跡できる |
 | diagnostics | data quality, leaderboard, best model, prediction diagnostics が UI と manifest に残る |
 | residual risk | live ClearML Server / Agent / Kubernetes は別途環境検証が必要 |
-

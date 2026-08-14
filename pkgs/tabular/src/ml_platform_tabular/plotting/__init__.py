@@ -5,7 +5,7 @@ from .feature import (
     feature_role,
     transformed_columns_from_transformer,
     write_feature_importance_plot_if_available,
-    write_feature_summary_tables,
+    write_feature_diagnostics,
 )
 from .leaderboard import (
     write_leaderboard_metric_panel,
@@ -24,7 +24,7 @@ __all__ = [
     "feature_role",
     "transformed_columns_from_transformer",
     "write_feature_importance_plot_if_available",
-    "write_feature_summary_tables",
+    "write_feature_diagnostics",
     "write_histogram_plot",
     "write_leaderboard_metric_panel",
     "write_leaderboard_table",

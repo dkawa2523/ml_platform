@@ -37,6 +37,8 @@ def build_leaderboard_rows(results: list[CandidateResult], selection_metric: str
         }
         for name in LEADERBOARD_METRICS:
             row[name] = item.metrics.get(name)
+        if selection_metric not in LEADERBOARD_METRICS:
+            row[selection_metric] = item.metrics.get(selection_metric)
         rows.append(row)
     return rows
 

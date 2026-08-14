@@ -9,7 +9,7 @@ from ml_platform_core.io import write_json
 def default_model_path(output_dir: str | Path) -> Path:
     """Fallback model lookup path for local inference."""
     output_dir = Path(output_dir)
-    return output_dir / "latest" / "model.joblib"
+    return output_dir / "latest_training_pipeline" / "evaluate_models" / "best_model.joblib"
 
 
 def write_model_info(
@@ -29,10 +29,7 @@ def write_model_info(
         "feature_preset": feature_preset,
         "artifact_kind": artifact_kind,
         "model_name": model_name,
-        "produced_model_name": model_name,
         "model_params": model_params or {},
-        "best_model_name": model_name,
-        "best_model_params": model_params or {},
     }
     if extra:
         payload.update(extra)

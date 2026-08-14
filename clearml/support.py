@@ -64,7 +64,7 @@ def set_task_comment(task: Any, comment: str) -> None:
 def delete_task(task: Any) -> None:
     delete = getattr(task, "delete", None)
     if callable(delete):
-        delete(delete_artifacts_and_models=False, raise_on_error=False)
+        delete(delete_artifacts_and_models=False, raise_on_error=True)
 
 
 def script_args(cli_args: dict[str, str | Path]) -> str:
@@ -77,25 +77,6 @@ def script_entry_point(entry_point: str, cli_args: dict[str, str | Path]) -> str
 
 def _cli_parts(cli_args: dict[str, str | Path]) -> list[str]:
     return [part for key, value in cli_args.items() for part in (key, Path(value).as_posix())]
-
-
-def set_task_script(
-    task: Any,
-    *,
-    repository: str,
-    branch: str,
-    working_dir: str,
-    entry_point: str,
-    cli_args: dict[str, str | Path],
-) -> None:
-    task.set_script(
-        repository=repository,
-        branch=branch,
-        commit="",
-        diff="",
-        working_dir=working_dir,
-        entry_point=script_entry_point(entry_point, cli_args),
-    )
 
 
 def read_csv_for_reporting(path: str | Path, *, max_rows: int = MAX_REPORT_TABLE_ROWS):
@@ -130,60 +111,6 @@ class ClearMLLoggerAdapter:
         if frame is None:
             return
         report_table(title=title, series=series, table_plot=frame, iteration=iteration)
-
-    def report_scatter(self, title: str, series: str, points: list[tuple[float, float]], iteration: int = 0) -> None:
-        if not points:
-            return
-        report_scatter = getattr(self._logger(), "report_scatter2d", None)
-        if not callable(report_scatter):
-            return
-        report_scatter(
-            title=title,
-            series=series,
-            scatter=points,
-            iteration=iteration,
-            xaxis="actual",
-            yaxis="prediction",
-            mode="markers",
-        )
-
-    def report_plotly(self, title: str, series: str, figure: dict[str, Any], iteration: int = 0) -> None:
-        if not figure:
-            return
-        report_plotly = getattr(self._logger(), "report_plotly", None)
-        if not callable(report_plotly):
-            return
-        report_plotly(title=title, series=series, figure=figure, iteration=iteration)
-
-    def report_histogram(
-        self,
-        title: str,
-        series: str,
-        values: list[float],
-        iteration: int = 0,
-        *,
-        xaxis: str | None = None,
-        yaxis: str | None = None,
-        mode: str | None = None,
-    ) -> None:
-        if not values:
-            return
-        report_histogram = getattr(self._logger(), "report_histogram", None)
-        if not callable(report_histogram):
-            return
-        kwargs: dict[str, Any] = {
-            "title": title,
-            "series": series,
-            "values": values,
-            "iteration": iteration,
-        }
-        if xaxis:
-            kwargs["xaxis"] = xaxis
-        if yaxis:
-            kwargs["yaxis"] = yaxis
-        if mode:
-            kwargs["mode"] = mode
-        report_histogram(**kwargs)
 
     def report_media(self, title: str, series: str, path: str | Path, iteration: int = 0) -> None:
         path = Path(path)

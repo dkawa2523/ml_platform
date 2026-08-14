@@ -87,11 +87,10 @@ artifacts/tables, publishes scalar metrics, and reports existing plot artifacts
 through ClearML image/media APIs. CSV reads remain only for scalar/table
 reporting where the ClearML UI needs metric values.
 
-SR05 separates typed config parsing from legacy dict serialization. The typed
-models in `config_models.py` own field shape, parsing, and validation.
-`config_compat.py` owns legacy dict generation and present-section handling.
-Callers that need the legacy dict shape use `to_legacy_dict()` or the section
-serializers explicitly.
+Configuration remains a canonical dictionary after YAML merge and overrides.
+`config_validation.py` validates the small external boundary once without
+reshaping it. Runtime policy and ClearML adapters consume that same effective
+dictionary, avoiding typed-to-legacy round trips.
 
 ## Consequences
 

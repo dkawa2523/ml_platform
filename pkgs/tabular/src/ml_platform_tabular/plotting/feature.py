@@ -32,42 +32,16 @@ def feature_role(column: str, transformer: Any, feature_config: dict[str, Any]) 
     return "categorical_dropped" if feature_config.get("categorical_encoder") == "drop" else "selected"
 
 
-def write_feature_summary_tables(
+def write_feature_diagnostics(
     *,
     df: pd.DataFrame,
     X: pd.DataFrame,
-    X_train: pd.DataFrame,
-    X_valid: pd.DataFrame,
-    target_column: str,
     feature_columns: list[str],
-    transformed_columns: list[str],
     transformer: Any,
     feature_config: dict[str, Any],
     output_dir: Path,
-) -> dict[str, Path]:
+) -> tuple[dict[str, Path], dict[str, Path]]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    summary_rows = [
-        ("input_rows", len(df)),
-        ("train_rows", len(X_train)),
-        ("valid_rows", len(X_valid)),
-        ("selected_feature_count", len(feature_columns)),
-        ("numeric_feature_count", len(getattr(transformer, "numeric_cols", []))),
-        ("categorical_feature_count", len(getattr(transformer, "categorical_cols", []))),
-        ("passthrough_feature_count", len(getattr(transformer, "passthrough_cols", []))),
-        ("dropped_feature_count", len(feature_config["drop_columns"])),
-        ("transformed_feature_count", len(transformed_columns)),
-        ("target_column", target_column),
-        ("feature_preset", feature_config["preset"]),
-        ("numeric_impute_strategy", feature_config["numeric_impute_strategy"]),
-        ("categorical_impute_strategy", feature_config["categorical_impute_strategy"]),
-        ("categorical_encoder", feature_config["categorical_encoder"]),
-        ("scaling", feature_config["scaling"]),
-    ]
-    summary_path = write_table(
-        pd.DataFrame([{"metric": key, "value": value} for key, value in summary_rows]),
-        output_dir / "feature_summary_table.csv",
-    )
-
     missing_rows: list[dict[str, Any]] = []
     visible_columns = list(feature_columns)
     for column in feature_config["drop_columns"]:
@@ -86,28 +60,21 @@ def write_feature_summary_tables(
             }
         )
     missing_path = write_table(pd.DataFrame(missing_rows), output_dir / "missing_rate_by_column.csv")
-
-    type_rows = []
-    for role, count in {
-        "numeric": len(getattr(transformer, "numeric_cols", [])),
-        "categorical": len(getattr(transformer, "categorical_cols", [])),
-        "passthrough": len(getattr(transformer, "passthrough_cols", [])),
-        "dropped": len(feature_config["drop_columns"]),
-        "transformed": len(transformed_columns),
-    }.items():
-        type_rows.append({"feature_type": role, "count": int(count)})
-    type_counts_path = write_table(pd.DataFrame(type_rows), output_dir / "feature_type_counts.csv")
-    return {
-        "feature_summary_table": summary_path,
-        "missing_rate_by_column": missing_path,
-        "feature_type_counts": type_counts_path,
-    }
+    missingness_plot = write_metrics_bar_plot(
+        [(row["column"], row["missing_rate"]) for row in missing_rows],
+        output_dir / "missing_rate_by_column_bar.png",
+        title="Feature missing rate",
+        value_label="missing_rate",
+    )
+    return {"missing_rate_by_column": missing_path}, {"missing_rate_by_column_bar": missingness_plot}
 
 
 def _feature_importance_frame(estimator: Any) -> pd.DataFrame | None:
-    transformer = estimator.transformer
+    transformer = getattr(estimator, "transformer", None)
+    model = getattr(estimator, "model", None)
+    if transformer is None or model is None:
+        return None
     columns = transformed_columns_from_transformer(transformer)
-    model = estimator.model
     raw_values = None
     source = None
     if hasattr(model, "feature_importances_"):

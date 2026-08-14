@@ -8,17 +8,12 @@
 | --- | --- | --- |
 | Artifact | `preprocess_bundle.joblib` | 前処理 transformer と特徴量情報 |
 | Artifact | `feature_spec.json` | 学習時特徴量仕様 |
-| Artifact | `feature_summary.json` | 前処理概要 |
+| Artifact | `target_sources.json` | 複数target入力時の正規化済みsource定義 |
 | Artifact | `data_quality_summary.json` | データ品質概要 |
-| Table | `feature_summary_table.csv` | 特徴量概要 table |
 | Table | `missing_rate_by_column.csv` | 欠損率 |
-| Table | `feature_type_counts.csv` | 型別カウント |
-| Table | `data_quality_summary_table.csv` | データ品質 table |
 | Table | `data_quality_warnings.csv` | 警告一覧 |
 | Table | `processed_train.csv` | 分割後 train raw frame |
 | Table | `processed_valid.csv` | 分割後 valid raw frame |
-| Table | `train_features.csv` | 変換後 train features |
-| Table | `valid_features.csv` | 変換後 valid features |
 | Plot | `missing_rate_by_column_bar.png` | 欠損率 bar |
 
 ## train_<model>
@@ -30,12 +25,8 @@ ClearML step label では `train_<model>` と表示しますが、package stage 
 | Artifact | `model.joblib` | 学習済み estimator |
 | Artifact | `model_info.json` | モデル情報、特徴量、パラメータ |
 | Artifact | `metrics.json` | 指標 JSON |
-| Table | `metrics_table.csv` | 指標 table |
+| Table | `metrics_table.csv` | target別と`__macro__`のtidy指標 table |
 | Table | `validation_predictions.csv` | validation 予測 |
-| Table | `feature_importance.csv` | 対応モデルのみ |
-| Plot | `validation_prediction_vs_actual.png` | 予測 vs 実測 |
-| Plot | `validation_residual_histogram.png` | 残差ヒストグラム |
-| Plot | `validation_residual_vs_predicted.png` | 予測値 vs 残差 |
 
 ## build_ensemble_<method>
 
@@ -44,12 +35,10 @@ ClearML step label では `build_ensemble_<method>` と表示しますが、pack
 | 種別 | ファイル | 内容 |
 | --- | --- | --- |
 | Artifact | `model_<method>.joblib` | アンサンブル estimator |
-| Artifact | `model_info_<method>.json` | アンサンブルモデル情報 |
-| Artifact | `ensemble_info_<method>.json` | 構成モデルと重み |
+| Artifact | `model_info_<method>.json` | モデル情報、構成モデル、重み |
 | Artifact | `metrics_<method>.json` | アンサンブル指標 |
 | Table | `ensemble_predictions_<method>.csv` | validation 予測 |
-| Table | `ensemble_members_<method>.csv` | 構成モデル |
-| Table | `ensemble_weights_<method>.csv` | 重み |
+| Table | `ensemble_members_<method>.csv` | 構成モデルと重み |
 
 ## evaluate_models
 
@@ -58,6 +47,7 @@ ClearML step label では `build_ensemble_<method>` と表示しますが、pack
 | Artifact/Table | `leaderboard.csv` | 全候補比較 |
 | Artifact | `best_model.json` | 最良候補と推奨推論設定 |
 | Artifact | `best_model.joblib` | 最良モデル実体 |
+| Artifact | `model_info.json` | 推論に必要なモデル情報と特徴量契約 |
 | Artifact | `metrics.json` | 最良候補の指標 |
 | Table | `evaluation_predictions.csv` | 推奨モデルの予測 |
 | Artifact | `manifest.json` | 出力一覧 |
@@ -66,12 +56,11 @@ ClearML step label では `build_ensemble_<method>` と表示しますが、pack
 
 | 種別 | ファイル | 内容 |
 | --- | --- | --- |
-| Table | `predictions.csv` | 予測結果 |
+| Table | `predictions.csv` | 予測結果。複数targetではtarget・座標・source rowを保持 |
 | Artifact/Table | `schema_check_summary.json/csv` | 入力スキーマ検証 |
 | Table | `prediction_summary.csv` | 予測値集計 |
 | Table | `prediction_preview.csv` | 予測先頭行 |
-| Table | `source_summary.csv` | モデル取得元情報 |
-| Plot | `prediction_distribution_histogram.png` | 予測分布 |
+| Plot | `prediction_distribution.png` | scalar予測分布。単位が異なる複数targetでは生成しない |
 | Artifact | `manifest.json` | 出力一覧 |
 
 ## manifest の役割

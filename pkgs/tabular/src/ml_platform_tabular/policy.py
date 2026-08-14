@@ -11,7 +11,13 @@ from ml_platform_core.value_coercion import (
     as_str_list as _as_str_list,
 )
 
-from .models import DEPENDENCY_FREE_MODELS, OPTIONAL_DEPENDENCY_MODELS, SUPPORTED_MODELS, model_candidates
+from .models import (
+    DEPENDENCY_FREE_MODELS,
+    OPTIONAL_DEPENDENCY_MODELS,
+    SUPPORTED_MODELS,
+    model_candidates,
+    model_params_for_seed,
+)
 
 TABULAR_MODEL_SUITES: dict[str, tuple[str, ...]] = {
     "default": tuple(SUPPORTED_MODELS),
@@ -27,55 +33,52 @@ TABULAR_QUALITY_MODEL_PARAMS: dict[str, dict[str, dict[str, object]]] = {
         "linear": {},
         "ridge": {"alpha": 1.0},
         "lasso": {"alpha": 0.01, "max_iter": 3000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 3000, "random_state": 42},
-        "random_forest": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 10, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 10, "random_state": 42},
-        "lightgbm": {"n_estimators": 30, "random_state": 42, "n_jobs": 1},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 3000},
+        "random_forest": {"n_estimators": 10, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 10, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 10},
+        "lightgbm": {"n_estimators": 30, "n_jobs": 1},
         "xgboost": {
             "n_estimators": 30,
-            "random_state": 42,
             "n_jobs": 1,
             "objective": "reg:squarederror",
             "verbosity": 0,
         },
-        "catboost": {"iterations": 30, "random_seed": 42, "verbose": False},
+        "catboost": {"iterations": 30, "verbose": False},
     },
     "standard": {
         "linear": {},
         "ridge": {"alpha": 1.0},
         "lasso": {"alpha": 0.01, "max_iter": 5000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42},
-        "random_forest": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 20, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 20, "random_state": 42},
-        "lightgbm": {"n_estimators": 100, "random_state": 42, "n_jobs": 1},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000},
+        "random_forest": {"n_estimators": 20, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 20, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 20},
+        "lightgbm": {"n_estimators": 100, "n_jobs": 1},
         "xgboost": {
             "n_estimators": 100,
-            "random_state": 42,
             "n_jobs": 1,
             "objective": "reg:squarederror",
             "verbosity": 0,
         },
-        "catboost": {"iterations": 100, "random_seed": 42, "verbose": False},
+        "catboost": {"iterations": 100, "verbose": False},
     },
     "quality": {
         "linear": {},
         "ridge": {"alpha": 1.0},
         "lasso": {"alpha": 0.01, "max_iter": 8000},
-        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 8000, "random_state": 42},
-        "random_forest": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
-        "extra_trees": {"n_estimators": 60, "random_state": 42, "n_jobs": 1},
-        "gradient_boosting": {"n_estimators": 60, "random_state": 42},
-        "lightgbm": {"n_estimators": 200, "random_state": 42, "n_jobs": 1},
+        "elasticnet": {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 8000},
+        "random_forest": {"n_estimators": 60, "n_jobs": 1},
+        "extra_trees": {"n_estimators": 60, "n_jobs": 1},
+        "gradient_boosting": {"n_estimators": 60},
+        "lightgbm": {"n_estimators": 200, "n_jobs": 1},
         "xgboost": {
             "n_estimators": 200,
-            "random_state": 42,
             "n_jobs": 1,
             "objective": "reg:squarederror",
             "verbosity": 0,
         },
-        "catboost": {"iterations": 200, "random_seed": 42, "verbose": False},
+        "catboost": {"iterations": 200, "verbose": False},
     },
 }
 
@@ -224,11 +227,14 @@ def validate_primary_training_graph(model_cfg: dict[str, Any]) -> None:
         )
 
 
-def training_model_candidates(model_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+def training_model_candidates(model_cfg: dict[str, Any], *, seed: int = 42) -> list[dict[str, Any]]:
     candidates = model_candidates(model_cfg)
     if not candidates:
         raise ValueError("Training pipeline requires at least one model candidate.")
-    return [candidate.to_dict() for candidate in candidates]
+    return [
+        {"name": candidate.name, "params": model_params_for_seed(candidate.name, candidate.params, seed)}
+        for candidate in candidates
+    ]
 
 
 def ensemble_methods_from_config(ensemble_cfg: dict[str, Any]) -> list[str]:
@@ -320,6 +326,7 @@ def _data_runtime_defaults(
         "Input/local_path": local_path,
         "Input/clearml_dataset_id": clearml_dataset_id,
         "Input/dataset_file": dataset_file,
+        "Input/source_manifest": data.get("source_manifest"),
         "Input/target_column": data.get("target_column"),
         "Input/feature_columns": data.get("feature_columns") or [],
         "Input/id_columns": data.get("id_columns", []),
@@ -344,7 +351,7 @@ def _model_runtime_defaults(
     ensemble: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "Model/candidates": _json(SUPPORTED_MODELS),
+        "Model/candidates": _json(model.get("candidates") or SUPPORTED_MODELS),
         "Model/model_params_by_name": _json(model.get("params", {}) or {}),
         "Model/evaluation_metrics": _json(metrics.get("names", []) or []),
         "Model/selection_metric": model.get("selection_metric", "rmse"),

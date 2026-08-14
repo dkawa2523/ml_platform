@@ -18,12 +18,11 @@ from .artifacts import (
     CandidateResult,
     EvaluationResult,
     LEADERBOARD_REPORT_SCHEMA_VERSION,
-    ensemble_member_rows,
 )
 from .candidate_training import train_model_candidates
 from .ensemble import build_ensemble
 from .evaluation import evaluate_model_candidates
-from .output_maps import path_map, training_pipeline_outputs
+from .output_maps import training_pipeline_outputs
 from .preprocessing import preprocess_features
 from .ranking import ranked_results
 
@@ -35,8 +34,7 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
     selection_metric, metric_names = metric_settings(cfg, model_cfg)
 
     preprocess = preprocess_features(cfg, pipeline_dir)
-    trained = train_model_candidates(cfg, preprocess, pipeline_dir, metric_names)
-    model_results = trained.model_results
+    model_results = train_model_candidates(cfg, preprocess, pipeline_dir, metric_names)
     ranked_models = ranked_results(model_results, selection_metric)
     ensemble_result = build_ensemble(cfg, preprocess, ranked_models, pipeline_dir, metric_names, selection_metric)
     evaluation = evaluate_model_candidates(cfg, model_results, ensemble_result, pipeline_dir, selection_metric)
@@ -47,8 +45,6 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
         model_results=model_results,
         ensemble_result=ensemble_result,
         evaluation=evaluation,
-        artifacts=artifacts,
-        tables=tables,
     )
     return _finish_training_pipeline(
         cfg,
@@ -74,21 +70,17 @@ def _pipeline_summary(
     model_results: list[CandidateResult],
     ensemble_result: CandidateResult | None,
     evaluation: EvaluationResult,
-    artifacts: dict[str, Path],
-    tables: dict[str, Path],
 ) -> dict[str, Any]:
     ensemble_results = _ensemble_results(ensemble_result)
     return {
         "pipeline_kind": "training",
         "report_schema_version": LEADERBOARD_REPORT_SCHEMA_VERSION,
-        "code_version": evaluation.report.get("code_version"),
+        "code_version": evaluation.summary.get("code_version"),
         "stages": _pipeline_stages(model_results, ensemble_result),
         "candidate_models": [item.model_name for item in model_results],
         "selection_metric": selection_metric,
-        "best_model": evaluation.report["best_model"],
+        "best_model": evaluation.summary["best_model"],
         "ensemble": _ensemble_summary(ensemble_result, ensemble_results, evaluation),
-        "artifacts": path_map(artifacts),
-        "tables": path_map(tables),
     }
 
 
@@ -112,10 +104,8 @@ def _ensemble_summary(
         "enabled": True,
         "model_name": ensemble_result.model_name,
         "ensemble_method": ensemble_result.ensemble_method,
-        "artifact": str(ensemble_result.artifacts["model"]),
-        "selected_base_models": ensemble_member_rows(ensemble_result.selected_base_models),
         "methods": [item.ensemble_method for item in ensemble_results],
-        "best_ensemble": evaluation.report.get("best_ensemble"),
+        "best_ensemble": evaluation.summary.get("best_ensemble"),
     }
 
 
@@ -134,7 +124,7 @@ def _finish_training_pipeline(
     plots: dict[str, Path],
     summary: dict[str, Any],
 ) -> RunResult:
-    metrics_path = write_json(evaluation.metrics, pipeline_dir / "metrics.json")
+    metrics_path = write_json({**evaluation.metrics, **evaluation.summary}, pipeline_dir / "metrics.json")
     config_path = write_config_snapshot(cfg, pipeline_dir)
     artifacts.update({"metrics": metrics_path, "config": config_path})
     manifest_path = write_manifest(
@@ -147,8 +137,8 @@ def _finish_training_pipeline(
         extra=summary,
     )
     artifacts["manifest"] = manifest_path
-    update_latest(pipeline_dir, output_dir / "latest_training_pipeline")
-    update_latest(pipeline_dir, output_dir / "latest")
+    if not cfg.get("runtime", {}).get("use_clearml"):
+        update_latest(pipeline_dir, output_dir / "latest_training_pipeline")
 
     return RunResult(
         run_dir=pipeline_dir,

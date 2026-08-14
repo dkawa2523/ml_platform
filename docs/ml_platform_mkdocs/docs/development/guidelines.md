@@ -11,7 +11,7 @@ Keep changes close to the current ownership boundary.
 | Tabular stage execution | `stage.py`, `stage_inputs.py`, `stage_result.py` | Keep stage dispatch, input resolution, and result writing separate. |
 | Inference behavior | `inference/*` | Preserve schema check and prediction column order. |
 | Plot/table output | `plotting/*` | Keep ClearML-readable tables and small, useful plots. |
-| Pipeline graph plan | `domain_plan.py`, `clearml/pipeline_plan.py` | Keep domain step expansion separate from ClearML SDK draft sync. |
+| Pipeline graph plan | `domain_plan.py`, `clearml/pipeline_params.py`, `clearml/pipeline_plan.py`, `clearml/pipeline_steps.py` | Keep parameter normalization, domain expansion, artifact wiring, and SDK draft sync separate. |
 | Inference source resolution | `clearml/source_resolution.py`, `clearml/adapter.py` | Keep task/artifact selection separate from SDK import and logger wrappers. |
 | ClearML result reporting | `clearml/reports.py`, `clearml/reporting_scalars.py`, `clearml/reporting_targets.py` | Report domain-produced artifacts; keep scalar extraction and UI naming rules separate. |
 | ClearML runtime behavior | `clearml/adapter.py`, `clearml/pipeline_controller.py`, `clearml/templates.py`, `clearml/reports.py` | Keep SDK usage out of `pkgs/core` and `pkgs/tabular`. |

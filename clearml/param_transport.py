@@ -48,24 +48,3 @@ def group_connected_params(params: dict[str, Any]) -> dict[str, dict[str, Any]]:
         group, name = key.split("/", 1)
         groups.setdefault(group, {})[name] = value
     return groups
-
-
-def prefixed_connected_params(params: dict[str, Any], *, prefix: str) -> dict[str, Any]:
-    return {f"{prefix}{key}": value for key, value in params.items()}
-
-
-def connected_params_from_task(
-    defaults: dict[str, Any],
-    task_params: dict[str, Any],
-    *,
-    prefix: str = "Args/",
-) -> dict[str, Any]:
-    """Read ClearML task values, preferring prefixed New Run values."""
-    connected = dict(defaults)
-    for key in defaults:
-        if key in task_params:
-            connected[key] = task_params[key]
-        prefixed_key = f"{prefix}{key}"
-        if prefixed_key in task_params:
-            connected[key] = task_params[prefixed_key]
-    return coerce_connected_params(connected)

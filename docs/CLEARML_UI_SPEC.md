@@ -59,8 +59,11 @@ Required tags:
 
 ## Training New Run Parameters
 
-Remote runs should use `Input/clearml_dataset_id`, `Input/dataset_file`, and
-`Input/target_column`. `Input/local_path` is for local or mounted-path runs.
+Scalar remote runs use `Input/clearml_dataset_id`, `Input/dataset_file`, and
+`Input/target_column`. Sparse target collections use a Dataset directory with
+`Input/source_manifest`; `Input/dataset_file` and `Input/target_column` are
+left empty. `Input/local_path` is for local or mounted-path runs. The target
+collection keeps one Pipeline step per model candidate, not per target.
 
 Basic parameters are the recommended first-run surface:
 
@@ -92,6 +95,9 @@ or search:
 If `Model/model_params_by_name` or `Model/params` is explicitly edited, that
 detailed value takes precedence. With `Basic/model_suite=custom`, candidates and
 params stay driven by the detailed `Model/*` fields.
+
+`Run/seed` is the only random-seed control. Model-specific `random_state` and
+`random_seed` values are normalized to `Run/seed` before stage execution.
 
 HPO/search settings are not part of the user-facing Pipeline New Run surface.
 Future optimization should remain behind a small Basic-level control rather
@@ -143,10 +149,11 @@ all supported models:
 ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting", "lightgbm", "xgboost", "catboost"]
 ```
 
-The selected profile sets `clearml.execution.image`. Synced templates also add
-GBM packages to the remote execution venv so the 10-model default can run on
-the standard Agent image. `Basic/model_suite=gbm` can fail in local or slim
-custom environments unless LightGBM, XGBoost, and CatBoost are installed.
+The selected profile sets the repository revision, image, and Python binary in
+`clearml.execution`. Sync pins the resolved commit on the controller, stage,
+and inference templates. Synced templates add GBM packages to the isolated
+remote task venv. `Basic/model_suite=gbm` can fail in local or slim custom
+environments unless LightGBM, XGBoost, and CatBoost are installed.
 Slim/custom runs may choose `Basic/model_suite=fast` or remove GBM names from
 `Model/candidates`.
 
@@ -200,15 +207,15 @@ Expected inference outputs:
 - `schema_check_summary.csv` / `schema_check_summary.json`
 - `prediction_summary.csv`
 - `prediction_preview.csv`
-- `source_summary.csv`
 - prediction distribution plot
 - `manifest.json`
 
 `schema_check_summary` should be visible as a ClearML table. It shows whether
-the input schema is `ok`, `warning`, or `error`; missing required features fail
-the run, while extra columns and unseen categories are warnings. `predictions.csv`
-should stay slim: `row_index`, ID columns when available, `prediction`, and
-lightweight model metadata only.
+the input schema is `ok`, `warning`, or `error`; missing required features and
+invalid/non-finite values in learned numeric roles fail the run, while extra
+columns and unseen categories are warnings. `predictions.csv` should stay slim:
+`row_index`, ID columns when available, `prediction`, and lightweight model
+metadata only.
 
 Inference tasks should not show candidate comparison plots.
 

@@ -10,14 +10,14 @@ from ml_platform_tabular.manifest import get_tabular_manifest
 from clearml_test_utils import (
     load_clearml_adapter_module,
     load_clearml_params_module,
-    load_clearml_pipeline_plan_module,
+    load_clearml_pipeline_params_module,
 )
 
 
 def test_clearml_runtime_param_helpers_use_current_names():
     adapter = load_clearml_adapter_module()
     params = load_clearml_params_module()
-    pipeline_plan = load_clearml_pipeline_plan_module()
+    pipeline_params = load_clearml_pipeline_params_module()
     cfg = load_run_config("config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml")
 
     assert "Run/task" in params.build_default_connected_params(cfg)
@@ -27,7 +27,7 @@ def test_clearml_runtime_param_helpers_use_current_names():
     assert as_str_list("a,b") == ["a", "b"]
     assert not hasattr(adapter, "default_runtime_params")
     assert not hasattr(adapter, "apply_runtime_params")
-    assert "Basic/model_suite" in pipeline_plan.pipeline_runtime_params(
+    assert "Basic/model_suite" in pipeline_params.pipeline_runtime_params(
         "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
     )
 
@@ -112,10 +112,7 @@ def test_clearml_runtime_params_are_applied_to_nested_config():
         "Model/source_task_id": "train-task-id",
         "Model/model_selector": "best",
         "Model/local_model_path": "outputs/latest_training_pipeline",
-        "Model/artifact_path": "outputs/latest_train/model.joblib",
-        "Model/info_path": "outputs/latest_train/model_info.json",
         "Output/prediction_name": "scored.csv",
-        "Output/chunk_size": 500,
     }
     updated = params.apply_connected_params_to_config(cfg, connected)
     assert updated["data"]["local_path"] == "data/other.csv"
@@ -126,10 +123,7 @@ def test_clearml_runtime_params_are_applied_to_nested_config():
     assert updated["model"]["source_task_id"] == "train-task-id"
     assert updated["model"]["model_selector"] == "best"
     assert updated["model"]["local_model_path"] == "outputs/latest_training_pipeline"
-    assert updated["model"]["artifact_path"] == "outputs/latest_train/model.joblib"
-    assert updated["model"]["info_path"] == "outputs/latest_train/model_info.json"
     assert updated["output"]["prediction_name"] == "scored.csv"
-    assert updated["output"]["chunk_size"] == 500
 
 
 def test_clearml_stage_runtime_params_include_feature_group():
@@ -141,7 +135,6 @@ def test_clearml_stage_runtime_params_include_feature_group():
     assert defaults["Run/stage"] == "preprocess_features"
     assert defaults["Model/name"] == "ridge"
     assert defaults["Model/params"] == "{}"
-    assert defaults["Model/candidates"] == "[]"
     assert defaults["Model/selection_metric"] == "rmse"
     assert defaults["Model/ensemble_enabled"] is False
     assert defaults["Model/ensemble_method"] == "mean_topk"
@@ -188,7 +181,6 @@ def test_clearml_default_runtime_params_cover_primary_and_internal_tasks():
     assert {
         "Model/name",
         "Model/params",
-        "Model/candidates",
         "Model/selection_metric",
         "Model/ensemble_enabled",
         "Model/ensemble_method",
@@ -196,7 +188,6 @@ def test_clearml_default_runtime_params_cover_primary_and_internal_tasks():
         "Features/preset",
     }.issubset(stage)
     assert "Output/prediction_name" in infer
-    assert "Output/chunk_size" in infer
     assert {
         "Model/source_type",
         "Model/source_task_id",
@@ -220,14 +211,14 @@ def test_clearml_default_runtime_params_cover_primary_and_internal_tasks():
         "Features/drop_columns",
         "Features/passthrough_columns",
         "Model/candidates",
-        "Model/params",
         "Model/evaluation_metrics",
-        "Model/ensemble_enabled",
         "Model/ensemble_methods",
-        "Model/ensemble_method",
         "Model/ensemble_top_k",
         "Output/upload_plots",
     }.issubset(pipeline)
+    assert "Model/params" not in pipeline
+    assert "Model/ensemble_enabled" not in pipeline
+    assert "Model/ensemble_method" not in pipeline
     # The user-facing Pipeline New Run surface is asserted separately below.
     assert "Model/search_enabled" not in pipeline
     assert "Model/search_method" not in pipeline

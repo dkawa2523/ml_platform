@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ml_platform_core.value_coercion import as_bool
+from ml_platform_tabular.manifest import get_tabular_manifest
 
 from param_bindings import binding_map_for_config
 from param_transport import normalize_clearml_param_value
@@ -14,8 +15,6 @@ _MODEL_SOURCE_KEYS = (
     "Model/source_task_id",
     "Model/model_selector",
     "Model/local_model_path",
-    "Model/feature_spec_path",
-    "Model/preprocess_bundle_path",
 )
 _MISSING = object()
 
@@ -34,7 +33,8 @@ def build_default_connected_params(cfg: dict[str, Any]) -> dict[str, Any]:
     _add_section_defaults(params, cfg, bindings, "features", normalize=True)
     _add_output_defaults(params, cfg, bindings)
     _add_stage_input_defaults(params, cfg)
-    return params
+    allowed = {parameter.name for parameter in get_tabular_manifest().task(str(cfg["task"])).parameters}
+    return {key: value for key, value in params.items() if key in allowed}
 
 
 def _add_model_defaults(params, cfg, bindings) -> None:
@@ -75,7 +75,7 @@ def _add_metric_defaults(params, cfg, bindings) -> None:
 
 
 def _add_output_defaults(params, cfg, bindings) -> None:
-    _add_section_defaults(params, cfg, bindings, "output", keys=("Output/prediction_name", "Output/chunk_size"))
+    _add_section_defaults(params, cfg, bindings, "output", keys=("Output/prediction_name",))
     if _path_exists(cfg, ("output", "upload_plots")):
         params["Output/upload_plots"] = as_bool(_path_get(cfg, ("output", "upload_plots")), default=True)
 

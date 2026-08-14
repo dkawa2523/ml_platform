@@ -1,0 +1,32 @@
+name: ml-platform-clearml-agents
+
+x-clearml-environment: &clearml-environment
+  CLEARML_API_ACCESS_KEY: ${CLEARML_API_ACCESS_KEY:?required}
+  CLEARML_API_SECRET_KEY: ${CLEARML_API_SECRET_KEY:?required}
+  CLEARML_API_HOST: ${CLEARML_API_HOST:?required}
+  CLEARML_WEB_HOST: ${CLEARML_WEB_HOST:?required}
+  CLEARML_FILES_HOST: ${CLEARML_FILES_HOST:?required}
+
+x-agent: &agent
+  image: ${ML_PLATFORM_CLEARML_IMAGE:-ml-platform-clearml-agent:dev}
+  restart: unless-stopped
+  networks:
+    - clearml
+
+services:
+  controller:
+    <<: *agent
+    environment:
+      <<: *clearml-environment
+      CLEARML_AGENT_QUEUE: controller
+
+  worker:
+    <<: *agent
+    environment:
+      <<: *clearml-environment
+      CLEARML_AGENT_QUEUE: default
+
+networks:
+  clearml:
+    external: true
+    name: ${CLEARML_DOCKER_NETWORK:-docker_backend}

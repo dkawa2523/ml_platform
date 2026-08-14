@@ -26,7 +26,7 @@ def test_tabular_manifest_loads_and_has_unique_keys():
 
     assert manifest.domain == "tabular"
     assert manifest.version
-    assert "problem:scalar_regression" in manifest.tags
+    assert "problem:regression" in manifest.tags
     assert len({stage.key for stage in manifest.stages}) == len(manifest.stages)
     assert len({task.key for task in manifest.tasks}) == len(manifest.tasks)
     assert len({pipeline.key for pipeline in manifest.pipelines}) == len(manifest.pipelines)
@@ -51,13 +51,17 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
     manifest = get_tabular_manifest()
     preprocess = manifest.stage("preprocess_features")
     target = next(parameter for parameter in preprocess.parameters if parameter.name == "Input/target_column")
+    source_manifest = next(
+        parameter for parameter in preprocess.parameters if parameter.name == "Input/source_manifest"
+    )
     train = manifest.stage("train_model")
     evaluate = manifest.stage("evaluate_models")
     infer = manifest.stage("infer")
     infer_target = next(parameter for parameter in infer.parameters if parameter.name == "Input/target_column")
     source_type = next(parameter for parameter in infer.parameters if parameter.name == "Model/source_type")
 
-    assert target.required is True
+    assert target.required is False
+    assert source_manifest.required is False
     assert infer_target.required is False
     assert source_type.choices == ("task_id", "local_path")
     assert {artifact.name for artifact in preprocess.output_artifacts} >= {
@@ -84,8 +88,7 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
         "schema_check_summary",
         "prediction_summary",
         "prediction_preview",
-        "source_summary",
-        "prediction_distribution_histogram",
+        "prediction_distribution",
         "manifest",
     }
     assert "schema_check" not in {artifact.name for artifact in infer.output_artifacts}

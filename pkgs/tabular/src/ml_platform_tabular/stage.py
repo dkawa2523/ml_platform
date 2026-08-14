@@ -21,7 +21,6 @@ from .stage_result import finish_stage, stage_run_dir
 from .training.artifacts import (
     CandidateResult,
     PreprocessResult,
-    ensemble_member_rows,
     safe_name,
 )
 from .training.candidate_training import train_model
@@ -37,10 +36,6 @@ StageRunner = Callable[[dict[str, Any]], RunResult]
 
 def _metric_settings(cfg: dict[str, Any]) -> tuple[str, list[str]]:
     return metric_settings(cfg, cfg.get("model", {}))
-
-
-def _path_map(paths: dict[str, Path]) -> dict[str, str]:
-    return {key: str(value) for key, value in paths.items()}
 
 
 def _finish_dict_stage(
@@ -72,9 +67,6 @@ def _run_preprocess(cfg: dict[str, Any]) -> RunResult:
         metrics={},
         extra={
             "pipeline_stage": "preprocess_features",
-            "artifacts": _path_map(stage.artifacts),
-            "tables": _path_map(stage.tables),
-            "plots": _path_map(stage.plots),
         },
     )
 
@@ -98,7 +90,6 @@ def _run_train_model(cfg: dict[str, Any]) -> RunResult:
             "pipeline_stage": "train_model",
             "stage_name": result.stage,
             "model_name": result.model_name,
-            "model_params": result.model_params,
         },
     )
 
@@ -124,7 +115,6 @@ def _run_build_ensemble(cfg: dict[str, Any]) -> RunResult:
             "model_name": result.model_name,
             "ensemble_method": result.ensemble_method,
             "ensemble_methods": [item.ensemble_method for item in result.ensemble_results],
-            "selected_base_models": ensemble_member_rows(result.selected_base_models),
         },
     )
 
@@ -156,13 +146,13 @@ def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
         extra={
             "pipeline_stage": "evaluate_models",
             "stage_name": "evaluate_models",
-            "report_schema_version": result.report.get("report_schema_version"),
-            "code_version": result.report.get("code_version"),
-            "source_task_id": result.report.get("source_task_id"),
-            "best_model": result.report["best_model"],
-            "candidate_count": result.report["candidate_count"],
-            "ensemble_enabled": result.report["ensemble_enabled"],
-            "ensemble_count": result.report.get("ensemble_count", 0),
+            "report_schema_version": result.summary.get("report_schema_version"),
+            "code_version": result.summary.get("code_version"),
+            "source_task_id": result.summary.get("source_task_id"),
+            "best_model": result.summary["best_model"],
+            "candidate_count": result.summary["candidate_count"],
+            "ensemble_enabled": result.summary["ensemble_enabled"],
+            "ensemble_count": result.summary.get("ensemble_count", 0),
         },
     )
 

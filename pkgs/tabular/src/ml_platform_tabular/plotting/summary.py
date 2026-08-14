@@ -7,36 +7,46 @@ import pandas as pd
 from ml_platform_core.io import write_table
 
 from .common import write_histogram_plot
-from .prediction import (
-    write_prediction_vs_actual_plot,
-    write_residual_histogram,
-    write_residual_vs_predicted_plot,
-)
 
 
 def write_prediction_summary_tables(
     predictions_path: Path,
     output_dir: Path,
     *,
-    target_column: str | None = None,
     preview_rows: int = 20,
 ) -> tuple[dict[str, Path], dict[str, Path]]:
     frame = pd.read_csv(predictions_path)
     if "prediction" not in frame.columns:
         raise ValueError("predictions.csv must contain a prediction column.")
+    if "target" in frame.columns and frame["target"].nunique() > 1:
+        summary_path = _write_target_prediction_summary(frame, output_dir)
+        preview_path = _write_prediction_preview(frame, output_dir=output_dir, preview_rows=preview_rows)
+        return {"prediction_summary": summary_path, "prediction_preview": preview_path}, {}
     numeric = _prediction_values(frame)
     summary_path = _write_prediction_summary(numeric, row_count=len(frame), output_dir=output_dir)
     preview_path = _write_prediction_preview(frame, output_dir=output_dir, preview_rows=preview_rows)
     distribution_path = write_histogram_plot(
         numeric,
-        output_dir / "prediction_distribution_histogram.png",
+        output_dir / "prediction_distribution.png",
         title="Prediction distribution",
         x_label="prediction",
     )
 
-    plots = {"prediction_distribution_histogram": distribution_path}
-    plots.update(_actual_prediction_plots(frame, output_dir=output_dir, target_column=target_column))
-    return {"prediction_summary": summary_path, "prediction_preview": preview_path}, plots
+    return {
+        "prediction_summary": summary_path,
+        "prediction_preview": preview_path,
+    }, {"prediction_distribution": distribution_path}
+
+
+def _write_target_prediction_summary(frame: pd.DataFrame, output_dir: Path) -> Path:
+    rows = []
+    for target, target_frame in frame.groupby("target", sort=False):
+        numeric = _prediction_values(target_frame)
+        rows.extend(
+            {"target": target, "metric": metric, "value": value}
+            for metric, value in _summary_rows(numeric, len(target_frame))
+        )
+    return write_table(pd.DataFrame(rows), output_dir / "prediction_summary.csv")
 
 
 def _prediction_values(frame: pd.DataFrame) -> pd.Series:
@@ -67,43 +77,3 @@ def _summary_rows(numeric: pd.Series, row_count: int) -> list[tuple[str, float |
 
 def _write_prediction_preview(frame: pd.DataFrame, *, output_dir: Path, preview_rows: int) -> Path:
     return write_table(frame.head(max(int(preview_rows), 1)), output_dir / "prediction_preview.csv")
-
-
-def _actual_prediction_plots(
-    frame: pd.DataFrame,
-    *,
-    output_dir: Path,
-    target_column: str | None,
-) -> dict[str, Path]:
-    actual_column = _actual_column(frame, target_column)
-    if not actual_column:
-        return {}
-    actual = pd.to_numeric(frame[actual_column], errors="coerce")
-    prediction = pd.to_numeric(frame["prediction"], errors="coerce")
-    valid = actual.notna() & prediction.notna()
-    if not valid.any():
-        return {}
-    return {
-        "prediction_vs_actual": write_prediction_vs_actual_plot(
-            actual[valid],
-            prediction[valid],
-            output_dir / "prediction_vs_actual.png",
-        ),
-        "residual_histogram": write_residual_histogram(
-            actual[valid],
-            prediction[valid],
-            output_dir / "residual_histogram.png",
-        ),
-        "residual_vs_predicted": write_residual_vs_predicted_plot(
-            actual[valid],
-            prediction[valid],
-            output_dir / "residual_vs_predicted.png",
-        ),
-    }
-
-
-def _actual_column(frame: pd.DataFrame, target_column: str | None) -> str | None:
-    for candidate in ("actual", target_column):
-        if candidate and candidate in frame.columns:
-            return candidate
-    return None

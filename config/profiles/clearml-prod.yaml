@@ -21,15 +21,15 @@ clearml:
   controller_queue: controller
   stage_queue: cpu
   execution:
-    # Pullable execution image used by ClearML Agent for template runs.
-    # Replace with the prod registry/image tag available to the target workers.
-    image: registry.example.com/ml-platform/clearml-agent:prod
+    # Sync from a release checkout; HEAD is resolved to an immutable commit.
+    repository: https://github.com/dkawa2523/ml_platform.git
+    revision: HEAD
+    working_dir: .
+    # Set this to the immutable registry image available to every worker.
+    image: ${ML_PLATFORM_CLEARML_IMAGE}
+    python_binary: python3.11
   dataset_project: datasets
   # Set this when the ClearML server has no default artifact storage.
   artifact_output_uri: null
-  repository: https://github.com/dkawa2523/ml_platform.git
-  branch: main
-  working_dir: .
-
 logging:
   level: INFO

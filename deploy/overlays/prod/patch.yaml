@@ -1,9 +1,15 @@
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: ml-platform-clearml-agent-config
-data:
-  CLEARML_AGENT_QUEUE: cpu
+  name: ml-platform-clearml-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: clearml-agent
+          env:
+            - name: CLEARML_AGENT_QUEUE
+              value: cpu
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

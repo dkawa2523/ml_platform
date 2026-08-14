@@ -21,7 +21,6 @@ class BestModelArtifacts:
 def best_model_payload(
     best: CandidateResult,
     selection_metric: str,
-    best_model_path: Path,
     *,
     task_id: str | None,
     code_version: str,
@@ -45,8 +44,6 @@ def best_model_payload(
             "Model/source_task_id": task_id or "<training_or_evaluate_task_id>",
             "Model/model_selector": "best",
         },
-        "source_artifact": str(best.artifacts["model"]),
-        "best_model_artifact": str(best_model_path),
     }
 
 
@@ -62,7 +59,6 @@ def best_ensemble_payload(best_ensemble: CandidateResult | None, selection_metri
         "selection_value": metric_value(best_ensemble.metrics, selection_metric),
         "metrics": best_ensemble.metrics,
         "model_params": best_ensemble.model_params,
-        "source_artifact": str(best_ensemble.artifacts["model"]),
     }
 
 
@@ -76,11 +72,12 @@ def write_best_model_artifacts(
     code_version: str,
 ) -> BestModelArtifacts:
     best_model_path = stage_dir / "best_model.joblib"
+    model_info_path = stage_dir / "model_info.json"
     shutil.copy2(best.artifacts["model"], best_model_path)
+    shutil.copy2(best.artifacts["model_info"], model_info_path)
     best_payload = best_model_payload(
         best,
         selection_metric,
-        best_model_path,
         task_id=task_id,
         code_version=code_version,
     )
@@ -88,6 +85,7 @@ def write_best_model_artifacts(
     return BestModelArtifacts(
         artifacts={
             "best_model": best_model_path,
+            "model_info": model_info_path,
             "best_model_json": best_model_json_path,
         },
         best_model=best_payload,

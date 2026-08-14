@@ -24,9 +24,10 @@
 | --- | --- | --- | --- |
 | `data.local_path` | string | Local では必須 | CSV/Parquet などの入力ファイルまたは Dataset 解決後の local path |
 | `data.clearml_dataset_id` | string/null | ClearML remote では推奨 | ClearML Dataset ID |
-| `data.dataset_file` | string/null | ClearML Dataset 内で必要 | Dataset 内の対象ファイル |
-| `data.target_column` | string/null | 学習では必須 | 目的変数列 |
-| `data.feature_columns` | list/string/null | 任意 | 明示的に利用する特徴量。null なら target/id/drop を除く |
+| `data.dataset_file` | string/null | scalar Dataset で必要 | Dataset 内の対象ファイル |
+| `data.source_manifest` | string/null | 複数targetで必要 | Dataset root内のtarget source manifest |
+| `data.target_column` | string/null | scalar学習で必要 | 目的変数列。source manifest利用時はnull |
+| `data.feature_columns` | list/string/null | 任意 | 明示的に利用する特徴量。target/id/drop/分割制御列は指定不可 |
 | `data.id_columns` | list/string | 任意 | 推論結果へ引き継ぐ ID列 |
 
 ## `split`
@@ -39,6 +40,9 @@
 | `split.time_column` | string/null | `time` | 時系列順に並べる列 |
 | `split.valid_filter_column` | string/null | `fixed` | validation flag 相当の列 |
 | `split.valid_filter_value` | string/null | `fixed` | validation とみなす値 |
+
+有効な分割制御列は評価用 metadata として扱い、モデル特徴から除外します。
+同じ情報を予測にも使う場合は、元の日時や group から別の特徴量列を作成してください。
 
 ## `features`
 
@@ -60,7 +64,7 @@
 | `model.name` | string | 単一モデル実行時のモデル名 |
 | `model.params` | object | モデル別パラメータ |
 | `model.candidates` | list | Pipeline で比較する候補モデル |
-| `model.selection_metric` | string | `rmse`, `mae`, `r2` など |
+| `model.selection_metric` | string | `rmse`, `mae`, `r2`, `relative_rmse`, `skill`。複数targetではscale非依存指標を利用 |
 | `model.ensemble.enabled` | bool | アンサンブルを作るか |
 | `model.ensemble.methods` | list | `mean_topk`, `weighted`, `median` |
 | `model.ensemble.top_k` | int | 上位何モデルを使うか |
@@ -79,7 +83,6 @@
 | --- | --- | --- |
 | `output.upload_plots` | bool | ClearML に Plot 画像をアップロードするか |
 | `output.prediction_name` | string | 推論出力ファイル名。通常 `predictions.csv` |
-| `output.chunk_size` | int/null | 推論時 chunk サイズ。未指定なら一括処理 |
 
 ## ClearML Basic パラメータ
 

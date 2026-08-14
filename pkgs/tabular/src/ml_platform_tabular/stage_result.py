@@ -40,8 +40,8 @@ def finish_stage(
     )
     artifacts["manifest"] = manifest_path
     output_dir = Path(cfg.get("runtime", {}).get("output_dir", "outputs"))
-    update_latest(run_dir, output_dir / "latest_tabular_stage")
-    update_latest(run_dir, output_dir / "latest")
+    if not cfg.get("runtime", {}).get("use_clearml"):
+        update_latest(run_dir, output_dir / "latest_tabular_stage")
     return RunResult(
         run_dir=run_dir,
         metrics=metrics or {},

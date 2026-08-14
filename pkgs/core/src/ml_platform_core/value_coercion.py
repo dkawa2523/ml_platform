@@ -13,7 +13,11 @@ def as_bool(value: Any, *, default: bool = False) -> bool:
         text = value.strip().lower()
         if text in {"", "none", "null"}:
             return default
-        return text in {"1", "true", "yes", "y", "on"}
+        if text in {"1", "true", "yes", "y", "on"}:
+            return True
+        if text in {"0", "false", "no", "n", "off"}:
+            return False
+        raise ValueError(f"Cannot convert value to boolean: {value!r}")
     return bool(value)
 
 

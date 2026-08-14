@@ -39,7 +39,9 @@ stage input/path resolution belongs in `stage_inputs.py`.
 | --- | --- |
 | `app.py` | Direct task entrypoint for stage and inference templates. |
 | `source_resolution.py` | Resolve inference model sources and stage artifact references. |
-| `pipeline_plan.py` | ClearML pipeline parameter defaults and stage graph rendering. |
+| `pipeline_params.py` | Pipeline New Run defaults and parameter normalization. |
+| `pipeline_plan.py` | Training plan orchestration and dry-run presentation. |
+| `pipeline_steps.py` | Artifact handoff wiring and ClearML step rendering. |
 | `pipeline_controller.py` | PipelineController draft sync and pipeline run orchestration. |
 | `pipelines.py` | Direct pipeline entrypoint. |
 | `templates.py` | Template sync and Pipeline-tab draft sync. |

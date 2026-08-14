@@ -1,10 +1,11 @@
 import pytest
 
-from ml_platform_core.config import load_run_config
+from ml_platform_core.config import load_run_config, load_yaml
 
 from clearml_test_utils import (
     load_clearml_adapter_module,
     load_clearml_app_module,
+    load_clearml_execution_module,
 )
 
 
@@ -14,7 +15,7 @@ def test_clearml_mapping_shape():
     assert cfg["task"] == "tabular_pipeline"
     assert "clearml" in cfg
     assert cfg["clearml"]["project_root"] == "MLPlatform/Dev"
-    assert cfg["clearml"]["execution"]["image"] == "registry.example.com/ml-platform/clearml-agent:dev"
+    assert cfg["clearml"]["execution"]["image"] == "ml-platform-clearml-agent:dev"
     assert cfg["clearml"]["projects"] == {
         "templates": "MLPlatform/Dev/Templates/Tabular",
         "pipelines": "MLPlatform/Dev/Pipelines/Tabular",
@@ -78,15 +79,8 @@ def test_clearml_project_layout_prefers_explicit_projects():
     )
 
 
-def test_clearml_execution_image_is_profile_driven():
-    adapter = load_clearml_adapter_module()
-
-    assert adapter.clearml_execution_image({"execution": {"image": "registry/image:tag"}}) == "registry/image:tag"
-    assert adapter.clearml_execution_image({}) is None
-
-
-def test_clearml_execution_image_is_applied_to_task():
-    adapter = load_clearml_adapter_module()
+def test_clearml_execution_is_applied_to_task():
+    execution = load_clearml_execution_module()
 
     class FakeTask:
         def __init__(self):
@@ -100,10 +94,50 @@ def test_clearml_execution_image_is_applied_to_task():
             self.params.update(params)
 
     task = FakeTask()
-    adapter.apply_execution_image(task, "registry/image:tag")
+    spec = execution.ExecutionSpec(
+        repository="https://example.invalid/repo.git",
+        commit="a" * 40,
+        working_dir=".",
+        image="registry/image:tag",
+        python_binary="python3.11",
+    )
+    execution.apply_task_execution(task, spec)
 
     assert task.base_docker == "registry/image:tag"
-    assert task.params["Execution/docker_image"] == "registry/image:tag"
+    assert task.params == {
+        "Execution/image": "registry/image:tag",
+        "Execution/revision": "a" * 40,
+        "Execution/python": "python3.11",
+    }
+
+
+def test_clearml_execution_profile_resolves_head_to_immutable_commit():
+    execution = load_clearml_execution_module()
+
+    spec = execution.load_execution_spec(load_yaml("config/profiles/clearml-dev.yaml"))
+
+    assert spec.repository == "https://github.com/dkawa2523/ml_platform.git"
+    assert len(spec.commit) == 40
+    assert spec.image == "ml-platform-clearml-agent:dev"
+    assert spec.python_binary == "python3.11"
+
+
+def test_clearml_prod_execution_image_comes_from_environment(monkeypatch):
+    execution = load_clearml_execution_module()
+    image = "registry.example/ml-platform/clearml-agent@sha256:" + "a" * 64
+    monkeypatch.setenv("ML_PLATFORM_CLEARML_IMAGE", image)
+
+    spec = execution.load_execution_spec(load_yaml("config/profiles/clearml-prod.yaml"))
+
+    assert spec.image == image
+
+
+def test_clearml_prod_execution_image_is_explicitly_required(monkeypatch):
+    execution = load_clearml_execution_module()
+    monkeypatch.delenv("ML_PLATFORM_CLEARML_IMAGE", raising=False)
+
+    with pytest.raises(ValueError, match="ML_PLATFORM_CLEARML_IMAGE"):
+        execution.load_execution_spec(load_yaml("config/profiles/clearml-prod.yaml"))
 
 
 def test_clearml_runtime_validation_checks_expected_sdk_contract():

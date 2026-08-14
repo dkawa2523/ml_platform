@@ -1,6 +1,7 @@
 from ml_platform_core.config import load_run_config
 
 from clearml_test_utils import (
+    load_clearml_execution_module,
     load_clearml_pipeline_controller_module,
     load_clearml_templates_module,
 )
@@ -76,8 +77,8 @@ def test_clearml_infer_template_uses_remote_dataset_defaults():
     assert params["Model/source_type"] == "task_id"
 
 
-def test_clearml_set_script_quotes_entry_point_cli_args_without_clearml_arguments():
-    templates = load_clearml_templates_module()
+def test_clearml_execution_pins_commit_python_and_quotes_entry_point_args():
+    execution = load_clearml_execution_module()
 
     class FakeTask:
         def __init__(self):
@@ -105,19 +106,57 @@ def test_clearml_set_script_quotes_entry_point_cli_args_without_clearml_argument
             }
 
     task = FakeTask()
-    templates._set_script(
-        task,
-        repository=".",
-        branch="main",
+    spec = execution.ExecutionSpec(
+        repository="https://example.invalid/repo.git",
+        commit="a" * 40,
         working_dir=".",
+        image="image:tag",
+        python_binary="python3.11",
+    )
+    execution.set_task_script(
+        task,
+        spec,
         entry_point="clearml/app.py",
-        task_config="config/tasks/tabular_stage.yaml",
-        profile_path="config/profiles/clearml dev.yaml",
+        cli_args={
+            "--task": "config/tasks/tabular_stage.yaml",
+            "--profile": "config/profiles/clearml dev.yaml",
+        },
     )
 
+    assert task.script["repository"] == "https://example.invalid/repo.git"
+    assert task.script["branch"] == ""
+    assert task.script["commit"] == "a" * 40
+    assert task.script["binary"] == "python3.11"
     assert task.script["entry_point"] == (
         "clearml/app.py --task config/tasks/tabular_stage.yaml --profile 'config/profiles/clearml dev.yaml'"
     )
+
+
+def test_pipeline_controller_uses_same_commit_as_task_templates():
+    execution = load_clearml_execution_module()
+    pipeline_controller = load_clearml_pipeline_controller_module()
+
+    class FakePipelineController:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    spec = execution.ExecutionSpec("repo", "a" * 40, ".", "image:tag", "python3.11")
+    pipe = pipeline_controller._pipeline_controller(
+        FakePipelineController,
+        {
+            "project": "Pipelines",
+            "stage_project": "Stages",
+            "version": "1",
+        },
+        display_name="template/pipeline",
+        execution=spec,
+        packages=["pandas"],
+    )
+
+    assert pipe.kwargs["repo"] == "repo"
+    assert pipe.kwargs["repo_commit"] == "a" * 40
+    assert "repo_branch" not in pipe.kwargs
+    assert pipe.kwargs["working_dir"] == "."
 
 
 def test_clearml_pipeline_cleanup_is_fail_closed_without_project_name():
@@ -160,6 +199,7 @@ def test_clearml_pipeline_cleanup_is_fail_closed_without_project_name():
 def test_clearml_template_metadata_replaces_stale_role_tags():
     templates = load_clearml_templates_module()
     pipeline_controller = load_clearml_pipeline_controller_module()
+    execution = load_clearml_execution_module()
 
     class FakeTask:
         def __init__(self):
@@ -175,8 +215,10 @@ def test_clearml_template_metadata_replaces_stale_role_tags():
         def set_comment(self, comment):
             self.comment = comment
 
+    spec = execution.ExecutionSpec("repo", "a" * 40, ".", "image:tag", "python3.11")
+
     infer = FakeTask()
-    templates._apply_task_metadata(infer, "tabular_infer_template", "image:tag")
+    templates._apply_task_metadata(infer, "tabular_infer_template", spec)
     assert "run_type:template" in infer.tags
     assert "user_facing:true" in infer.tags
     assert "run_type:task" not in infer.tags
@@ -184,7 +226,7 @@ def test_clearml_template_metadata_replaces_stale_role_tags():
     assert "old:keep" in infer.tags
 
     pipeline = FakeTask()
-    pipeline_controller._apply_pipeline_template_metadata(pipeline, "image:tag")
+    pipeline_controller._apply_pipeline_template_metadata(pipeline, spec)
     assert "run_type:template" in pipeline.tags
     assert "user_facing:true" in pipeline.tags
     assert "run_type:task" not in pipeline.tags

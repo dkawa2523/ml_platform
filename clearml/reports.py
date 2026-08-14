@@ -5,7 +5,7 @@ from pathlib import Path
 from ml_platform_core.result import RunResult
 
 from reporting_scalars import report_artifact_scalars, report_result_metrics, report_table_scalars
-from reporting_targets import should_report_plot_image, should_report_table, table_series
+from reporting_targets import should_report_table, table_series
 
 
 def _report_table(adapter, name: str, path: str | Path) -> None:
@@ -51,5 +51,5 @@ def _report_tables(adapter, tables: dict[str, Path]) -> None:
 def _upload_plots(adapter, plots: dict[str, Path], *, upload_plots: bool) -> None:
     for name, path in plots.items():
         adapter.upload_artifact(name, path)
-        if upload_plots and should_report_plot_image(name):
+        if upload_plots:
             _report_plot_image(adapter, name, path)

@@ -33,7 +33,7 @@ def test_tabular_plot_writers_create_csv_and_png(tmp_path):
         residual,
         residual_vs_predicted,
         bar,
-        plots["prediction_distribution_histogram"],
+        plots["prediction_distribution"],
     ]:
         assert path.exists()
         assert path.suffix == ".png"

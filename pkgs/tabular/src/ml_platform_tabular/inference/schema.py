@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
-from ml_platform_core.io import write_json, write_table
+from ml_platform_core.io import write_json
 from ml_platform_core.value_coercion import as_str_list
 
 from ..data import select_features
+from ..target_sources import SOURCE_ROW_COLUMN, TARGET_COLUMN
 
 
 def _as_list(value: Any) -> list[str]:
@@ -33,30 +34,30 @@ def _required_feature_columns(
     *,
     estimator: Any,
     model_info: dict[str, Any],
-    feature_spec: dict[str, Any],
-    preprocess_bundle: dict[str, Any],
 ) -> list[str] | None:
     data_cfg = cfg.get("data", {})
-    explicit = data_cfg.get("feature_columns")
-    if explicit:
-        return _as_list(explicit)
+    learned_schemas = [
+        _as_list(feature_columns)
+        for feature_columns in (model_info.get("feature_columns"), _estimator_feature_columns(estimator))
+        if feature_columns
+    ]
+    learned = learned_schemas[0] if learned_schemas else None
+    if learned is not None and any(schema != learned for schema in learned_schemas[1:]):
+        raise ValueError(f"Trained model schema artifacts disagree: {learned_schemas}")
 
-    for feature_columns in (
-        feature_spec.get("feature_columns"),
-        model_info.get("feature_columns"),
-        _estimator_feature_columns(estimator),
-        preprocess_bundle.get("feature_columns"),
-    ):
-        if feature_columns:
-            return _as_list(feature_columns)
-    return None
+    explicit = _as_list(data_cfg.get("feature_columns"))
+    if learned is not None and explicit and explicit != learned:
+        raise ValueError(
+            f"data.feature_columns must match the trained model schema exactly; expected {learned}, got {explicit}"
+        )
+    return learned or explicit or None
 
 
-def _effective_id_columns(cfg: dict[str, Any], feature_spec: dict[str, Any]) -> list[str]:
+def _effective_id_columns(cfg: dict[str, Any], model_info: dict[str, Any]) -> list[str]:
     configured = _as_list(cfg.get("data", {}).get("id_columns"))
     if configured:
         return configured
-    return _as_list(feature_spec.get("id_columns"))
+    return _as_list(model_info.get("id_columns"))
 
 
 def _features_for_inference(
@@ -78,18 +79,6 @@ def _features_for_inference(
     )
 
 
-def _json_value(value: Any) -> str:
-    if isinstance(value, (list, dict)):
-        return json.dumps(value, sort_keys=True, default=str)
-    if value is None:
-        return ""
-    return str(value)
-
-
-def _schema_check_table(summary: dict[str, Any]) -> pd.DataFrame:
-    return pd.DataFrame([{"metric": key, "value": _json_value(value)} for key, value in summary.items()])
-
-
 def _unseen_category_columns(df, preprocess_bundle: dict[str, Any]) -> list[str]:
     category_levels, fill_values = _category_metadata(preprocess_bundle)
     if category_levels is None:
@@ -99,6 +88,26 @@ def _unseen_category_columns(df, preprocess_bundle: dict[str, Any]) -> list[str]
         for column, levels in category_levels.items()
         if column in df.columns and _has_unseen_categories(df[column], levels, fill_values.get(column, "__missing__"))
     ]
+
+
+def _invalid_numeric_columns(df: pd.DataFrame, preprocess_bundle: dict[str, Any]) -> list[str]:
+    transformer = preprocess_bundle.get("transformer")
+    numeric_columns = getattr(transformer, "numeric_cols", []) or []
+    passthrough_columns = getattr(transformer, "passthrough_cols", []) or []
+    passthrough_set = {str(column) for column in passthrough_columns}
+    columns = list(dict.fromkeys(str(column) for column in [*numeric_columns, *passthrough_columns]))
+    invalid: list[str] = []
+    for column in columns:
+        if column not in df.columns:
+            continue
+        original = df[column]
+        numeric = pd.to_numeric(original, errors="coerce")
+        conversion_failed = original.notna() & numeric.isna()
+        non_finite = numeric.map(lambda value: bool(pd.notna(value)) and not np.isfinite(float(value)))
+        passthrough_missing = column in passthrough_set and numeric.isna().any()
+        if bool(conversion_failed.any() or non_finite.any() or passthrough_missing):
+            invalid.append(column)
+    return invalid
 
 
 def _category_metadata(preprocess_bundle: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
@@ -128,6 +137,7 @@ def _schema_check_summary(
     missing_features = _missing_columns(df, feature_columns)
     extra_columns = _extra_columns(df, feature_columns, existing_id_columns, target_column)
     unseen_columns = _unseen_category_columns(df, preprocess_bundle)
+    invalid_numeric_columns = _invalid_numeric_columns(df, preprocess_bundle)
     return {
         "required_feature_count": len(feature_columns),
         "provided_feature_count": len([column for column in feature_columns if column in df.columns]),
@@ -138,7 +148,14 @@ def _schema_check_summary(
         "row_count": int(len(df)),
         "unknown_or_unseen_category_warning": bool(unseen_columns),
         "unseen_category_columns": unseen_columns,
-        "status": _schema_status(missing_features, extra_columns, missing_id_columns, unseen_columns),
+        "invalid_numeric_features": invalid_numeric_columns,
+        "status": _schema_status(
+            missing_features,
+            extra_columns,
+            missing_id_columns,
+            unseen_columns,
+            invalid_numeric_columns,
+        ),
     }
 
 
@@ -160,6 +177,7 @@ def _extra_columns(
 ) -> list[str]:
     allowed = set(feature_columns)
     allowed.update(existing_id_columns)
+    allowed.update({TARGET_COLUMN, SOURCE_ROW_COLUMN})
     if target_column:
         allowed.add(target_column)
     return [column for column in df.columns if column not in allowed]
@@ -170,15 +188,14 @@ def _schema_status(
     extra_columns: list[str],
     missing_id_columns: list[str],
     unseen_columns: list[str],
+    invalid_numeric_columns: list[str],
 ) -> str:
-    if missing_features:
+    if missing_features or invalid_numeric_columns:
         return "error"
     if extra_columns or missing_id_columns or unseen_columns:
         return "warning"
     return "ok"
 
 
-def _write_schema_check(summary: dict[str, Any], run_dir: Path) -> tuple[Path, Path]:
-    summary_json = write_json(summary, run_dir / "schema_check_summary.json")
-    summary_csv = write_table(_schema_check_table(summary), run_dir / "schema_check_summary.csv")
-    return summary_json, summary_csv
+def _write_schema_check(summary: dict[str, Any], run_dir: Path) -> Path:
+    return write_json(summary, run_dir / "schema_check_summary.json")

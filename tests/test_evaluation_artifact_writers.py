@@ -26,12 +26,10 @@ def _candidate(tmp_path, name: str, *, rmse: float, prediction_offset: float = 0
     ).to_csv(predictions_path, index=False)
     return CandidateResult(
         stage=f"train_{name}",
-        stage_dir=source_dir,
         model_name=name,
         artifact_kind="model",
         model_params={},
         estimator=object(),
-        predictions=None,
         metrics={"rmse": rmse, "mae": rmse / 2, "r2": 0.9 - rmse},
         artifacts={
             "model": model_path,
@@ -61,7 +59,8 @@ def test_best_model_writer_preserves_copy_and_json_contract(tmp_path):
     assert outputs.artifacts["best_model"].read_text(encoding="utf-8") == "ridge model"
     payload = read_json(outputs.artifacts["best_model_json"])
     assert payload["model_name"] == "ridge"
-    assert payload["best_model_artifact"] == str(stage_dir / "best_model.joblib")
+    assert "best_model_artifact" not in payload
+    assert "source_artifact" not in payload
     assert payload["model_selector"] == "best"
     assert payload["candidate_selector"] == "ridge"
     assert payload["recommended_inference_settings"] == {
@@ -88,7 +87,6 @@ def test_evaluate_model_candidates_preserves_public_artifact_names(tmp_path):
     assert {
         "best_model",
         "best_model_json",
-        "evaluation_predictions",
         "metrics",
     } <= set(result.artifacts)
     assert {
@@ -103,4 +101,4 @@ def test_evaluate_model_candidates_preserves_public_artifact_names(tmp_path):
     } <= set(result.plots)
     best_model = read_json(result.artifacts["best_model_json"])
     assert best_model["recommended_inference_settings"]["Model/source_task_id"] == "task-123"
-    assert result.metrics["source_task_id"] == "task-123"
+    assert result.summary["source_task_id"] == "task-123"

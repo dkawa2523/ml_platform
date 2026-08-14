@@ -12,13 +12,12 @@ from param_transport import coerce_connected_params
 _EMPTY_OK_KEYS = {
     "Input/clearml_dataset_id",
     "Input/dataset_file",
+    "Input/source_manifest",
     "Input/target_column",
     "Model/source_type",
     "Model/source_task_id",
     "Model/model_selector",
     "Model/local_model_path",
-    "Model/feature_spec_path",
-    "Model/preprocess_bundle_path",
     "Model/info_path",
 }
 _LIST_DEFAULTS = {

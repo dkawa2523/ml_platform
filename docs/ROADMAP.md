@@ -6,7 +6,9 @@ behavior remains in `docs/CLEARML_UI_SPEC.md`.
 
 ## Current Release Scope
 
-- Tabular scalar regression only.
+- Tabular scalar regression and sparse target-specific table collections.
+- Target collections use independent scalar models in one bundle; aligned
+  tensors, interpolation, and joint multi-task learning are not included.
 - Stage-based training graph:
   `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`.
 - `train_<model>` and `build_ensemble_<method>` are ClearML step labels; package
@@ -54,8 +56,7 @@ Status: not implemented.
 - No monitoring service, scheduled drift job, alerting, or dashboard is part of
   the current product.
 - Future behavior should build on accumulated inference artifacts, especially
-  `schema_check_summary.csv/json`, `prediction_summary.csv`, and
-  `source_summary.csv`.
+  `schema_check_summary.json`, `prediction_summary.csv`, and `manifest.json`.
 - Keep checks lightweight and decision-oriented before adding dedicated
   monitoring infrastructure.
 
@@ -63,10 +64,11 @@ Status: not implemented.
 
 Status: not implemented.
 
-- Current task scope is tabular scalar regression.
+- Current task scope is scalar regression plus sparse independent target
+  collections, both using the same tabular pipeline.
 - Do not introduce a broad task registry for this release.
-- Revisit a task registry only when adding non-scalar outputs, such as 1D/2D
-  outputs or mode decomposition, and only if it reduces user-facing ambiguity.
+- Revisit a task registry only when adding aligned 1D/2D tensor outputs, joint
+  models, or mode decomposition, and only if it reduces user-facing ambiguity.
 
 ### External Validation And CV
 

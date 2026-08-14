@@ -4,7 +4,7 @@ resources:
   - ../../base
 images:
   - name: ml-platform-clearml-agent
-    newName: registry.example.com/ml-platform/clearml-agent
+    newName: ml-platform-clearml-agent
     newTag: prod
 patches:
   - path: patch.yaml

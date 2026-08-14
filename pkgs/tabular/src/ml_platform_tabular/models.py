@@ -37,18 +37,27 @@ SKLEARN_MODEL_SPECS: dict[str, tuple[str, str, dict[str, Any]]] = {
     "elasticnet": (
         "sklearn.linear_model",
         "ElasticNet",
-        {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000, "random_state": 42},
+        {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000},
     ),
-    "extra_trees": ("sklearn.ensemble", "ExtraTreesRegressor", {"n_estimators": 50, "random_state": 42, "n_jobs": 1}),
+    "extra_trees": ("sklearn.ensemble", "ExtraTreesRegressor", {"n_estimators": 50, "n_jobs": 1}),
 }
 OPTIONAL_MODEL_SPECS: dict[str, tuple[str, str, dict[str, Any]]] = {
-    "lightgbm": ("lightgbm", "LGBMRegressor", {"n_estimators": 100, "random_state": 42, "n_jobs": 1}),
+    "lightgbm": ("lightgbm", "LGBMRegressor", {"n_estimators": 100, "n_jobs": 1}),
     "xgboost": (
         "xgboost",
         "XGBRegressor",
-        {"n_estimators": 100, "random_state": 42, "n_jobs": 1, "objective": "reg:squarederror", "verbosity": 0},
+        {"n_estimators": 100, "n_jobs": 1, "objective": "reg:squarederror", "verbosity": 0},
     ),
-    "catboost": ("catboost", "CatBoostRegressor", {"iterations": 100, "random_seed": 42, "verbose": False}),
+    "catboost": ("catboost", "CatBoostRegressor", {"iterations": 100, "verbose": False}),
+}
+MODEL_SEED_PARAMETERS = {
+    "elasticnet": "random_state",
+    "random_forest": "random_state",
+    "extra_trees": "random_state",
+    "gradient_boosting": "random_state",
+    "lightgbm": "random_state",
+    "xgboost": "random_state",
+    "catboost": "random_seed",
 }
 
 
@@ -64,6 +73,10 @@ class Regressor(Protocol):
     def fit(self, X: object, y: object) -> object: ...
 
     def predict(self, X: object) -> np.ndarray: ...
+
+
+class Predictor(Protocol):
+    def predict(self, X: pd.DataFrame) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)
@@ -197,22 +210,8 @@ class RidgeRegressor:
 
 
 @dataclass
-class TabularEstimator:
-    transformer: FrameTransformer
-    model: Regressor
-    feature_columns: list[str]
-
-    def fit(self, X: pd.DataFrame, y: object) -> "TabularEstimator":
-        self.model.fit(self.transformer.transform(X), y)
-        return self
-
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        return self.model.predict(self.transformer.transform(X))
-
-
-@dataclass
 class MeanTopKEnsemble:
-    estimators: list[TabularEstimator]
+    estimators: list[Predictor]
     weights: list[float]
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
@@ -227,7 +226,7 @@ class MeanTopKEnsemble:
 
 @dataclass
 class MedianEnsemble:
-    estimators: list[TabularEstimator]
+    estimators: list[Predictor]
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         if not self.estimators:
@@ -236,10 +235,21 @@ class MedianEnsemble:
         return np.median(predictions, axis=1)
 
 
-def build_model(name: str, params: dict[str, Any] | None = None) -> Regressor:
+def model_params_for_seed(name: str, params: dict[str, Any] | None, seed: int) -> dict[str, Any]:
+    """Return effective model params with run.seed as the only random seed."""
+    resolved = dict(params or {})
+    seed_parameter = MODEL_SEED_PARAMETERS.get(name)
+    if seed_parameter:
+        resolved[seed_parameter] = int(seed)
+    return resolved
+
+
+def build_model(name: str, params: dict[str, Any] | None = None, *, seed: int = 42) -> Regressor:
     validate_model_name(name)
-    params = dict(params or {})
+    params = model_params_for_seed(name, params, seed)
     if name == "linear":
+        if params:
+            raise ValueError(f"linear does not accept model parameters: {sorted(params)}")
         return LinearRegressor()
     if name == "ridge":
         return RidgeRegressor(**params)

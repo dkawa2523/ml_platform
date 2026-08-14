@@ -15,27 +15,20 @@ from ml_platform_tabular.models import (
     OptionalDependencyError,
     SUPPORTED_MODELS,
     build_model,
+    model_params_for_seed,
 )
 from ml_platform_tabular.training import run_pipeline
 
 
-def _assert_prediction_output(path, *, id_columns, model_name, artifact_kind):
+def _assert_prediction_output(path, *, id_columns):
     predictions = pd.read_csv(path)
     assert list(predictions.columns) == [
         "row_index",
         *id_columns,
         "prediction",
-        "model_name",
-        "artifact_kind",
-        "model_artifact_id",
-        "prediction_run_id",
     ]
     assert "x1" not in predictions.columns
     assert "x2" not in predictions.columns
-    assert set(predictions["model_name"]) == {model_name}
-    assert set(predictions["artifact_kind"]) == {artifact_kind}
-    assert predictions["model_artifact_id"].str.len().min() > 0
-    assert predictions["prediction_run_id"].str.len().min() > 0
     assert predictions["prediction"].notna().all()
     return predictions
 
@@ -85,6 +78,23 @@ def test_model_policy_excludes_out_of_scope_models():
     for name in ["knn", "svr", "mlp", "gaussian_process", "tabpfn"]:
         with pytest.raises(ValueError, match="out of current product scope"):
             build_model(name)
+
+
+def test_linear_model_rejects_parameters_it_cannot_apply():
+    with pytest.raises(ValueError, match="does not accept model parameters"):
+        build_model("linear", {"fit_intercept": False})
+
+
+def test_run_seed_is_the_single_model_seed():
+    assert model_params_for_seed("random_forest", {"n_estimators": 3, "random_state": 999}, 7) == {
+        "n_estimators": 3,
+        "random_state": 7,
+    }
+    assert model_params_for_seed("catboost", {"iterations": 3, "random_seed": 999}, 7) == {
+        "iterations": 3,
+        "random_seed": 7,
+    }
+    assert model_params_for_seed("ridge", {"alpha": 2.0}, 7) == {"alpha": 2.0}
 
 
 def test_feature_transformer_basic_options():
@@ -198,7 +208,7 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     infer_path = tmp_path / "infer.csv"
     conflict_path = tmp_path / "infer_conflict.csv"
     df.drop(columns=["target"]).head(4).to_csv(infer_path, index=False)
-    df.drop(columns=["target"]).head(4).assign(model_artifact_id="existing").to_csv(conflict_path, index=False)
+    df.drop(columns=["target"]).head(4).assign(prediction="existing").to_csv(conflict_path, index=False)
 
     _run_small_pipeline(tmp_path, train_path, id_columns=["id"], candidates=["linear"])
 
@@ -207,19 +217,14 @@ def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):
     infer_cfg["data"]["local_path"] = str(infer_path)
     infer_cfg["data"]["id_columns"] = ["id"]
     infer_cfg["output"]["prediction_name"] = "scored.csv"
-    infer_cfg["output"]["chunk_size"] = 2
     infer_result = run_infer(infer_cfg)
     assert infer_result.tables["predictions"].name == "scored.csv"
     assert (tmp_path / "outputs" / "latest_infer" / "scored.csv").exists()
     predictions = _assert_prediction_output(
         infer_result.tables["predictions"],
         id_columns=["id"],
-        model_name="linear",
-        artifact_kind="model",
     )
     assert len(predictions) == 4
-    manifest = read_json(infer_result.artifacts["manifest"])
-    assert manifest["extra"]["chunk_size"] == 2
 
     infer_cfg["data"]["local_path"] = str(conflict_path)
     with pytest.raises(ValueError, match="reserved prediction output columns"):
@@ -263,10 +268,6 @@ def test_infer_schema_check_warns_for_extra_and_unseen_category(tmp_path):
         "row_index",
         "id",
         "prediction",
-        "model_name",
-        "artifact_kind",
-        "model_artifact_id",
-        "prediction_run_id",
     ]
     assert "extra_note" not in predictions.columns
     assert "segment" not in predictions.columns
@@ -302,6 +303,21 @@ def test_regression_metrics_can_select_mse():
 
     from_string = regression_metrics([1.0, 2.0], [1.0, 4.0], metrics="mse,rmse")
     assert list(from_string) == ["mse", "rmse"]
+
+
+def test_regression_metrics_constant_target_distinguishes_perfect_prediction():
+    assert regression_metrics([5.0, 5.0], [5.0, 5.0])["r2"] == 1.0
+    assert regression_metrics([5.0, 5.0], [4.0, 5.0])["r2"] == 0.0
+
+
+def test_regression_metrics_rejects_non_finite_values_and_single_sample_r2():
+    with pytest.raises(ValueError, match="finite values"):
+        regression_metrics([1.0, 2.0], [1.0, np.inf])
+
+    with pytest.raises(ValueError, match="r2 requires at least two samples"):
+        regression_metrics([1.0], [1.0])
+
+    assert regression_metrics([1.0], [1.0], metrics=["mae"]) == {"mae": 0.0}
 
 
 def test_regression_metrics_rejects_invalid_inputs():

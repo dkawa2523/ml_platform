@@ -1,6 +1,8 @@
 # 新しいタスク/解析への拡張
 
-将来的には、テーブル条件入力に対する 1D/2D 出力、分布モード分解、別種の解析タスクを追加する可能性があります。ただし、現行製品は tabular scalar regression に絞っています。
+現行製品はtabular scalar regressionに加え、座標集合が異なる複数target表を
+独立scalar modelのbundleとして扱います。整列済み1D/2D tensor、target間の
+joint model、分布モード分解、別種の解析タスクは将来候補です。
 
 ## 現行でやらないこと
 
@@ -15,7 +17,7 @@
 
 新しい task type を追加する前に、次を確認します。
 
-1. 既存の tabular scalar regression の設定追加で表現できないか。
+1. 既存のtabular regressionまたはtarget source manifestで表現できないか。
 2. 出力 shape、評価指標、推論結果形式が本質的に異なるか。
 3. ClearML UI ユーザーに新しい入口を見せる必要があるか。
 4. Artifact 契約を既存と分ける必要があるか。

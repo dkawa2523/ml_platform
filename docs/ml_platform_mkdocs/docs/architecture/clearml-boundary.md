@@ -12,7 +12,9 @@ graph TB
   B --> C[clearml/app.py]
   B --> D[clearml/pipelines.py]
   C --> E[ml_platform_tabular.stage / inference / training]
-  D --> F[clearml/pipeline_plan.py]
+  D --> F[clearml/pipeline_params.py]
+  D --> K[clearml/pipeline_plan.py]
+  K --> L[clearml/pipeline_steps.py]
   D --> G[clearml/pipeline_controller.py]
   G --> H[PipelineController]
   E --> I[RunResult]
@@ -28,7 +30,9 @@ graph TB
 | `clearml/source_resolution.py` | Inference source task and artifact resolution. |
 | `clearml/app.py` | Direct stage and inference task entrypoint. |
 | `clearml/pipelines.py` | Direct pipeline CLI entrypoint. |
-| `clearml/pipeline_plan.py` | Pipeline runtime parameters and stage graph rendering. |
+| `clearml/pipeline_params.py` | Pipeline New Run defaults and parameter normalization. |
+| `clearml/pipeline_plan.py` | Domain plan orchestration and dry-run presentation. |
+| `clearml/pipeline_steps.py` | Artifact handoff wiring and ClearML step rendering. |
 | `clearml/pipeline_controller.py` | PipelineController draft sync, step registration, and metadata. |
 | `clearml/templates.py` | User-facing and internal template sync. |
 | `clearml/reports.py` | ClearML reporting orchestration for `RunResult`. |

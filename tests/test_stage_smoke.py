@@ -92,7 +92,6 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
             "model_name": "mean_topk",
             "model": str(ensemble.artifacts["model"]),
             "model_info": str(ensemble.artifacts["model_info"]),
-            "ensemble_info": str(ensemble.artifacts["ensemble_info"]),
             "metrics": str(ensemble.artifacts["metrics"]),
             "ensemble_predictions": str(ensemble.tables["ensemble_predictions"]),
         }
@@ -105,15 +104,12 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
 def _assert_preprocess_stage_outputs(result):
     _assert_stage_paths(
         result.artifacts,
-        ["preprocess_bundle", "feature_spec", "feature_summary", "data_quality_summary"],
+        ["preprocess_bundle", "feature_spec", "data_quality_summary"],
     )
     _assert_stage_paths(
         result.tables,
         [
-            "feature_summary_table",
             "missing_rate_by_column",
-            "feature_type_counts",
-            "data_quality_summary_table",
             "data_quality_warnings",
             "processed_train",
             "processed_valid",
@@ -124,28 +120,21 @@ def _assert_preprocess_stage_outputs(result):
 
 def _assert_train_stage_outputs(result):
     _assert_stage_paths(result.artifacts, ["model", "model_info", "metrics"])
-    _assert_stage_paths(result.tables, ["metrics_table", "validation_predictions", "feature_importance"])
-    assert {
-        "validation_prediction_vs_actual",
-        "validation_residual_histogram",
-        "validation_residual_vs_predicted",
-        "feature_importance",
-        "feature_importance_bar",
-    } <= set(result.plots)
+    _assert_stage_paths(result.tables, ["metrics_table", "validation_predictions"])
+    assert result.plots == {}
 
 
 def _assert_ensemble_stage_outputs(result):
-    _assert_stage_paths(result.artifacts, ["model", "ensemble_info"])
+    _assert_stage_paths(result.artifacts, ["model", "model_info"])
     _assert_stage_paths(
         result.tables,
         [
             "ensemble_metrics_table",
             "ensemble_predictions",
             "ensemble_members_mean_topk",
-            "ensemble_weights_mean_topk",
         ],
     )
-    assert "ensemble_metrics_bar" in result.plots
+    assert result.plots == {}
 
 
 def _assert_evaluation_stage_outputs(evaluation):
@@ -190,6 +179,8 @@ def _assert_evaluation_plots(evaluation):
     assert "best_prediction_vs_actual" in evaluation.plots
     assert "best_residual_histogram" in evaluation.plots
     assert "best_residual_vs_predicted" in evaluation.plots
+    assert "best_feature_importance" in evaluation.plots
+    assert "feature_importance" in evaluation.tables
     assert "prediction_vs_actual" not in evaluation.plots
     assert "residual_histogram" not in evaluation.plots
     assert "residual_vs_predicted" not in evaluation.plots

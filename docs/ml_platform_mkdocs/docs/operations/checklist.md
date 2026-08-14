@@ -42,7 +42,7 @@
 ## 推論 Run 実行後
 
 - [ ] `schema_check_summary.status` が `error` でない。
-- [ ] `source_summary` が意図したモデルを示している。
+- [ ] `manifest.json` が意図したモデルを示している。
 - [ ] `prediction_summary` の分布が妥当。
 - [ ] `predictions.csv` に `row_index` または ID列がある。
 - [ ] 業務データとの結合キーを確認した。

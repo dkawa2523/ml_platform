@@ -12,8 +12,6 @@ LOCAL_MODEL_PATH_KEYS = (
     "artifact_path",
     "local_model_path",
     "info_path",
-    "feature_spec_path",
-    "preprocess_bundle_path",
 )
 TASK_SOURCE_TYPE = "task_id"
 
@@ -101,7 +99,6 @@ def _resolve_task_model_source(
 
     model_cfg["artifact_path"] = model_path
     _set_optional_info_path(model_cfg, selected_task, info_key, resolve_artifact_path)
-    model_cfg.update(_preprocess_paths(tasks, resolve_artifact_path))
     model_cfg["resolved_source_task_name"] = _task_name(selected_task)
     model_cfg["resolved_source_artifact"] = model_key
     return cfg
@@ -134,21 +131,6 @@ def _set_optional_info_path(
         model_cfg["info_path"] = info_path
 
 
-def _preprocess_paths(tasks: list[Any], resolve_artifact_path: ArtifactPathResolver) -> dict[str, str]:
-    preprocess = next((task for task in tasks if _looks_like_stage(task, "preprocess_features")), None)
-    if preprocess is None:
-        return {}
-    paths: dict[str, str] = {}
-    for config_key, artifact_key in {
-        "feature_spec_path": "feature_spec",
-        "preprocess_bundle_path": "preprocess_bundle",
-    }.items():
-        path = _artifact_local_path(preprocess, artifact_key, resolve_artifact_path)
-        if path:
-            paths[config_key] = path
-    return paths
-
-
 def _select_model_artifact(tasks: list[Any], selector: str) -> tuple[Any, str, str | None]:
     if selector == "best":
         selected = _select_best_artifact(tasks)
@@ -168,28 +150,28 @@ def _select_best_artifact(tasks: list[Any]) -> tuple[Any, str, str | None] | Non
     source = tasks[0]
     source_artifacts = _task_artifacts(source)
     if "best_model" in source_artifacts:
-        return source, "best_model", _info_key(source_artifacts, "best_model_json", fallback="model_info")
+        return source, "best_model", _info_key(source_artifacts, "model_info")
 
     evaluate = _first_task_with_artifact(tasks, "best_model", stage="evaluate_models")
     if evaluate is not None:
-        return evaluate, "best_model", _info_key(_task_artifacts(evaluate), "best_model_json", fallback="model_info")
+        return evaluate, "best_model", _info_key(_task_artifacts(evaluate), "model_info")
     if "model" in source_artifacts:
         return source, "model", _info_key(source_artifacts, "model_info")
     return None
 
 
 def _select_ensemble_artifact(tasks: list[Any], selector: str) -> tuple[Any, str, str | None] | None:
-    model_key, info_key, fallback_info_key = _ensemble_artifact_keys(selector)
+    model_key, info_key = _ensemble_artifact_keys(selector)
     ensemble = _ensemble_task_with_artifact(tasks, model_key)
     if ensemble is None:
         return None
-    return ensemble, model_key, _info_key(_task_artifacts(ensemble), info_key, fallback=fallback_info_key)
+    return ensemble, model_key, _info_key(_task_artifacts(ensemble), info_key)
 
 
-def _ensemble_artifact_keys(selector: str) -> tuple[str, str, str]:
+def _ensemble_artifact_keys(selector: str) -> tuple[str, str]:
     ensemble_method = selector.split(":", 1)[1].strip() if selector.startswith("ensemble:") else ""
     suffix = f"_{ensemble_method}" if ensemble_method else ""
-    return f"model{suffix}", f"model_info{suffix}", f"ensemble_info{suffix}"
+    return f"model{suffix}", f"model_info{suffix}"
 
 
 def _ensemble_task_with_artifact(tasks: list[Any], model_key: str) -> Any | None:

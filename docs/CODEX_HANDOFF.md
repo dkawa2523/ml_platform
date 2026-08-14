@@ -79,9 +79,10 @@ graph separately from task parameters, so updating an existing draft can leave
 New Run inputs current while the graph stays old. Do not rely on old run clones
 when validating template changes.
 
-Before remote execution, verify the profile `repository`, `branch`,
-`working_dir`, `controller_queue`, `stage_queue`, and optional
-`artifact_output_uri`. Run the PipelineController on `controller_queue`; stages
+Before remote execution, verify `clearml.execution` (`repository`, `revision`,
+`working_dir`, `image`, and `python_binary`), `controller_queue`, `stage_queue`,
+and optional `artifact_output_uri`. Sync resolves `revision` to one commit used
+by all templates. Run the PipelineController on `controller_queue`; stages
 run on `stage_queue`. Remote runs should use `Input/clearml_dataset_id`,
 `Input/dataset_file`, and `Input/target_column`; `Input/local_path` works only
 when the Agent can see that path.

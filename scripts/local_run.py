@@ -5,7 +5,7 @@ import json
 
 
 def main() -> None:
-    from ml_platform_core.config import apply_overrides, load_run_config
+    from ml_platform_core.config import load_run_config
     from ml_platform_tabular import run_task
 
     parser = argparse.ArgumentParser(description="Run a local ML platform task.")
@@ -20,8 +20,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    cfg = load_run_config(args.task, args.profile)
-    cfg = apply_overrides(cfg, args.overrides)
+    cfg = load_run_config(args.task, args.profile, overrides=args.overrides)
     result = run_task(cfg)
     print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
 
