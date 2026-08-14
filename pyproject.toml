@@ -44,7 +44,7 @@ nightly = [
 docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
-  "pymdown-extensions>=10.8",
+  "pymdown-extensions>=11.0.1",
 ]
 
 [tool.uv]
