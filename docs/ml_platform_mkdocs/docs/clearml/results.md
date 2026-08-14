@@ -9,15 +9,15 @@ ClearML では、Scalars、Artifacts、Plots、Tables を使って結果を確�
 | preprocess | feature counts | feature summary, data quality, missing rate, type counts | `preprocess_bundle`, `feature_spec` | missing-rate bar |
 | train | `rmse`, `mae`, `r2` | metrics, validation predictions, feature importance | `model.joblib`, `model_info.json` | prediction/residual plots |
 | ensemble | ensemble metrics | predictions, members, weights | ensemble model/info | method plots |
-| evaluate | best/candidate metrics | leaderboard, decision summary, predictions | best model, report json | leaderboard dashboard |
+| evaluate | best metrics | leaderboard, evaluation predictions | best model, best model json | leaderboard metric panel |
 | infer | prediction summary | predictions, schema check, source summary | manifest | prediction distribution |
 
 ## ClearML 上の確認順
 
 1. Pipeline Graph で失敗 Stage を確認する。
 2. `preprocess_features` の data quality を見る。
-3. `evaluate_models` の leaderboard を見る。
-4. `decision_summary.md` を開く。
+3. `evaluate_models` の `best_model.json` を見る。
+4. 必要に応じて `leaderboard.csv` と `evaluation_predictions.csv` を確認する。
 5. 推論 Task の `schema_check_summary` と `predictions.csv` を確認する。
 
 ## よく見るタブ
@@ -39,7 +39,7 @@ ClearML では、Scalars、Artifacts、Plots、Tables を使って結果を確�
 | `model.joblib` | 予測実体 | `model_info.json`, `feature_spec.json` |
 | `best_model.joblib` | 推奨推論モデル | `best_model.json`, `feature_spec.json` |
 | `preprocess_bundle.joblib` | 前処理器 | `feature_spec.json` |
-| `decision_summary.md` | 人間判断 | `leaderboard.csv` |
+| `best_model.json` | 推論判断 | `leaderboard.csv` |
 | `schema_check_summary.json` | 推論検証 | `source_summary.csv` |
 
 ## 古い Task が残る場合

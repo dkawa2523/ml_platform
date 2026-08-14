@@ -29,7 +29,7 @@ graph LR
 | preprocess | dataset, feature config, split config | `preprocess_bundle`, `feature_spec`, processed train/valid | train, ensemble |
 | train | preprocess artifacts, model params | `model`, `model_info`, `metrics`, predictions | ensemble, evaluate |
 | ensemble | model refs, preprocess artifacts | ensemble model/info, ensemble predictions | evaluate |
-| evaluate | model refs, ensemble refs | leaderboard, decision, best model | inference |
+| evaluate | model refs, ensemble refs | leaderboard, best model | inference |
 
 ## Stage handoff
 
@@ -68,9 +68,7 @@ sequenceDiagram
 | 出力 | 役割 |
 | --- | --- |
 | `leaderboard.csv` | 候補の比較 |
-| `best_vs_ensemble_summary.csv` | アンサンブル採用判断 |
-| `decision_summary.md` | 人間向けの推論判断メモ |
-| `decision_summary.json` | 機械可読な判断情報 |
+| `best_model.json` | 推論に使う候補と推奨設定 |
 | `best_model.joblib` | 推論対象モデル |
 
 ## 将来拡張時の考え方

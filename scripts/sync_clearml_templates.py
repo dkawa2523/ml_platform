@@ -4,10 +4,6 @@ import argparse
 import importlib.util
 from pathlib import Path
 
-from _bootstrap import add_repo_paths
-
-add_repo_paths()
-
 
 def load_sync_function():
     repo_root = Path(__file__).resolve().parents[1]
@@ -23,7 +19,9 @@ def load_sync_function():
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync ClearML template tasks.")
     parser.add_argument("--profile", required=True, help="Path to profile config YAML.")
-    parser.add_argument("--dry-run", action="store_true", help="Print template definitions without requiring ClearML SDK.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print template definitions without requiring ClearML SDK."
+    )
     args = parser.parse_args()
     sync_templates = load_sync_function()
     sync_templates(args.profile, dry_run=args.dry_run)

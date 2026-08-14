@@ -43,7 +43,7 @@ ClearML display:
 - inference table reports for `predictions`, `schema_check_summary`,
   `prediction_summary`, `prediction_preview`, and `source_summary`
 - native ClearML plots focus on leaderboard/top-k views for training and
-  prediction distribution for inference when `Output/report_plots=true`
+  prediction distribution for inference when `Output/upload_plots=true`
 - plot artifacts/media for `metrics_by_candidate_bar`, leaderboard plots, best
   prediction plots, and top-k candidate plots
 

@@ -16,13 +16,14 @@ def _normalize_metric_name(value: object) -> str:
 def _normalize_metric_names(metrics: Iterable[str] | str | None) -> tuple[str, ...]:
     if metrics is None:
         return DEFAULT_REGRESSION_METRICS
-    if isinstance(metrics, str):
-        names = tuple(name.strip() for name in metrics.split(",") if name.strip())
-    else:
-        names = tuple(metrics)
+    names = _metric_names_from_text(metrics) if isinstance(metrics, str) else tuple(metrics)
     if not names:
         raise ValueError("At least one regression metric is required.")
     return names
+
+
+def _metric_names_from_text(metrics: str) -> tuple[str, ...]:
+    return tuple(name.strip() for name in metrics.split(",") if name.strip())
 
 
 def regression_metrics(y_true, y_pred, metrics: Iterable[str] | str | None = None) -> dict[str, float]:
@@ -33,15 +34,21 @@ def regression_metrics(y_true, y_pred, metrics: Iterable[str] | str | None = Non
     if y_true.shape[0] == 0:
         raise ValueError("y_true and y_pred must not be empty.")
 
+    values = _regression_metric_values(y_true, y_pred)
+    return _selected_metric_values(values, _normalize_metric_names(metrics))
+
+
+def _regression_metric_values(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
     residual = y_true - y_pred
     mae = float(np.mean(np.abs(residual)))
     mse = float(np.mean(residual**2))
     rmse = float(np.sqrt(mse))
     denom = float(np.sum((y_true - np.mean(y_true)) ** 2))
     r2 = 1.0 - float(np.sum(residual**2)) / denom if denom else 0.0
+    return {"mae": mae, "rmse": rmse, "r2": float(r2), "mse": mse}
 
-    values = {"mae": mae, "rmse": rmse, "r2": float(r2), "mse": mse}
-    selected = _normalize_metric_names(metrics)
+
+def _selected_metric_values(values: dict[str, float], selected: tuple[str, ...]) -> dict[str, float]:
     result: dict[str, float] = {}
     for name in selected:
         key = _normalize_metric_name(name)
@@ -71,6 +78,6 @@ def regression_prediction_frame(base_frame, y_true, y_pred, *, model_name: str |
 
 
 def write_regression_plot_artifacts(y_true, y_pred, output_dir: Path, *, prefix: str = "validation") -> dict[str, Path]:
-    from .plots import write_regression_plot_artifacts as _write_regression_plot_artifacts
+    from .plotting import write_regression_plot_artifacts as _write_regression_plot_artifacts
 
     return _write_regression_plot_artifacts(y_true, y_pred, output_dir, prefix=prefix)

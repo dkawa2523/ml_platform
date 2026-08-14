@@ -12,9 +12,11 @@ ClearML UI から扱いやすい、tabular scalar regression 向けの学習・�
 preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models
 ```
 
+Package stage 名は `preprocess_features`、`train_model`、`build_ensemble`、`evaluate_models` です。ClearML Pipeline 上では見分けやすさのため、step label と task name に `train_<model>` や `build_ensemble_<method>` の suffix を付けます。
+
 `preprocess_features` では、欠損、重複、ID重複、高カーディナリティ列、リーク疑いの列名などを軽量に確認できます。警告は失敗扱いにせず、致命的な入力不備だけをエラーにします。
 
-学習後は `evaluate_models/decision_summary.md` を最初に確認してください。推論タスクに設定する `Model/source_type`、`Model/source_task_id`、`Model/model_selector` が分かるようになっています。
+学習後は `evaluate_models/best_model.json` と `evaluate_models/leaderboard.csv` を確認してください。推論タスクに設定する `Model/source_type`、`Model/source_task_id`、`Model/model_selector` は `best_model.json` に集約されています。
 
 推論は学習 Pipeline とは別の user-facing task です。
 
@@ -70,26 +72,26 @@ tabpfn
 ```powershell
 uv venv .venv
 .\.venv\Scripts\activate
-uv pip install -e pkgs/core -e pkgs/tabular -r requirements-dev.txt
+uv sync --group dev
 ```
 
 サンプルデータを作成し、GBM 系を外した軽量候補で学習します。
 
 ```powershell
-python scripts/make_sample_data.py
-python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
+uv run python scripts/make_sample_data.py
+uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
 ```
 
 直近の学習結果を使ってローカル推論します。
 
 ```powershell
-python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
+uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
 ```
 
 テスト:
 
 ```powershell
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
+uv run python -m pytest -q
 ```
 
 ## ClearML 実行
@@ -97,13 +99,13 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; pytest -q
 テンプレートの dry-run:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 ClearML 上のテンプレート更新:
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
 ユーザー向けテンプレート:
@@ -150,7 +152,7 @@ ClearML Pipeline tab から最初に使うのは `template/tabular_train_pipelin
 Pipeline dry-run:
 
 ```powershell
-python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run
 ```
 
 ## MkDocs ドキュメント
@@ -164,13 +166,13 @@ docs/ml_platform_mkdocs/
 docs 用依存をインストールします。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r docs\ml_platform_mkdocs\requirements-docs.txt
+uv sync --group docs
 ```
 
 ローカルでプレビュー起動します。
 
 ```powershell
-.\.venv\Scripts\python.exe -m mkdocs serve --config-file docs\ml_platform_mkdocs\mkdocs.yml
+uv run --group docs python -m mkdocs serve --config-file docs\ml_platform_mkdocs\mkdocs.yml
 ```
 
 起動後、ブラウザで以下を開きます。
@@ -182,7 +184,7 @@ http://127.0.0.1:8000/
 HTML をビルドする場合:
 
 ```powershell
-.\.venv\Scripts\python.exe -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict
+uv run --group docs python -m mkdocs build --config-file docs\ml_platform_mkdocs\mkdocs.yml --strict
 ```
 
 生成された HTML は `docs/ml_platform_mkdocs/site/` に出力されます。`site/` は生成物なので、通常はコミットしません。

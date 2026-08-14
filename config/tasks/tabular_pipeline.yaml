@@ -117,4 +117,4 @@ model:
     top_k: 3
 
 output:
-  report_plots: true
+  upload_plots: true

@@ -24,8 +24,8 @@ ClearML 自体の概念は公式ドキュメントを参照してください。
 テンプレート同期は、ClearML UI で利用する Task/Pipeline テンプレートを作成または更新します。
 
 ```powershell
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
-python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run
+uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml
 ```
 
 `--dry-run` では、実際に ClearML サーバーを更新せず、作成されるテンプレートや Pipeline 計画を確認できます。

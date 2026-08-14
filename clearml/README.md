@@ -6,13 +6,23 @@ and inference logic belongs in `pkgs/tabular`.
 Files:
 
 ```text
-app.py        task entrypoint
-adapter.py    ClearML Task, Dataset, StorageManager, Logger wrapper
+app.py                  task entrypoint
+adapter.py              ClearML Task, Dataset, StorageManager, and Logger wrapper
+support.py              shared ClearML task/logger helpers
+param_bindings.py       manifest ParameterSpec -> config binding
+param_defaults.py       config -> ClearML runtime parameter defaults
+param_transport.py      ClearML parameter serialization/coercion
+param_apply.py          ClearML runtime parameters -> nested config
+source_resolution.py    inference source task and artifact resolution
+reports.py              RunResult reporting orchestration
+reporting_scalars.py    scalar extraction from metrics artifacts and tables
+reporting_targets.py    table/plot report names and duplicate suppression
+pipeline_plan.py        ClearML pipeline defaults and stage graph rendering
+pipeline_controller.py  PipelineController draft sync and run orchestration
+pipelines.py            direct pipeline entrypoint
+templates.py            template sync
 _entrypoint_bootstrap.py
-              local/remote entrypoint import bootstrap
-reports.py    RunResult -> ClearML Scalars, Tables, Plots, Artifacts
-templates.py  template sync and Pipeline-tab draft sync
-pipelines.py  stage-based training PipelineController
+                        local/remote entrypoint import bootstrap
 ```
 
 Current sync targets:
@@ -53,5 +63,14 @@ the only worker slot.
 
 Because this operations directory is named `clearml`, code here must import the
 official SDK through `adapter.import_clearml_sdk()` or
-`adapter.import_clearml_symbol()`. Those helpers temporarily remove the repo root
-from `sys.path` before importing the external package.
+`adapter.import_clearml_symbol()`. Do not import the SDK directly from new
+runtime code.
+
+Runtime parameter keys are declared in `ml_platform_tabular.manifest` as
+`ParameterSpec`s. Keep defaults, coercion, config application, and pipeline
+overrides derived through `param_bindings.py` rather than adding parallel key
+lists.
+
+Shared ClearML Task and Logger mechanics belong in `support.py`; entrypoints
+and sync code should keep only product-specific decisions. Avoid adding thin
+re-export modules or one-class files unless they remove substantial complexity.

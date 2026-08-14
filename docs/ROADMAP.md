@@ -9,6 +9,8 @@ behavior remains in `docs/CLEARML_UI_SPEC.md`.
 - Tabular scalar regression only.
 - Stage-based training graph:
   `preprocess_features -> train_<model>* -> build_ensemble_<method>* -> evaluate_models`.
+- `train_<model>` and `build_ensemble_<method>` are ClearML step labels; package
+  stage keys remain `train_model` and `build_ensemble`.
 - Separate user-facing inference task: `template/tabular_infer`.
 - ClearML-free core packages under `pkgs/core` and `pkgs/tabular`.
 - Basic ClearML training controls:
@@ -16,8 +18,8 @@ behavior remains in `docs/CLEARML_UI_SPEC.md`.
 - `Basic/quality_mode` uses fixed bounded parameter presets. It is not HPO.
 - Holdout validation only: `random`, `group`, `time`, and `fixed`.
 - Lightweight data-quality checks in preprocess.
-- `evaluate_models/decision_summary.md` as the canonical inference decision
-  artifact.
+- `evaluate_models/best_model.json` as the canonical inference decision
+  artifact, with `leaderboard.csv` for candidate comparison.
 - Lightweight inference schema checks and slim predictions.
 
 ## P2: Future, Not Implemented
@@ -40,9 +42,8 @@ Status: not implemented.
 
 - No approved-model registry, promotion workflow, or registry-specific template
   exists today.
-- Future behavior should start from `evaluate_models` outputs:
-  `decision_summary.md`, `decision_summary.json`, and `recommendation.json`.
-- A later flow may turn an accepted recommendation into an approved registered
+- Future behavior should start from the `evaluate_models` best-model decision.
+- A later flow may turn an accepted best-model decision into an approved registered
   model, but training and inference should continue to work without registry
   services.
 

@@ -6,16 +6,17 @@ from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
 from ml_platform_tabular import models as model_module
 from ml_platform_tabular.features import build_feature_pipeline
-from ml_platform_tabular.infer import run_infer
+from ml_platform_tabular.inference import run_infer
 from ml_platform_tabular.metrics import regression_metrics
 from ml_platform_tabular.models import (
     AVAILABLE_MODELS,
     DEPENDENCY_FREE_MODELS,
     OPTIONAL_DEPENDENCY_MODELS,
+    OptionalDependencyError,
     SUPPORTED_MODELS,
     build_model,
 )
-from ml_platform_tabular.pipeline import run_pipeline
+from ml_platform_tabular.training import run_pipeline
 
 
 def _assert_prediction_output(path, *, id_columns, model_name, artifact_kind):
@@ -144,13 +145,52 @@ def test_optional_dependency_models_fail_cleanly_when_dependency_missing(monkeyp
 
     def fake_import_module(name):
         if name in {"lightgbm", "xgboost", "catboost"}:
-            raise ImportError("missing optional dependency")
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
         return real_import_module(name)
 
     monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
     for name in ["lightgbm", "xgboost", "catboost"]:
-        with pytest.raises(RuntimeError, match=r"optional dependency.*pkgs/tabular\[gbm\]"):
+        with pytest.raises(OptionalDependencyError, match=r"requires optional dependency.*uv sync --extra gbm"):
             build_model(name)
+
+
+def test_optional_dependency_import_error_is_not_reported_as_missing(monkeypatch):
+    def fake_import_module(name):
+        if name == "lightgbm":
+            raise ImportError("DLL load failed")
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
+
+    with pytest.raises(OptionalDependencyError, match="could not be imported.*DLL load failed"):
+        build_model("lightgbm")
+
+
+def test_optional_dependency_missing_class_has_version_message(monkeypatch):
+    class FakeLightGBM:
+        pass
+
+    def fake_import_module(name):
+        if name == "lightgbm":
+            return FakeLightGBM()
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
+
+    with pytest.raises(OptionalDependencyError, match=r"LGBMRegressor.*does not expose"):
+        build_model("lightgbm")
+
+
+def test_optional_dependency_internal_runtime_error_is_not_hidden(monkeypatch):
+    def fake_import_module(name):
+        if name == "lightgbm":
+            raise RuntimeError("library init failed")
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setattr(model_module.importlib, "import_module", fake_import_module)
+
+    with pytest.raises(RuntimeError, match="library init failed"):
+        build_model("lightgbm")
 
 
 def test_infer_custom_prediction_name_and_reserved_columns(tmp_path):

@@ -1,6 +1,7 @@
 import pandas as pd
 
-from ml_platform_tabular.infer import _prediction_frame, _schema_check_summary
+from ml_platform_tabular.inference.prediction_frame import _prediction_frame
+from ml_platform_tabular.inference.schema import _schema_check_summary
 
 
 class _CategoryTransformer:

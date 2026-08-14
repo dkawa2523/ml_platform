@@ -1,0 +1,1129 @@
+# Codex work log
+
+このファイルは、Codexまたは人手で行ったレビュー対応作業のログです。作業ごとに追記してください。
+
+## Entry template
+
+```markdown
+## YYYY-MM-DD - <short title>
+
+- Branch:
+- Worker: Codex / human
+- Purpose:
+- Review IDs:
+- Changed files:
+- Commands:
+- Results:
+- Failures / unknowns:
+- Next action:
+```
+
+## 2026-06-28 - review workspace scaffold generated
+
+- Branch: not created by this package
+- Worker: ChatGPT artifact generation
+- Purpose: Create downloadable `docs/review` scaffold for review response tracking.
+- Review IDs: R01-R27
+- Changed files:
+  - `docs/review/source/*`
+  - `docs/review/*.md`
+- Commands: not run in target repository
+- Results: Markdown scaffold generated for placement in the repository.
+- Failures / unknowns:
+  - Target repository Git status not checked in this artifact generation step.
+  - ClearML localhost UI not checked.
+  - Kubernetes cluster verification not checked.
+- Next action: Place files, create `review/r00-setup-review-tracking`, run baseline commands, and update `BASELINE_ENV_REPORT.md`.
+
+## 2026-06-28 - Prompt 0-A baseline setup
+
+- Branch: `review/r00-setup-review-tracking`
+- Worker: Codex
+- Purpose: Record baseline Git/environment/tooling state and prepare review-response tracking docs before implementation work.
+- Review IDs: R01-R27
+- Changed files:
+  - `AGENTS.md`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git remote -v`
+  - `git log --oneline -n 20`
+  - review document presence checks under `docs/review/`
+  - `python --version`
+  - `python -m pip --version`
+  - `uv --version`
+  - `.\.venv\Scripts\python.exe --version`
+  - `.\.venv\Scripts\python.exe -m pip --version`
+  - `.\.venv\Scripts\python.exe -m pytest --version`
+  - `.\.venv\Scripts\python.exe -m ruff --version`
+  - `.\.venv\Scripts\python.exe -m mypy --version`
+  - `.\.venv\Scripts\python.exe -m pre_commit --version`
+  - `.\.venv\Scripts\python.exe -m gitlint --version`
+  - `.\.venv\Scripts\python.exe -m radon --version`
+  - `.\.venv\Scripts\python.exe -m lint_imports --version`
+  - `.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts`
+  - `.\.venv\Scripts\python.exe -m pytest`
+  - `uv sync --all-extras --dev --dry-run`
+  - `uv sync --all-extras --dev --check`
+  - `.\.venv\Scripts\python.exe -m ruff check .`
+  - `.\.venv\Scripts\python.exe -m ruff format --check .`
+  - `rg` searches for `ui_*`, bootstrap/import/type patterns, core registry/config/io patterns, and BLAS/OpenMP env defaults
+- Results:
+  - Branch is `review/r00-setup-review-tracking`.
+  - `docs/review/` is present and untracked.
+  - Required review source/tracking documents are present.
+  - `.venv` Python is available: Python 3.13.12.
+  - `uv` is available: 0.11.16.
+  - `compileall` succeeded.
+  - Baseline target searches were recorded in `BASELINE_ENV_REPORT.md` and summarized in `PR28_REVIEW_MAP.md`.
+- Failures / unknowns:
+  - Initial `apply_patch` attempt failed because paths were relative to the workspace parent instead of the repository root; retried with `ml_platform/`-prefixed paths and succeeded.
+  - PATH `python` is the Windows Store execution alias and is not usable for project verification.
+  - `pytest` failed during collection because pandas DLL loading was blocked by Windows application control policy; treated as environment/import failure, not an assertion failure.
+  - `ruff`, `mypy`, `pre_commit`, `gitlint`, `radon`, and `lint_imports` are not installed in `.venv`.
+  - `uv.lock`, `.pre-commit-config.yaml`, `.gitlint`, `.gitattributes`, `.vscode/`, and `*.code-workspace` are absent.
+  - `uv sync --all-extras --dev --check` reports the environment is outdated and would create `uv.lock`.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification were not run; manual verification required.
+- Next action: Hand off to Prompt 0-B with implementation still untouched.
+
+## 2026-06-28 - Prompt 0-B phase 0 completion
+
+- Date: 2026-06-28
+- Branch: `review/r00-setup-review-tracking`
+- Worker: Codex
+- Purpose: Reflect Prompt 0-A findings into review map, work log, environment report, phase plan, porting guide, extra notes, and response drafts so Phase 0 can be committed.
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_FIX_BRANCH_PLAN.md`
+  - `docs/review/PORTING_GUIDE.md`
+  - `docs/review/EXTRA_REVIEW_NOTES.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Review IDs: R01-R27
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git diff --stat`
+  - `Get-Content` inspections for review map, branch plan, porting guide, extra notes, response drafts, and baseline report
+  - `git status --short --untracked-files=all`
+  - final `git diff --stat`
+  - final `git diff -- docs/review AGENTS.md docs/adr`
+- Results:
+  - Current branch confirmed as `review/r00-setup-review-tracking`.
+  - R01-R27 rows remain not done; statuses are limited to `todo`, `needs_confirmation`, `blocked`, or `deferred`.
+  - Phase plan now has an explicit Prompt 0-B checklist for Phase 0 through Phase 7.
+  - Porting guide contains target remote, `review-sync/pr28`, `cherry-pick -x`, and `format-patch` / `git am -3` examples.
+  - Extra reviewer notes now explicitly mention `PipelinePlan`, `StageStep`, `ArtifactSpec`, `ParameterSpec`, and `RunResult`.
+  - Reviewer response drafts remain draft-only for R01-R27.
+- Failures / unknowns:
+  - No implementation fixes were attempted.
+  - Existing Phase 0 environment blockers remain: PATH `python` is the Windows Store alias, pytest collection fails due pandas DLL policy block, and ruff/pre-commit tooling is missing.
+  - Original CI runner labels, pre-commit/gitlint/gitattributes settings, VS Code settings, code-workspace layout, and MkDocs deploy target require confirmation in Phase 1.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action: Commit Phase 0 docs, then start Phase 1 on `review/r01-tooling-ci` for tooling and CI restoration.
+
+## 2026-06-28 - Prompt 1-A tooling and CI investigation
+
+- Branch: `review/r01-tooling-ci`
+- Worker: Codex
+- Purpose: Investigate Phase 1 review targets before restoring tooling/CI files.
+- Review IDs: R01, R13, R14, R21, R22, R23, R24, R25
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline -n 10`
+  - `git ls-files .github .vscode docs .pre-commit-config.yaml .gitlint .gitattributes '*.code-workspace'`
+  - `.github` / `.vscode` file listing checks
+  - `.pre-commit-config.yaml`, `.gitlint`, `.gitattributes`, `*.code-workspace` existence checks
+  - `git log --all --oneline -- .github/workflows .pre-commit-config.yaml .gitlint .gitattributes .vscode '*.code-workspace' pyproject.toml requirements-dev.txt`
+  - `git log --all --name-status -- <target path>` for CI, smoke, MkDocs deploy, pre-commit, gitlint, gitattributes, VS Code, and workspace files
+  - `git show 647bcdf:.github/workflows/ci.yml`
+  - `git show 6637119:.github/workflows/ci.yml`
+  - `python --version` and `python -m <tool> --version`
+  - `.\.venv\Scripts\python.exe --version`
+  - `.\.venv\Scripts\python.exe -m pytest --version`
+  - `.\.venv\Scripts\python.exe -m ruff/pre_commit/gitlint/radon/lint_imports --version`
+  - content checks for `.github/workflows/ci.yml`, `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, and `config/tasks`
+  - `rg` search for tooling strings
+- Results:
+  - Worktree was clean before recording investigation.
+  - Current branch is `review/r01-tooling-ci`.
+  - Only `.github/workflows/ci.yml` exists among Phase 1 target config files.
+  - History candidates found only for `.github/workflows/ci.yml`: `647bcdf` and `6637119`.
+  - No history candidates found for `smoke-test.yml`, `deploy-mkdocs.yml`, `.pre-commit-config.yaml`, `.gitlint`, `.gitattributes`, `.vscode/*`, or `*.code-workspace`.
+  - Current and historical `ci.yml` use `ubuntu-latest` and include removed task configs.
+  - Current task configs are `tabular_pipeline.yaml`, `tabular_stage.yaml`, and `tabular_infer.yaml`.
+  - `.venv` Python is available: Python 3.13.12.
+  - `.venv` pytest is available: pytest 9.0.3.
+- Failures / unknowns:
+  - PATH `python` resolves to the Windows Store execution alias and fails.
+  - `ruff`, `pre_commit`, `gitlint`, `radon`, and `lint_imports` are missing from `.venv`.
+  - `rg ... requirements*.txt ...` failed due PowerShell glob/path handling; use explicit requirement file paths next time.
+  - Runner set `arc-runner-set-spdml-ml-pipeline` cannot be confirmed from the local repository.
+  - MkDocs deploy target, permissions, and secrets remain unknown.
+  - Original pre-commit/gitlint/gitattributes/VS Code/workspace contents were not found in this repository history.
+- Next action: Prompt 1-B should restore minimal common CI, split smoke workflow, and add minimal developer tooling/config files while keeping unresolved runner/deploy details as `needs_confirmation`.
+
+## 2026-06-28 - Prompt 1-B tooling restoration started
+
+- Branch: `review/r01-tooling-ci`
+- Worker: Codex
+- Purpose: Restore minimal review-safety and developer-tooling files for Phase 1 without changing runtime implementation code.
+- Review IDs: R01, R13, R14, R21, R22, R23, R24, R25
+- Changed files:
+  - pending; will be finalized after verification
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline -n 10`
+  - `Get-Content` inspections for review docs and existing tooling files
+  - `rg --files pkgs core clearml scripts tests .github docs\ml_platform_mkdocs`
+- Results:
+  - Current branch confirmed as `review/r01-tooling-ci`.
+  - Prompt 1-A documentation changes are present and preserved.
+  - `requirements-dev.txt` is updated for compatibility with the current requirements-based dev environment, not as the R02 uv migration.
+  - Project-local `.venv` install is required to run restored tools (`ruff`, `pre_commit`, `gitlint`, `radon`, `lint_imports`) for Phase 1 verification.
+- Failures / unknowns:
+  - `rg --files ... core ...` returned a file list but failed because `core` is not a repository path; future checks should use explicit existing paths.
+  - Runner set `arc-runner-set-spdml-ml-pipeline` and GitHub Pages deployment target remain `needs_confirmation`.
+- Next action: Install restored dev tools into `.venv`, run verification commands, then update review tracking docs with final results.
+
+## 2026-06-28 - Prompt 1-B tooling restoration results
+
+- Branch: `review/r01-tooling-ci`
+- Worker: Codex
+- Purpose: Restore minimal Phase 1 CI/tooling files and record verification outcomes without changing runtime implementation code.
+- Review IDs: R01, R13, R14, R21, R22, R23, R24, R25
+- Changed files:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/smoke-test.yml`
+  - `.github/workflows/deploy-mkdocs.yml`
+  - `.pre-commit-config.yaml`
+  - `.gitlint`
+  - `.gitattributes`
+  - `.vscode/extensions.json`
+  - `.vscode/settings.json`
+  - `ml_platform.code-workspace`
+  - `pyproject.toml`
+  - `requirements-dev.txt`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline -n 10`
+  - `Get-Content` inspections for review docs, workflows, and dev-tool files
+  - `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`
+  - `.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts`
+  - `.\.venv\Scripts\python.exe -m pytest`
+  - `.\.venv\Scripts\python.exe -m ruff check .`
+  - `.\.venv\Scripts\python.exe -m ruff format --check .`
+  - `.\.venv\Scripts\python.exe -m pre_commit run --all-files`
+  - `$env:PATH = (Resolve-Path .\.venv\Scripts).Path + ';' + $env:PATH; .\.venv\Scripts\python.exe -m pre_commit run --all-files`
+  - `.\.venv\Scripts\python.exe -m radon cc clearml pkgs scripts -s -a`
+  - `.\.venv\Scripts\python.exe -m lint_imports --config pyproject.toml`
+  - `.\.venv\Scripts\lint-imports.exe --config pyproject.toml`
+  - tool version checks for Ruff, pre-commit, gitlint, radon, and import-linter
+  - `python --version`
+  - `python -m ruff --version`
+  - `.\.venv\Scripts\python.exe -m pre_commit run check-yaml --files .github/workflows/ci.yml .github/workflows/smoke-test.yml .github/workflows/deploy-mkdocs.yml .pre-commit-config.yaml`
+  - `.\.venv\Scripts\python.exe -m pre_commit run check-json --files .vscode/settings.json .vscode/extensions.json ml_platform.code-workspace`
+  - `git diff --check`
+- Results:
+  - Project `.venv` install succeeded. Installed/restored dev tools include Ruff 0.15.20, pre-commit 4.6.0, gitlint 0.19.1, radon 6.0.1, and import-linter 2.12.
+  - `compileall` succeeded.
+  - `pytest` passed: 89 passed.
+  - `radon` ran successfully; average complexity is B. High-complexity findings are now visible for later refactor phases.
+  - `lint-imports` console script passed: 1 contract kept, 0 broken.
+  - New workflow/pre-commit YAML files passed targeted `check-yaml`.
+  - New VS Code/workspace JSON files passed targeted `check-json`.
+  - `git diff --check` exited 0; Git printed CRLF-to-LF warnings for modified review docs only.
+  - Common CI, smoke workflow, MkDocs workflow, pre-commit/gitlint, gitattributes, VS Code settings, and code-workspace were restored.
+  - pre-commit's accidental source/historical whitespace modifications were reverted before finishing.
+- Failures / unknowns:
+  - First `apply_patch` attempt used the workspace parent path and failed; retried with `ml_platform/`-prefixed paths and succeeded.
+  - PATH `python` still fails due Windows Store execution alias; `python -m ruff --version` fails for the same reason.
+  - `ruff check .` failed on existing findings: E402 in ClearML/script bootstrap imports, F841 in tabular infer, and F401 in tabular pipeline.
+  - `ruff format --check .` failed: 20 files would be reformatted.
+  - First `pre_commit run --all-files` failed because `check-yaml` did not support the MkDocs Python YAML tag or multi-document deploy patches, mutating hooks touched out-of-scope source/historical docs, and Ruff hooks used PATH `python`.
+  - The pre-commit config was adjusted to exclude those YAML/source/historical cases and use Ruff console scripts. A second run without activated `.venv` still failed because `ruff` was not on PATH.
+  - A pre-commit run with `.venv\Scripts` added to PATH passed basic hooks and failed only on the existing Ruff check/format issues.
+  - `python -m lint_imports --config pyproject.toml` failed because import-linter exposes the `lint-imports` console script, not a module entrypoint. CI was updated to call `lint-imports --config pyproject.toml`.
+  - `python -m gitlint --version` failed because gitlint also exposes a console script; `.\.venv\Scripts\gitlint.exe --version` passed.
+  - `ty` was not added; availability and policy remain `needs_confirmation` under R01.
+  - Runner set `arc-runner-set-spdml-ml-pipeline` and GitHub Pages deployment target remain `needs_confirmation`.
+- Next action: Commit Phase 1 tooling restoration, then continue Phase 2 for dependency/import normalization and R16/R17 import cleanup.
+
+## 2026-06-29 - Prompt 2-A dependency and import investigation
+
+- Branch: `review/r02-dependency-import-runtime`
+- Worker: Codex
+- Purpose: Investigate dependency management, uv workspace readiness, ClearML SDK shadow risk, dynamic import helpers, and manual `sys.path` bootstrap before Phase 2 implementation.
+- Review IDs: R02, R08, R16, R17
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python --version`
+  - `python -m pip --version`
+  - `uv --version`
+  - `.\.venv\Scripts\python.exe --version`
+  - `.\.venv\Scripts\python.exe -m pip --version`
+  - content inspections for `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `pkgs/core/pyproject.toml`, `pkgs/tabular/pyproject.toml`
+  - `ls` / `Test-Path` checks for `uv.lock`
+  - file inspections under `clearml/`, `scripts/`, `deploy/base/`, `config/profiles/`, `docs/SPEC.md`, and tests that load ClearML entrypoints
+  - `rg` searches for `sys.path`, `_entrypoint_bootstrap`, `add_clearml_entrypoint_paths`, `import_clearml_sdk`, `_without_repo_clearml_shadow`, `spec_from_file_location`, sibling imports, and `ui_*` parameters
+  - `.\.venv\Scripts\python.exe -m compileall clearml pkgs scripts`
+  - `.\.venv\Scripts\python.exe -m pytest`
+  - `.\.venv\Scripts\python.exe -m ruff check .`
+  - `.\.venv\Scripts\python.exe -m ruff format --check .`
+  - `.venv` import probe for `ml_platform_core`, `ml_platform_tabular`, and `clearml`
+  - `uv sync --all-extras --dev --dry-run`
+  - `uv sync --all-extras --dev --check`
+- Results:
+  - Worktree was clean before recording investigation.
+  - Current branch is `review/r02-dependency-import-runtime`.
+  - PATH `python` still fails because it resolves to the Windows Store execution alias.
+  - Project `.venv` Python is available: Python 3.13.12 with pip 25.3.
+  - `uv` is available: 0.11.16.
+  - Root `pyproject.toml` currently has no runtime dependencies; actual dependencies are split across requirements files and package pyprojects.
+  - `uv.lock` is absent.
+  - `requirements.txt` is still used by Docker/ClearML remote paths, so it should remain as a compatibility file when uv becomes the source of truth.
+  - Manual `sys.path` bootstrap remains in `clearml/_entrypoint_bootstrap.py` and `scripts/_bootstrap.py`.
+  - `clearml/app.py`, `clearml/pipelines.py`, `clearml/templates.py`, and `scripts/local_run.py` import after bootstrap, which explains Ruff E402 findings.
+  - Current `.venv` resolves `import clearml` to the official SDK in `.venv\Lib\site-packages\clearml\__init__.py`, but the local `clearml/` directory remains a shadow risk for direct execution and remote templates.
+  - `compileall` succeeded.
+  - `pytest` passed: 89 passed.
+  - Import probe succeeded for `ml_platform_core`, `ml_platform_tabular`, and official ClearML SDK.
+  - `uv sync --all-extras --dev --dry-run` succeeded without mutation and reported that it would create `uv.lock` and alter installed packages.
+- Failures / unknowns:
+  - One initial search pattern needed correction because PowerShell quoting did not preserve the intended regex; rerun with `rg` patterns succeeded.
+  - `ruff check .` failed on existing issues: E402 in ClearML/script bootstrap entrypoints, F841 in `pkgs/tabular/src/ml_platform_tabular/infer.py`, and F401 in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `ruff format --check .` failed because 20 files would be reformatted.
+  - `uv sync --all-extras --dev --check` failed because the environment is outdated and a lockfile would be created.
+  - Actual `uv sync` was not run because it would mutate `.venv` and create `uv.lock`; this is deferred to Prompt 2-B.
+  - Full removal of `clearml/_entrypoint_bootstrap.py` is `needs_confirmation` until direct script execution, `spec_from_file_location` tests, synced ClearML templates, and ClearML remote execution are verified.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action: Prompt 2-B should introduce uv workspace/lock metadata, keep requirements as compatibility files, reduce local script bootstrap reliance, normalize ClearML SDK import helpers without renaming `clearml/`, and then rerun compileall, pytest, Ruff, import-linter, and local pipeline smoke checks.
+
+## 2026-06-29 - Prompt 2-B dependency and runtime import setup
+
+- Branch: `review/r02-dependency-import-runtime`
+- Worker: Codex
+- Purpose: Implement minimal Phase 2 changes for uv workspace dependency management, local script bootstrap removal, and safer ClearML SDK import handling without renaming the ClearML runtime directory.
+- Review IDs: R02, R08, R16, R17
+- Changed files:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `requirements.txt`
+  - `requirements-dev.txt`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/smoke-test.yml`
+  - `.github/workflows/deploy-mkdocs.yml`
+  - `clearml/adapter.py`
+  - `scripts/local_run.py`
+  - `scripts/sync_clearml_templates.py`
+  - `scripts/clearml_pipeline.py`
+  - `scripts/_bootstrap.py` (deleted)
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python --version`
+  - `uv --version`
+  - required document inspections for AGENTS, review map/log/baseline/source, and ADR
+  - code inspections for `pyproject.toml`, requirements files, workflows, ClearML entrypoints, scripts, and tests
+  - `uv lock` (failed twice while gitlint was in uv dev group)
+  - `uv lock` (passed after leaving gitlint in requirements compatibility file only)
+  - `uv sync --all-extras --dev`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `uv run lint-imports --config pyproject.toml`
+  - `uv run python scripts/make_sample_data.py`
+  - `uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"`
+  - `uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml`
+  - `uv run python scripts/sync_clearml_templates.py --profile config/profiles/clearml-dev.yaml --dry-run`
+  - `uv run python scripts/clearml_pipeline.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/clearml-dev.yaml --dry-run`
+  - PowerShell import probe piped into `uv run python -`
+  - `uv run gitlint --version`
+  - `git diff --check`
+  - `rg -n "from _bootstrap|add_repo_paths|scripts/_bootstrap|scripts\\_bootstrap" scripts clearml tests`
+  - `uv run python -m ruff check clearml scripts`
+  - `uv run python -m pre_commit run check-yaml --files .github/workflows/ci.yml .github/workflows/smoke-test.yml .github/workflows/deploy-mkdocs.yml`
+  - `uv run python -m pre_commit run check-toml --files pyproject.toml`
+  - `uv run python -m pre_commit run check-added-large-files --files uv.lock`
+  - `uv run python -m pre_commit run end-of-file-fixer --files <changed text files>`
+- Results:
+  - Added uv workspace members for `pkgs/core` and `pkgs/tabular`.
+  - Added root uv sources, `clearml` and `gbm` extras, dev dependency group, docs dependency group, and `uv.lock`.
+  - Updated CI, smoke, and MkDocs workflows to use `uv sync --frozen` and `uv run`.
+  - Kept `requirements.txt` and `requirements-dev.txt` as compatibility files with explanatory comments.
+  - Removed `scripts/_bootstrap.py` and removed its callers from local scripts.
+  - `scripts/local_run.py` now relies on installed workspace packages and still sets local thread defaults before importing tabular runtime inside `main()`.
+  - `clearml/_entrypoint_bootstrap.py` remains for direct ClearML template entrypoints.
+  - `clearml/adapter.py` now distinguishes missing ClearML SDK, missing SDK dependencies, and other import errors more clearly.
+  - `uv lock` succeeded and `uv sync --all-extras --dev` succeeded.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 89 passed.
+  - `uv run lint-imports --config pyproject.toml` passed: 1 contract kept, 0 broken.
+  - Local pipeline smoke and inference smoke passed via `uv run python scripts/local_run.py`.
+  - ClearML template sync dry-run and pipeline dry-run passed via `uv run`.
+  - Import probe resolved official ClearML SDK to `.venv\Lib\site-packages\clearml\__init__.py` and workspace packages to `pkgs/*/src`.
+  - Ruff E402 findings are gone after removing local script bootstrap and adding documented per-file E402 ignores for ClearML direct-entrypoint files.
+  - No `scripts/_bootstrap.py` callers remain in `scripts`, `clearml`, or `tests`.
+  - `uv run python -m ruff check clearml scripts` passed.
+  - Targeted workflow YAML, pyproject TOML, added-large-file, EOF, and `git diff --check` checks passed. Git printed a CRLF-to-LF warning for the ADR file only.
+- Failures / unknowns:
+  - PATH `python -m ...` commands still fail due Windows Store execution alias.
+  - First `uv lock` failed because `gitlint` depends on `gitlint-core`, which pins `sh==1.14.3`; that package imports `fcntl` during build metadata generation on Windows.
+  - Adding a direct `sh>=2.3.0` constraint was unsatisfiable because `gitlint-core` pins `sh==1.14.3`.
+  - `gitlint` remains in `requirements-dev.txt` for compatibility, but is not in the uv dev group. `uv run gitlint --version` fails because the console script is not installed after uv sync.
+  - `uv run python -m ruff check .` still fails on out-of-scope F841 in `infer.py` and F401 in `pipeline.py`; no Phase 2 fix attempted.
+  - `uv run python -m ruff format --check .` still fails because 19 files would be reformatted; broad formatting is deferred.
+  - A bash-style heredoc import probe failed in PowerShell; reran using a PowerShell here-string and succeeded.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+  - Full removal of `clearml/_entrypoint_bootstrap.py` remains `needs_confirmation` until synced template and remote Agent direct-entrypoint behavior is verified.
+- Next action: Phase 3 should handle typed config/adapter cleanup, including remaining Ruff F841/F401, `Any`/`getattr` reductions, stage typing, parameter naming cleanup, and compatibility tests before larger tabular module work.
+
+## 2026-06-29 - Prompt 3-A adapter/config cleanup investigation
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Investigate and classify Phase 3 review rows for adapter typing, config typing, ClearML parameter naming, table suffix validation, compatibility aliases, and unused registry code before implementation.
+- Review IDs: R05, R06, R07, R09, R10, R11, R12, R15, R19, R20, R26, R27
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `python -m compileall clearml pkgs scripts`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/CODEX_WORK_LOG.md`, and `docs/review/source/pr28_review_consolidated.md`
+  - code inspections for `clearml/adapter.py`, `clearml/app.py`, `clearml/templates.py`, `clearml/pipelines.py`, `pkgs/core/src/ml_platform_core/io.py`, `pkgs/core/src/ml_platform_core/config.py`, and `pkgs/core/src/ml_platform_core/registry.py`
+  - `rg -n "\bAny\b" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "getattr\(" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "stage: str|stage ==" clearml pkgs/core/src pkgs/tabular/src tests`
+  - `rg -n "clearml_dataset_exists" .`
+  - `rg -n "as_list|_ui_value|ui_params|default_ui_params|pipeline_ui_params" .`
+  - `rg -n "TABLE_SUFFIXES" .`
+  - `rg -n "set_dotted_path|Registry" .`
+  - `rg -n "load_run_config|apply_overrides|dict\[str, Any\]|dict\\[str, Any\\]" pkgs clearml scripts tests`
+  - `rg --files tests pkgs clearml | Sort-Object | Select-String -Pattern "test_|_test"`
+  - `rg -n "clearml_stage_project|clearml_dataset_exists|as_list|load_run_config|find.*table|Registry|set_dotted_path|TABLE_SUFFIXES" tests pkgs clearml`
+  - `rg -n "class .*Protocol|Protocol|TypedDict|StrEnum|Literal\[" clearml pkgs/core/src pkgs/tabular/src tests`
+- Results:
+  - Current branch is `review/r03-types-config-adapter`.
+  - Worktree was clean before recording this investigation.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `Any` remains broad: ClearML SDK task/logger/artifact surfaces, Plotly/report payloads, model estimator objects, and config dictionaries.
+  - No `Protocol`, `TypedDict`, `StrEnum`, or `Literal[...]` stage typing exists yet.
+  - `getattr` calls cluster into two groups: ClearML SDK compatibility guards and sklearn/model optional attribute probes. Only the stable/fake-tested subset should be converted first.
+  - Stage strings are hard-coded in `clearml/adapter.py`, `clearml/app.py`, `clearml/pipelines.py`, and `pkgs/tabular/src/ml_platform_tabular/stage.py`.
+  - `clearml_dataset_exists` is not present in implementation code; it only appears in review source docs. The closest current behavior is `ClearMLAdapter.resolve_dataset()`.
+  - `as_list()` means string-list coercion and is used from `clearml/adapter.py`, `clearml/app.py`, and `clearml/pipelines.py`.
+  - `_ui_value()` serializes list/dict values for ClearML parameter transport. `ui_params`, `default_ui_params`, and `pipeline_ui_params` remain in runtime/test naming.
+  - `TABLE_SUFFIXES` is currently applied to recursive discovery candidates only; direct file paths and `preferred_name` candidates are not suffix-validated.
+  - `set_dotted_path` alias is only found in `config.py` and review docs; it is not exported by `ml_platform_core.__init__`.
+  - `Registry` is only found in `registry.py` and docs; it is not exported by `ml_platform_core.__init__`.
+  - Existing tests relevant to Phase 3 include `tests/test_clearml_mapping.py`, `tests/test_config_overrides.py`, `tests/test_core_smoke.py`, and smoke tests for pipeline/stage/tabular flows.
+- Classification:
+  - quick_fix: R10, R11, R12, R19, R20, R27.
+  - needs_tests_first: R05, R06, R07, R10, R11, R12, R15, R19, R27.
+  - needs_design: R05, R07, R15, R26.
+  - blocked / needs_confirmation: R09, because the reviewed `clearml_dataset_exists()` function is absent here and ClearML localhost/remote verification remains manual.
+- Failures / unknowns:
+  - `python -m compileall clearml pkgs scripts` failed because PATH `python` still resolves to the Windows Store execution alias.
+  - `rg -n "class .*Protocol|Protocol|TypedDict|StrEnum|Literal\[" ...` returned no matches; this is an expected no-current-typing result, not a command problem.
+  - The intended R09 behavior needs confirmation because the exact reviewed helper does not exist in the current implementation.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Prompt 3-B: implement small, test-backed cleanup for R10/R11/R12/R19/R20/R27 and safe parts of R05/R06/R07/R15.
+  - Prompt 3-C: introduce typed config/plan boundaries for R26 and broader stage/config typing, preserving YAML and ClearML parameter key compatibility.
+
+## 2026-06-29 - Prompt 3-B adapter/core small fixes
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Implement small, test-backed Phase 3 cleanup while leaving R26 typed config modeling for Prompt 3-C.
+- Review IDs: R05, R06, R07, R09, R10, R11, R12, R15, R19, R20, R27
+- Changed files:
+  - `clearml/adapter.py`
+  - `clearml/app.py`
+  - `clearml/pipelines.py`
+  - `clearml/templates.py`
+  - `pkgs/core/src/ml_platform_core/config.py`
+  - `pkgs/core/src/ml_platform_core/io.py`
+  - `pkgs/core/src/ml_platform_core/stages.py`
+  - `pkgs/tabular/src/ml_platform_tabular/stage.py`
+  - `pkgs/core/src/ml_platform_core/registry.py` (deleted)
+  - `tests/test_clearml_mapping.py`
+  - `tests/test_core_smoke.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/CODEX_WORK_LOG.md`, and `docs/review/source/pr28_review_consolidated.md`
+  - `rg "clearml_dataset_exists|as_list|_ui_value|default_ui_params|pipeline_ui_params|set_dotted_path|Registry" -n .`
+  - `rg "getattr\\(" -n clearml pkgs tests`
+  - code inspections for ClearML runtime files, core IO/config, tabular stage runner, and relevant tests
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check clearml pkgs/core/src tests/test_clearml_mapping.py tests/test_core_smoke.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ClearMLExecutionTask` Protocol and narrowed `apply_execution_image()` from `Any`.
+  - Replaced the stable `set_base_docker` `getattr` path with direct API calls plus legacy `docker_cmd` fallback.
+  - Added shared `StageName` Literal and `as_stage_name()` validator, then used it in adapter/pipeline/stage routing.
+  - Added `validate_clearml_runtime()` near ClearML entrypoints and added a narrow `clearml_dataset_exists(dataset_id: str)` helper.
+  - Added `as_str_list()` and moved ClearML runtime callers to it while keeping `as_list()` as a deprecated wrapper.
+  - Renamed ClearML parameter transport helpers to runtime wording: `default_runtime_params`, `grouped_runtime_params`, `apply_runtime_params`, `pipeline_runtime_params`, and `_task_runtime_params`; UI-named wrappers remain for compatibility.
+  - Added `is_supported_table_file()` and applied `TABLE_SUFFIXES` consistently to direct file, preferred file, and directory discovery paths.
+  - Removed unused `set_dotted_path` alias and deleted unused `ml_platform_core.registry`.
+  - Added tests for execution image compatibility, dataset existence, stage validation, runtime/UI wrapper compatibility, table suffix handling, and removed alias/registry surface.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 97 passed.
+  - Targeted Ruff check on changed ClearML/core/test files passed.
+- Failures / unknowns:
+  - `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope Ruff findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports 19 files would be reformatted; broad formatting is deferred.
+  - R09 remains `needs_confirmation` for ClearML localhost UI / remote behavior because those checks were not executed in this phase.
+  - R15 remains `in_progress` because public UI-named compatibility wrappers remain intentionally.
+  - R26 remains deferred to Prompt 3-C.
+- Next action:
+  - Prompt 3-C should introduce typed config/plan boundaries for `dict[str, Any]` config and decide whether to handle the remaining small Ruff F841/F401 cleanup there or as a focused lint cleanup.
+
+## 2026-06-29 - Prompt 3-C typed run config boundary
+
+- Branch: `review/r03-types-config-adapter`
+- Worker: Codex
+- Purpose: Address R26 by introducing a typed external config boundary without rewriting all downstream dict consumers.
+- Review IDs: R26
+- Changed files:
+  - `pkgs/core/src/ml_platform_core/config_models.py`
+  - `pkgs/core/src/ml_platform_core/config.py`
+  - `tests/test_config_models.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/BASELINE_ENV_REPORT.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - required document inspections for `AGENTS.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/source/pr28_review_consolidated.md`, and `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `rg -n "load_run_config|load_yaml|apply_overrides|set_by_dotted_path|config\\[|cfg\\[" clearml pkgs scripts tests`
+  - code inspections for `pkgs/core/src/ml_platform_core/config.py`, root/package pyproject files, task YAML, profile YAML, and existing config tests
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest tests/test_config_models.py tests/test_config_overrides.py tests/test_core_smoke.py`
+  - `uv run python -m ruff check pkgs/core/src/ml_platform_core/config.py pkgs/core/src/ml_platform_core/config_models.py tests/test_config_models.py`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+- Results:
+  - Chose dataclasses plus explicit validation instead of Pydantic because Pydantic was not already a dependency and R26 can start at the boundary without adding runtime weight.
+  - Added `ConfigValidationError`.
+  - Added typed models: `RuntimeConfig`, `RunSectionConfig`, `DataConfig`, `SplitConfig`, `MetricsConfig`, `FeaturesConfig`, `EnsembleConfig`, `ModelConfig`, `OutputConfig`, `BaseTaskConfig`, and `RunConfig`.
+  - Added `parse_run_config(raw)` and `load_typed_run_config(...)`.
+  - Kept `load_run_config(...)` returning a plain dict for compatibility, but it now calls `parse_run_config(cfg)` so invalid known sections fail during config load.
+  - Unknown top-level and section keys are preserved as `extras` and round-trip through `RunConfig.to_dict()`.
+  - Added tests for minimal parse/defaults, wrong known-section types, unknown key preservation, override parsing after merge, and `load_run_config()` dict compatibility.
+  - Targeted config tests passed: 12 passed.
+  - Targeted Ruff for `config.py`, `config_models.py`, and new tests passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 102 passed.
+- Failures / unknowns:
+  - Initial targeted test run failed because invalid stage validation raised `ValueError` from `as_stage_name()` instead of `ConfigValidationError`; fixed by wrapping it in `RunSectionConfig.parse()`.
+  - PATH `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope F841 in `infer.py` and F401 in `pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt: 20 files would be reformatted after adding `config_models.py`.
+  - Downstream ClearML/tabular runtime still consumes dict configs; typed access migration remains incremental follow-up work.
+- Next action:
+  - Phase 4 should move runtime/package manifest boundary work forward (R18), using the new typed config boundary as the core-side contract starting point.
+
+## 2026-06-29 - Prompt 4-A runtime contract and tabular manifest scaffold
+
+- Branch: `review/r04-runtime-manifest-boundary`
+- Worker: Codex
+- Purpose: Address R18 incrementally by adding ClearML-free core contracts and a tabular manifest/policy scaffold without changing current ClearML runtime behavior.
+- Review IDs: R18
+- Changed files:
+  - `pkgs/core/src/ml_platform_core/contracts.py`
+  - `pkgs/core/src/ml_platform_core/runtime_types.py`
+  - `pkgs/tabular/src/ml_platform_tabular/manifest.py`
+  - `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `tests/test_runtime_manifest.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline -n 8`
+  - read `AGENTS.md`, `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`, `docs/review/PR28_REVIEW_MAP.md`
+  - `rg -n "R18|manifest|runtime|PackageManifest|pipelines\\.py|tabular固有|runtime層|domain" docs/review/source/repository_review_transcription_current.md docs/review/source/pr28_review_consolidated.md`
+  - `rg -n "BASIC_MODEL_SUITES|BASIC_QUALITY_MODES|BASIC_QUALITY_MODEL_PARAMS|SUPPORTED_MODELS|model_candidates|candidate_params|pipeline_ui_params|default_ui_params" clearml pkgs tests`
+  - inspected `clearml/pipelines.py`, `pkgs/tabular/src/ml_platform_tabular/models.py`, `pkgs/tabular/src/ml_platform_tabular/runners.py`, and `pkgs/tabular/src/ml_platform_tabular/ensemble.py`
+  - `uv run python -m compileall pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m pytest tests/test_runtime_manifest.py`
+  - `uv run python -m ruff check pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format --check pkgs/core/src/ml_platform_core/contracts.py pkgs/core/src/ml_platform_core/runtime_types.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+- Results:
+  - Added `ArtifactSpec`, `ParameterSpec`, `StageSpec`, `PipelineSpec`, `TaskSpec`, `PackageManifest`, `DomainStepPlan`, and `DomainPipelinePlan` in `pkgs/core`.
+  - Added minimal `TaskRunner` and `RuntimeAdapter` protocols for future runtime adapters.
+  - Added tabular-owned model suite and quality preset policy in `ml_platform_tabular.policy`.
+  - Added tabular package manifest with stage specs for preprocess, train, ensemble, evaluate, and infer; task specs for `tabular_pipeline`, `tabular_stage`, and `tabular_infer`; and a `tabular_training_graph` pipeline spec.
+  - Added `build_tabular_domain_plan()` to create a ClearML-free domain pipeline plan.
+  - Added manifest tests for unique keys, runner path resolution, required parameters/artifacts, duplicate key validation, contract kind validation, policy preset copy safety, and domain plan validation.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 110 passed.
+  - Targeted Ruff check and targeted Ruff format check for new files passed.
+- Failures / unknowns:
+  - PATH `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports 20 existing files would be reformatted. New Phase 4-A files are formatted.
+  - `clearml/pipelines.py` still contains tabular model suite constants, quality preset constants, runtime parameter defaults, and stage graph assembly. This is expected for Prompt 4-A and remains the Prompt 4-B connection work.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Prompt 4-B should make the ClearML runtime consume the tabular manifest/policy for model suites, quality presets, parameter declarations, and eventually graph rendering while preserving direct-entrypoint template compatibility.
+
+## 2026-06-29 - Prompt 4-B render ClearML pipeline from tabular domain plan
+
+- Branch: `review/r04-runtime-manifest-boundary`
+- Worker: Codex
+- Purpose: Continue R18 by moving tabular policy and graph construction behind the tabular manifest/domain plan boundary while keeping ClearML runtime as the renderer.
+- Review IDs: R18
+- Changed files:
+  - `clearml/pipelines.py`
+  - `pkgs/tabular/src/ml_platform_tabular/manifest.py`
+  - `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `tests/test_runtime_manifest.py`
+  - `tests/test_clearml_mapping.py`
+  - `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `rg -n "BASIC_MODEL_SUITES|BASIC_QUALITY_MODES|BASIC_QUALITY_MODEL_PARAMS|_training_pipeline|_apply_basic|_build_training_plan|_stage_step|_add_plan_steps" clearml pkgs tests`
+  - inspected `docs/adr/0002-runtime-spec-and-package-manifest-boundary.md`, `docs/review/PR28_REVIEW_MAP.md`, `docs/review/source/repository_review_transcription_current.md`, `clearml/pipelines.py`, `tests/test_clearml_mapping.py`, `pkgs/tabular/src/ml_platform_tabular/manifest.py`, and `pkgs/tabular/src/ml_platform_tabular/policy.py`
+  - `uv run python -m pytest tests/test_runtime_manifest.py tests/test_clearml_mapping.py::test_clearml_training_pipeline_plan_is_stage_graph tests/test_clearml_mapping.py::test_clearml_add_plan_steps_uses_rendered_domain_plan_order tests/test_clearml_mapping.py::test_clearml_basic_model_suite_selects_candidate_models tests/test_clearml_mapping.py::test_clearml_basic_quality_mode_fast_uses_lightweight_params tests/test_clearml_mapping.py::test_clearml_training_pipeline_plan_applies_dataset_and_model_overrides`
+  - `uv run python -m ruff check clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py tests/test_clearml_mapping.py`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py`
+  - `uv run python -m ruff format clearml/pipelines.py tests/test_clearml_mapping.py`
+  - `uv run python -m ruff format --check clearml/pipelines.py pkgs/tabular/src/ml_platform_tabular/policy.py pkgs/tabular/src/ml_platform_tabular/manifest.py tests/test_runtime_manifest.py tests/test_clearml_mapping.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Moved tabular-owned Basic model suite selection, quality mode application, runtime parameter defaults, candidate normalization, ensemble policy, and training graph construction into `ml_platform_tabular.policy` / `ml_platform_tabular.manifest`.
+  - `build_tabular_domain_plan()` now accepts candidate params, selection metric, preprocess/common stage overrides, ensemble methods, and ensemble top-k without importing ClearML.
+  - `clearml/pipelines.py` now builds a `DomainPipelinePlan` and renders it into the existing ClearML `PipelineController` step payloads.
+  - ClearML runtime still owns ClearML SDK access, queue/project/tag wiring, task draft lifecycle, script metadata, artifact reference wiring, and direct template entrypoint compatibility.
+  - Added tests for manifest/domain-plan override propagation and fake-controller rendering order.
+  - Targeted R18 tests passed: 17 passed.
+  - Targeted Ruff check and targeted Ruff format check for changed R18 files passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 112 passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt in 18 existing files.
+  - ClearML localhost UI, ClearML remote execution, and Kubernetes verification remain manual verification required.
+- Next action:
+  - Phase 5 should add tabular characterization tests before module splitting, especially around training/inference artifact compatibility and ClearML-facing output contracts.
+
+## 2026-06-29 - Prompt 5 tabular characterization before module split
+
+- Branch: `review/r05-tabular-characterization-tests`
+- Worker: Codex
+- Purpose: Add ClearML-free characterization tests for current tabular pipeline, inference, and plot outputs before splitting `pipeline.py`, `infer.py`, and `plots.py`.
+- Review IDs: TABULAR-SPLIT, related R18/R26
+- Changed files:
+  - `tests/test_tabular_characterization.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/EXTRA_REVIEW_NOTES.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - `find pkgs/tabular/src/ml_platform_tabular -maxdepth 2 -type f -print | sort`
+  - `rg -n "def run_|def .*plot|def evaluate_models|def train|def infer|class " pkgs/tabular/src/ml_platform_tabular`
+  - `find tests pkgs/tabular -maxdepth 5 -type f | sort | grep -E "test_|_test"`
+  - temporary local probes against tiny seeded train/infer runs to identify current artifact/table/plot/metric keys
+  - `uv run python -m pytest tests/test_tabular_characterization.py`
+  - `uv run python -m ruff format tests/test_tabular_characterization.py`
+  - `uv run python -m ruff check tests/test_tabular_characterization.py`
+  - `uv run python -m ruff format --check tests/test_tabular_characterization.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `tests/test_tabular_characterization.py`.
+  - Pinned training output contract for artifact keys, table keys, plot keys, metric keys, leaderboard columns, candidate prediction columns, evaluation prediction columns, summary rows, and decision summary fields.
+  - Pinned inference output contract for artifact/table/plot keys, metric keys, slim prediction columns, schema check table columns/status, prediction summary rows, source summary fields, and prediction manifest fields.
+  - Pinned plot helper contracts for leaderboard tables/plots, candidate metrics tables/plots, feature importance tables/plots, and prediction summary tables/plots.
+  - Targeted characterization tests passed: 3 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 115 passed.
+  - Targeted Ruff check and format check for `tests/test_tabular_characterization.py` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff check .` still fails on pre-existing out-of-scope findings:
+    - F841: `data_cfg` assigned but unused in `pkgs/tabular/src/ml_platform_tabular/infer.py`.
+    - F401: `numpy` imported but unused in `pkgs/tabular/src/ml_platform_tabular/pipeline.py`.
+  - `uv run python -m ruff format --check .` still reports broad formatting debt in existing files.
+  - Numeric model-score exactness, optional GBM behavior, ClearML server/UI, ClearML remote execution, and Kubernetes execution remain out of scope for this characterization phase.
+- Next action:
+  - Phase 6 should split tabular modules in this order: `plots.py` first, `infer.py` second, typed result/artifact helper boundaries third, then `pipeline.py` orchestration into training, ensemble, evaluation, ranking, summary, and artifact-writing helpers.
+
+## 2026-06-29 - Prompt 6 plots module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split tabular plotting responsibilities while preserving the existing `ml_platform_tabular.plots` public import path.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/plots.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/common.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/feature.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/prediction.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/candidate.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/leaderboard.py`
+  - `pkgs/tabular/src/ml_platform_tabular/plotting/summary.py`
+  - `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/metrics.py`
+  - `tests/test_tabular_plots.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `rg -n "ml_platform_tabular\\.plots|from .*plots import|import .*plots" .`
+  - `rg -n "^(def|PALETTE)" pkgs/tabular/src/ml_platform_tabular/plots.py`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/plotting pkgs/tabular/src/ml_platform_tabular/plots.py pkgs/tabular/src/ml_platform_tabular/pipeline.py pkgs/tabular/src/ml_platform_tabular/infer.py pkgs/tabular/src/ml_platform_tabular/metrics.py tests/test_tabular_plots.py`
+  - `uv run python -m pytest tests/test_tabular_characterization.py tests/test_tabular_plots.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.plotting` as the new implementation package.
+  - Split common drawing helpers and generic plots into `plotting.common`.
+  - Split feature summary and feature importance helpers into `plotting.feature`.
+  - Split prediction-vs-actual and residual diagnostics into `plotting.prediction`.
+  - Split candidate comparison diagnostics and candidate metrics table writing into `plotting.candidate`.
+  - Split leaderboard table/panel/pareto helpers into `plotting.leaderboard`.
+  - Split inference prediction summary tables and distribution plots into `plotting.summary`.
+  - Replaced `ml_platform_tabular.plots` with a compatibility facade that re-exports the existing public API.
+  - Updated internal tabular imports to use `ml_platform_tabular.plotting`.
+  - Added a test proving the new `plotting` package export works while existing `plots` imports continue to pass.
+  - Removed the unused `numpy` import from `pipeline.py` and the unused `data_cfg` assignment from `infer.py`, both in files touched by this split.
+  - Targeted characterization/plot tests passed: 5 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 116 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - `infer.py` and `pipeline.py` are not split yet; only their plot imports and tiny lint leftovers changed.
+- Next action:
+  - Split `infer.py` next, starting with resolver, metadata loading, schema validation, prediction frame construction, prediction writing, and runner orchestration while keeping the existing `infer.py` public entrypoint as a compatibility facade.
+
+## 2026-06-29 - Prompt 6 inference module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split tabular inference responsibilities while preserving the existing `ml_platform_tabular.infer:run_infer` runner path and output contracts.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/resolver.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/metadata.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/schema.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/prediction_frame.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/prediction_writer.py`
+  - `pkgs/tabular/src/ml_platform_tabular/inference/runner.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `sed`/`Get-Content` equivalent for `pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `rg -n "ml_platform_tabular\\.infer|from .*infer import|run_infer" .`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `uv run python -m compileall pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py`
+  - `uv run python -m pytest tests/test_infer_schema_check.py tests/test_tabular_characterization.py tests/test_tabular_smoke.py tests/test_pipeline_smoke.py`
+  - `uv run python -m ruff check pkgs/tabular/src/ml_platform_tabular/inference pkgs/tabular/src/ml_platform_tabular/infer.py tests/test_infer_schema_check.py tests/test_tabular_characterization.py tests/test_tabular_smoke.py tests/test_pipeline_smoke.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.inference` as the new implementation package.
+  - Split model source/path resolution into `inference.resolver`.
+  - Split model info, feature spec, preprocess bundle, target, and feature preset loading into `inference.metadata`.
+  - Split feature selection support and schema check table/summary writing into `inference.schema`.
+  - Split prediction schema constants, artifact id calculation, and slim prediction frame construction into `inference.prediction_frame`.
+  - Split chunk-size parsing and CSV/chunked prediction writing into `inference.prediction_writer`.
+  - Moved orchestration into `inference.runner`.
+  - Replaced `ml_platform_tabular.infer` with a compatibility facade that preserves `run_infer` and current private helper imports used by tests.
+  - Existing runner paths remain stable: `ml_platform_tabular.infer:run_infer`.
+  - Targeted inference/characterization/smoke tests passed: 22 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 116 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - `pipeline.py` is not split yet; training/evaluation orchestration remains the largest tabular module boundary.
+- Next action:
+  - Split `pipeline.py` after the current characterization and facade-backed `plots`/`infer` splits are committed. Suggested order: result/artifact helpers, training stage helpers, candidate evaluation, ensemble/evaluation, ranking/summary, and final orchestrator facade.
+
+## 2026-06-29 - Prompt 6 pipeline module split
+
+- Branch: `review/r06-tabular-module-split`
+- Worker: Codex
+- Purpose: Split the large tabular training pipeline module while preserving `ml_platform_tabular.pipeline:run_pipeline`, stage runner compatibility, artifact names, and characterization contracts.
+- Review IDs: TABULAR-SPLIT
+- Changed files:
+  - `pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/__init__.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/artifacts.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/preprocessing.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/candidate_training.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/ensemble.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/evaluation.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/ranking.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/summary.py`
+  - `pkgs/tabular/src/ml_platform_tabular/training/orchestrator.py`
+  - `tests/test_decision_summary.py`
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/review/EXTRA_REVIEW_NOTES.md`
+- Commands:
+  - `git status --short`
+  - read `AGENTS.md`, `docs/review/source/tabular_package_review_analysis.md`, and `docs/review/PR28_REVIEW_MAP.md`
+  - `Get-Content pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `rg -n "ml_platform_tabular\\.pipeline|from .*pipeline import|run_pipeline|evaluate_models" .`
+  - `uv run python -m ruff format pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `uv run python -m compileall pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py pkgs/tabular/src/ml_platform_tabular/stage.py`
+  - `uv run python -m pytest tests/test_decision_summary.py tests/test_tabular_characterization.py tests/test_pipeline_smoke.py tests/test_tabular_smoke.py tests/test_stage_smoke.py`
+  - `uv run python -m ruff check pkgs/tabular/src/ml_platform_tabular/training pkgs/tabular/src/ml_platform_tabular/pipeline.py`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+- Results:
+  - Added `ml_platform_tabular.training` as the new training implementation package.
+  - Split preprocess/data-quality/feature artifacts into `training.preprocessing`.
+  - Split single candidate fitting and candidate ref/metrics files into `training.candidate_training`.
+  - Split ensemble construction and ensemble artifact collection into `training.ensemble`.
+  - Split ranking helpers into `training.ranking`.
+  - Split decision summary payload/markdown and best-vs-ensemble summary helpers into `training.summary`.
+  - Kept inference decision fields in the decision summary payload.
+  - Split evaluate-models artifact/table/plot generation into `training.evaluation`.
+  - Added `EvaluationResult` in `training.artifacts`; `evaluate_model_candidates()` returns it for both pipeline and stage execution.
+  - Moved pipeline orchestration to `training.orchestrator`.
+  - Replaced `ml_platform_tabular.pipeline` with a compatibility facade for `run_pipeline` and existing private helper imports used by `stage.py` and tests.
+  - Added `tests/test_decision_summary.py::test_evaluation_result_keeps_dict_compatibility`.
+  - Targeted decision/characterization/pipeline/stage tests passed: 22 passed.
+  - `uv run python -m compileall clearml pkgs scripts` succeeded.
+  - `uv run python -m pytest` passed: 117 passed.
+  - `uv run python -m ruff check .` passed.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python` is the Windows Store execution alias.
+  - `uv run python -m ruff format --check .` still reports existing broad formatting debt in 16 files.
+  - Compatibility facades remain for `plots.py`, `infer.py`, and `pipeline.py`; removing them is intentionally deferred until external imports and ClearML runner paths are migrated.
+- Next action:
+  - Commit the Phase 6 module split after reviewing the combined plots/infer/pipeline diff. Later cleanup can migrate `stage.py` and tests to public `training.*` imports, reduce private helper re-exports, and handle broad formatting debt separately.
+
+## 2026-06-29 - Final validation without K8 scope
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: Final validation for R01-R27 and TABULAR-SPLIT while excluding
+  Kubernetes / K8 verification from this cleanup.
+- Changed files:
+  - `docs/review/PR28_REVIEW_MAP.md`
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+  - `docs/review/PORTING_GUIDE.md`
+  - `docs/review/CODEX_WORK_LOG.md`
+- Review IDs:
+  - R01-R27
+  - TABULAR-SPLIT
+  - R04 recorded as Kubernetes / K8 scope excluded
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 40`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m ruff format --check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m ruff format --check .`
+  - `uv run python -m pre_commit run --all-files`
+  - `rg -n "ui_params|ui_value|default_ui_params|pipeline_ui_params" clearml pkgs scripts tests docs`
+  - `rg -n "sys\\.path|_entrypoint_bootstrap|add_clearml_entrypoint_paths" clearml pkgs scripts tests docs`
+  - `rg -n "getattr\\(" clearml pkgs scripts tests`
+  - `rg -n "dict\\[str, Any\\]|dict\\\\\\[str, Any\\\\\\]" pkgs/core/src clearml pkgs/tabular/src tests`
+  - `rg -n "set_dotted_path|class Registry" .`
+  - `rg -n "OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS" clearml pkgs scripts .github docs`
+- Results:
+  - Working tree was clean before final docs edits.
+  - Current branch was `review/pr28-complete-response`.
+  - Integration branch contains R00-R06 merges. `review/r07-clearml-k8s-evidence`
+    was not available locally or after fetch and was not merged.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+  - `set_dotted_path` and `class Registry` remain only in review source/docs and
+    the smoke assertion proving the alias is absent from code.
+  - R04 was recorded as `not_applicable` with this implementation note:
+    Kubernetes / K8 verification is intentionally out of scope for this
+    repository cleanup.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands fail on this machine because PATH
+    `python` is the Windows Store alias.
+  - `uv run python -m ruff format --check .` failed because 16 files would be
+    reformatted:
+    - `clearml/adapter.py`
+    - `clearml/app.py`
+    - `clearml/reports.py`
+    - `clearml/templates.py`
+    - `pkgs/core/src/ml_platform_core/config.py`
+    - `pkgs/core/src/ml_platform_core/config_models.py`
+    - `pkgs/core/src/ml_platform_core/io.py`
+    - `pkgs/tabular/src/ml_platform_tabular/data_quality.py`
+    - `pkgs/tabular/src/ml_platform_tabular/ensemble.py`
+    - `pkgs/tabular/src/ml_platform_tabular/features.py`
+    - `pkgs/tabular/src/ml_platform_tabular/models.py`
+    - `pkgs/tabular/src/ml_platform_tabular/stage.py`
+    - `scripts/make_sample_data.py`
+    - `scripts/sync_clearml_templates.py`
+    - `tests/test_config_overrides.py`
+    - `tests/test_pipeline_smoke.py`
+  - `uv run python -m pre_commit run --all-files` failed only at the Ruff
+    format check hook for the same formatting debt.
+  - R03 residual search found BLAS/OpenMP env defaults still in Python code:
+    `clearml/app.py`, `scripts/local_run.py`, and `scripts/make_sample_data.py`.
+    This is deferred to an operational environment pass.
+  - R13 runner set availability remains `needs_confirmation`.
+  - R17 ClearML direct-entrypoint bootstrap removal remains
+    `needs_confirmation`.
+  - R18 ClearML localhost UI / remote Agent execution remains
+    `needs_confirmation`.
+  - R23 GitHub Pages deployment target remains `needs_confirmation`.
+  - R26 downstream `dict[str, Any]` consumers remain staged after the typed
+    config boundary.
+  - Kubernetes / K8 commands and manifest checks were intentionally not run.
+- Next action:
+  - Commit the final documentation evidence if desired.
+  - Keep R04 out of this cleanup branch. Handle Kubernetes evidence in a
+    separate operational branch/repository.
+
+## 2026-06-29 - Final completion judgment
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: final completion judgment
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 30`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m pre_commit run --all-files`
+  - `rg -n "ui_params|ui_value|default_ui_params|pipeline_ui_params" clearml pkgs scripts tests docs`
+  - `rg -n "sys\\.path|_entrypoint_bootstrap|add_clearml_entrypoint_paths" clearml pkgs scripts tests docs`
+  - `rg -n "getattr\\(" clearml pkgs scripts tests`
+  - `rg -n "set_dotted_path|class Registry" .`
+  - `rg -n "OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS" clearml pkgs scripts`
+- Results:
+  - Completion: `pass_with_notes`
+  - Working tree was clean before this log entry.
+  - Current branch was `review/pr28-complete-response`.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+  - R01-R27 statuses are recorded in `docs/review/PR28_REVIEW_MAP.md`.
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md` contains reviewer replies, including
+    the R04 Kubernetes / K8 scope exclusion.
+  - `docs/review/PORTING_GUIDE.md` contains the target-repo migration order and
+    excludes `review/r07-clearml-k8s-evidence`.
+  - `set_dotted_path` and `class Registry` remain only in review source/docs and
+    the smoke assertion proving the alias is absent from code.
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands failed because PATH `python` resolves
+    to the Windows Store alias on this machine.
+  - `uv run python -m pre_commit run --all-files` failed only at the Ruff format
+    check hook. The same formatting debt is tracked under R01.
+  - Residual `ui_*` names remain as compatibility wrappers/tests and are tracked
+    under R15.
+  - `clearml/_entrypoint_bootstrap.py` remains for ClearML direct-entrypoint
+    compatibility and is tracked under R17.
+  - `getattr(...)` remains in flexible ClearML SDK/optional attribute surfaces;
+    the unsafe execution-image path from R06 is already addressed.
+  - R03 residual search still finds BLAS/OpenMP defaults in `clearml/app.py`,
+    `scripts/local_run.py`, and `scripts/make_sample_data.py`.
+- Remaining items:
+  - `in_progress`: R01, R08, R15, R16, R26
+  - `needs_confirmation`: R13, R17, R18, R23
+  - `deferred`: R03
+  - `not_applicable`: R04
+  - `blocked`: none
+- K8 scope handling:
+  - R04 is `not_applicable`.
+  - Kubernetes / K8 verification is intentionally excluded from completion.
+  - No `kubectl`, `kustomize`, `helm`, cluster verification, rollout checks, or
+    Kubernetes manifest edits were performed for this judgment.
+- Next action:
+  - Commit this final judgment log if desired.
+  - Suggested commit message: `docs: record final completion judgment`.
+
+## 2026-06-29 - Final review response status reconciliation
+
+- Branch: `review/pr28-complete-response`
+- Worker: Codex
+- Purpose: confirm no unrecorded review-response leftovers after final
+  completion judgment, without Kubernetes / K8 scope.
+- Commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git log --oneline --decorate -n 30`
+  - `python -m compileall clearml pkgs scripts`
+  - `python -m pytest`
+  - `python -m ruff check .`
+  - `python -m pre_commit run --all-files`
+  - `uv run python -m compileall clearml pkgs scripts`
+  - `uv run python -m pytest`
+  - `uv run python -m ruff check .`
+  - `uv run python -m pre_commit run --all-files`
+  - PowerShell status extraction for R01-R27 from
+    `docs/review/PR28_REVIEW_MAP.md`
+  - Presence check for R01-R27 in `docs/review/REVIEW_RESPONSE_DRAFTS.md`
+- Results:
+  - R01-R27 all exist in the final review map override and all have a final
+    status.
+  - R04 is `not_applicable`, not `done`.
+  - `docs/review/REVIEW_RESPONSE_DRAFTS.md` contains R01-R27 references.
+  - Added an R04 final scope note immediately after the old R04 initial draft so
+    the draft file cannot be read as claiming Kubernetes / K8 verification was
+    completed in this branch.
+  - `docs/review/PORTING_GUIDE.md` contains target-repo cherry-pick order and
+    explicitly excludes `review/r07-clearml-k8s-evidence`.
+  - `docs/review/CODEX_WORK_LOG.md` already contained the final completion
+    judgment; this entry records the reconciliation pass.
+  - `uv run python -m compileall clearml pkgs scripts` passed.
+  - `uv run python -m pytest` passed: 117 tests.
+  - `uv run python -m ruff check .` passed.
+- Remaining recorded statuses:
+  - `in_progress`: R01, R08, R15, R16, R26
+  - `needs_confirmation`: R13, R17, R18, R23
+  - `deferred`: R03
+  - `not_applicable`: R04
+  - `blocked`: none
+- Failures / unknowns:
+  - Prompt-style `python -m ...` commands still fail because PATH `python`
+    resolves to the Windows Store alias.
+  - `uv run python -m pre_commit run --all-files` still fails only at the Ruff
+    format check hook for the already-recorded format debt.
+  - No new unrecorded review leftovers were found.
+- K8 scope handling:
+  - Kubernetes / K8 verification remains excluded.
+  - No `kubectl`, `kustomize`, `helm`, cluster verification, rollout checks, or
+    Kubernetes manifest edits were performed.
+- Next action:
+  - Commit this reconciliation note and the prior final judgment log if desired.
+  - Suggested commit message:
+    `docs: reconcile final review response status`.

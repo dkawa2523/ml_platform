@@ -23,6 +23,8 @@
 
 ## train_<model>
 
+ClearML step label では `train_<model>` と表示しますが、package stage key は `train_model` です。
+
 | 種別 | ファイル | 内容 |
 | --- | --- | --- |
 | Artifact | `model.joblib` | 学習済み estimator |
@@ -36,6 +38,8 @@
 | Plot | `validation_residual_vs_predicted.png` | 予測値 vs 残差 |
 
 ## build_ensemble_<method>
+
+ClearML step label では `build_ensemble_<method>` と表示しますが、package stage key は `build_ensemble` です。
 
 | 種別 | ファイル | 内容 |
 | --- | --- | --- |
@@ -52,19 +56,10 @@
 | 種別 | ファイル | 内容 |
 | --- | --- | --- |
 | Artifact/Table | `leaderboard.csv` | 全候補比較 |
-| Table | `leaderboard_topk.csv` | 上位候補 |
-| Table | `leaderboard_decision_summary.csv` | UI 表示用判断 summary |
-| Table | `best_vs_ensemble_summary.csv` | best 単体 vs ensemble |
-| Artifact | `metrics_by_candidate.json` | 候補別指標 |
-| Table | `metrics_by_candidate.csv` | 候補別指標 table |
-| Artifact | `best_model.json` | 最良候補情報 |
+| Artifact | `best_model.json` | 最良候補と推奨推論設定 |
 | Artifact | `best_model.joblib` | 最良モデル実体 |
-| Artifact | `evaluation_report.json` | 評価 report |
+| Artifact | `metrics.json` | 最良候補の指標 |
 | Table | `evaluation_predictions.csv` | 推奨モデルの予測 |
-| Table | `candidate_predictions.csv` | 候補別予測 |
-| Artifact | `decision_summary.md` | 人間向け判断メモ |
-| Artifact | `decision_summary.json` | 構造化判断メモ |
-| Artifact | `recommendation.json` | 互換用推奨情報 |
 | Artifact | `manifest.json` | 出力一覧 |
 
 ## tabular_infer

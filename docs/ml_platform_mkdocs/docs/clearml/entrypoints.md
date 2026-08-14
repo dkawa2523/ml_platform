@@ -36,6 +36,8 @@ ClearML UI で迷わないように、テンプレート、実行タスク、Pro
 | evaluate | `stage/evaluate_models/<run_name>` |
 | infer | `task/tabular_infer/<run_name>` |
 
+`stage/train_<model>` と `stage/build_ensemble_<method>` は task name です。package stage key は `train_model` と `build_ensemble` です。
+
 ## Tag 規約
 
 | Tag | 用途 |

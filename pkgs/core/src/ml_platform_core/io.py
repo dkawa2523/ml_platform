@@ -10,6 +10,18 @@ import pandas as pd
 TABLE_SUFFIXES = {".csv", ".parquet", ".pq"}
 
 
+def is_supported_table_file(path: str | Path) -> bool:
+    path = Path(path)
+    return path.is_file() and path.suffix.lower() in TABLE_SUFFIXES
+
+
+def _require_supported_table_file(path: Path, *, context: str = "Table file") -> Path:
+    if is_supported_table_file(path):
+        return path
+    supported = ", ".join(sorted(TABLE_SUFFIXES))
+    raise ValueError(f"{context} has unsupported table format: {path.suffix}. Supported: {supported}")
+
+
 def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> Path:
     """Resolve a table file from a file or directory path.
 
@@ -18,27 +30,36 @@ def find_table_file(path: str | Path, *, preferred_name: str | None = None) -> P
     """
     path = Path(path)
     if path.is_file():
-        return path
+        return _require_supported_table_file(path)
+    _require_existing_directory(path)
+
+    if preferred_name:
+        return _preferred_table_file(path, preferred_name)
+
+    return _single_table_file(path)
+
+
+def _require_existing_directory(path: Path) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Table path not found: {path}")
     if not path.is_dir():
         raise ValueError(f"Table path is neither file nor directory: {path}")
 
-    if preferred_name:
-        candidate = path / preferred_name
-        if candidate.exists() and candidate.is_file():
-            return candidate
-        raise FileNotFoundError(f"Preferred table file not found in dataset copy: {candidate}")
 
-    candidates = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in TABLE_SUFFIXES)
+def _preferred_table_file(path: Path, preferred_name: str) -> Path:
+    candidate = path / preferred_name
+    if candidate.exists() and candidate.is_file():
+        return _require_supported_table_file(candidate, context="Preferred table file")
+    raise FileNotFoundError(f"Preferred table file not found in dataset copy: {candidate}")
+
+
+def _single_table_file(path: Path) -> Path:
+    candidates = sorted(p for p in path.rglob("*") if is_supported_table_file(p))
     if not candidates:
         raise FileNotFoundError(f"No supported table file found under directory: {path}")
     if len(candidates) > 1:
         formatted = ", ".join(str(p.relative_to(path)) for p in candidates[:10])
-        raise ValueError(
-            "Multiple table files found. Set data.dataset_file to choose one. "
-            f"Candidates: {formatted}"
-        )
+        raise ValueError(f"Multiple table files found. Set data.dataset_file to choose one. Candidates: {formatted}")
     return candidates[0]
 
 

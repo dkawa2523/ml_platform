@@ -6,6 +6,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ml_platform_core.value_coercion import as_str_list
+
 PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
     "basic": {
         "numeric_impute_strategy": "median",
@@ -34,16 +36,6 @@ CATEGORICAL_ENCODERS = {"onehot", "drop"}
 SCALING_OPTIONS = {"standard", "none"}
 
 
-def _normalize_columns(value: Any) -> list[str]:
-    if value is None or value == "":
-        return []
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    if isinstance(value, (list, tuple, set)):
-        return [str(item) for item in value]
-    raise ValueError(f"Column list must be null, string, or list: {value!r}")
-
-
 def _validate_choice(name: str, value: str, choices: set[str]) -> str:
     text = str(value or "").strip()
     if text not in choices:
@@ -54,14 +46,29 @@ def _validate_choice(name: str, value: str, choices: set[str]) -> str:
 def normalize_feature_config(feature_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve preset defaults and explicit feature settings into one small config."""
     raw = dict(feature_cfg or {})
+    params = _feature_params(raw)
+    preset = _feature_preset(raw, params)
+    resolved = _feature_defaults(preset, params)
+    _apply_feature_overrides(resolved, params)
+    _apply_feature_overrides(resolved, raw)
+    return _validated_feature_config(resolved)
+
+
+def _feature_params(raw: dict[str, Any]) -> dict[str, Any]:
     params = raw.get("params") or {}
     if not isinstance(params, dict):
         raise ValueError("features.params must be a mapping when provided.")
+    return dict(params)
 
+
+def _feature_preset(raw: dict[str, Any], params: dict[str, Any]) -> str:
     preset = str(raw.get("preset") or params.get("preset") or "basic").strip()
     if preset not in PRESET_DEFAULTS:
         raise ValueError(f"Unknown feature preset: {preset}. Available: {', '.join(PRESET_DEFAULTS)}")
+    return preset
 
+
+def _feature_defaults(preset: str, params: dict[str, Any]) -> dict[str, Any]:
     resolved: dict[str, Any] = {
         "preset": preset,
         **PRESET_DEFAULTS[preset],
@@ -69,24 +76,33 @@ def normalize_feature_config(feature_cfg: dict[str, Any] | None = None) -> dict[
         "passthrough_columns": [],
         "params": dict(params),
     }
-    for key in FEATURE_CONFIG_KEYS:
-        if key in params:
-            resolved[key] = params[key]
-    for key in FEATURE_CONFIG_KEYS:
-        if key in raw and raw[key] is not None:
-            resolved[key] = raw[key]
+    return resolved
 
+
+def _apply_feature_overrides(resolved: dict[str, Any], values: dict[str, Any]) -> None:
+    for key in FEATURE_CONFIG_KEYS:
+        if key in values and values[key] is not None:
+            resolved[key] = values[key]
+
+
+def _validated_feature_config(resolved: dict[str, Any]) -> dict[str, Any]:
     resolved["numeric_impute_strategy"] = _validate_choice(
         "numeric_impute_strategy", resolved["numeric_impute_strategy"], NUMERIC_IMPUTE_STRATEGIES
     )
     resolved["categorical_impute_strategy"] = _validate_choice(
         "categorical_impute_strategy", resolved["categorical_impute_strategy"], CATEGORICAL_IMPUTE_STRATEGIES
     )
-    resolved["categorical_encoder"] = _validate_choice("categorical_encoder", resolved["categorical_encoder"], CATEGORICAL_ENCODERS)
+    resolved["categorical_encoder"] = _validate_choice(
+        "categorical_encoder", resolved["categorical_encoder"], CATEGORICAL_ENCODERS
+    )
     resolved["scaling"] = _validate_choice("scaling", resolved["scaling"], SCALING_OPTIONS)
-    resolved["drop_columns"] = _normalize_columns(resolved.get("drop_columns"))
-    resolved["passthrough_columns"] = _normalize_columns(resolved.get("passthrough_columns"))
+    resolved["drop_columns"] = as_str_list(resolved.get("drop_columns")) or []
+    resolved["passthrough_columns"] = as_str_list(resolved.get("passthrough_columns")) or []
     return resolved
+
+
+def _numeric_feature_columns(X: pd.DataFrame, excluded: set[str]) -> list[str]:
+    return [col for col in X.columns if col not in excluded and pd.api.types.is_numeric_dtype(X[col])]
 
 
 @dataclass
@@ -116,18 +132,27 @@ class FeatureTransformer:
     category_levels: dict[str, list[str]] = field(default_factory=dict)
 
     def fit(self, X: pd.DataFrame) -> "FeatureTransformer":
-        config = normalize_feature_config(
-            {
-                "preset": self.preset,
-                "numeric_impute_strategy": self.numeric_impute_strategy,
-                "categorical_impute_strategy": self.categorical_impute_strategy,
-                "categorical_encoder": self.categorical_encoder,
-                "scaling": self.scaling,
-                "drop_columns": self.drop_columns,
-                "passthrough_columns": self.passthrough_columns,
-                "params": self.feature_config.get("params", {}),
-            }
-        )
+        config = normalize_feature_config(self._raw_config())
+        self._apply_config(config)
+        X_work = self._fit_input_frame(X)
+        self._fit_column_roles(X_work)
+        self._fit_numeric_features(X_work)
+        self._fit_categorical_features(X_work)
+        return self
+
+    def _raw_config(self) -> dict[str, Any]:
+        return {
+            "preset": self.preset,
+            "numeric_impute_strategy": self.numeric_impute_strategy,
+            "categorical_impute_strategy": self.categorical_impute_strategy,
+            "categorical_encoder": self.categorical_encoder,
+            "scaling": self.scaling,
+            "drop_columns": self.drop_columns,
+            "passthrough_columns": self.passthrough_columns,
+            "params": self.feature_config.get("params", {}),
+        }
+
+    def _apply_config(self, config: dict[str, Any]) -> None:
         self.preset = config["preset"]
         self.numeric_impute_strategy = config["numeric_impute_strategy"]
         self.categorical_impute_strategy = config["categorical_impute_strategy"]
@@ -137,6 +162,13 @@ class FeatureTransformer:
         self.passthrough_columns = list(config["passthrough_columns"])
         self.feature_config = dict(config)
 
+    def _fit_input_frame(self, X: pd.DataFrame) -> pd.DataFrame:
+        self._validate_passthrough_columns(X)
+        X_work = X.drop(columns=self.drop_columns, errors="ignore")
+        self._validate_numeric_passthrough(X_work)
+        return X_work
+
+    def _validate_passthrough_columns(self, X: pd.DataFrame) -> None:
         missing_passthrough = [col for col in self.passthrough_columns if col not in X.columns]
         if missing_passthrough:
             raise ValueError(f"features.passthrough_columns not found: {missing_passthrough}")
@@ -144,20 +176,30 @@ class FeatureTransformer:
         if overlap:
             raise ValueError(f"features.drop_columns cannot overlap passthrough_columns: {overlap}")
 
-        X_work = X.drop(columns=self.drop_columns, errors="ignore")
-        passthrough = list(self.passthrough_columns)
-        non_numeric_passthrough = [col for col in passthrough if not pd.api.types.is_numeric_dtype(X_work[col])]
+    def _validate_numeric_passthrough(self, X_work: pd.DataFrame) -> None:
+        non_numeric_passthrough = [
+            col for col in self.passthrough_columns if not pd.api.types.is_numeric_dtype(X_work[col])
+        ]
         if non_numeric_passthrough:
             raise ValueError(f"features.passthrough_columns must be numeric raw columns: {non_numeric_passthrough}")
 
-        passthrough_set = set(passthrough)
-        self.passthrough_cols = passthrough
-        self.numeric_cols = [c for c in X_work.columns if c not in passthrough_set and pd.api.types.is_numeric_dtype(X_work[c])]
-        categorical_candidates = [c for c in X_work.columns if c not in passthrough_set and c not in self.numeric_cols]
-        self.categorical_cols = [] if self.categorical_encoder == "drop" else categorical_candidates
+    def _fit_column_roles(self, X_work: pd.DataFrame) -> None:
+        passthrough_set = set(self.passthrough_columns)
+        self.passthrough_cols = list(self.passthrough_columns)
+        self.numeric_cols = _numeric_feature_columns(X_work, passthrough_set)
+        self.categorical_cols = self._categorical_feature_columns(X_work, passthrough_set)
+        self._require_usable_features()
+
+    def _categorical_feature_columns(self, X_work: pd.DataFrame, passthrough_set: set[str]) -> list[str]:
+        if self.categorical_encoder == "drop":
+            return []
+        return [c for c in X_work.columns if c not in passthrough_set and c not in self.numeric_cols]
+
+    def _require_usable_features(self) -> None:
         if not self.numeric_cols and not self.categorical_cols and not self.passthrough_cols:
             raise ValueError("No usable feature columns were found.")
 
+    def _fit_numeric_features(self, X_work: pd.DataFrame) -> None:
         for col in self.numeric_cols:
             values = pd.to_numeric(X_work[col], errors="coerce")
             fill_value = self._numeric_fill_value(values)
@@ -169,13 +211,13 @@ class FeatureTransformer:
             self.numeric_means[col] = mean
             self.numeric_stds[col] = std
 
+    def _fit_categorical_features(self, X_work: pd.DataFrame) -> None:
         for col in self.categorical_cols:
             values = X_work[col]
             fill_value = self._categorical_fill_value(values)
             filled = values.fillna(fill_value).astype(str)
             self.categorical_fill_values[col] = fill_value
             self.category_levels[col] = sorted(filled.unique().tolist())
-        return self
 
     def _numeric_fill_value(self, values: pd.Series) -> float:
         non_null = values.dropna()
@@ -194,6 +236,16 @@ class FeatureTransformer:
         return "__missing__"
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
+        arrays = [
+            *self._numeric_arrays(X),
+            *self._categorical_arrays(X),
+            *self._passthrough_arrays(X),
+        ]
+        if not arrays:
+            raise ValueError("No feature arrays were produced.")
+        return np.hstack(arrays)
+
+    def _numeric_arrays(self, X: pd.DataFrame) -> list[np.ndarray]:
         arrays: list[np.ndarray] = []
         for col in self.numeric_cols:
             if col not in X.columns:
@@ -204,7 +256,10 @@ class FeatureTransformer:
             if self.scaling == "standard":
                 array = (array - self.numeric_means[col]) / self.numeric_stds[col]
             arrays.append(array.reshape(-1, 1))
+        return arrays
 
+    def _categorical_arrays(self, X: pd.DataFrame) -> list[np.ndarray]:
+        arrays: list[np.ndarray] = []
         for col in self.categorical_cols:
             if col not in X.columns:
                 raise ValueError(f"Required categorical feature is missing: {col}")
@@ -217,7 +272,10 @@ class FeatureTransformer:
                 if level_i is not None:
                     encoded[row_i, level_i] = 1.0
             arrays.append(encoded)
+        return arrays
 
+    def _passthrough_arrays(self, X: pd.DataFrame) -> list[np.ndarray]:
+        arrays: list[np.ndarray] = []
         for col in self.passthrough_cols:
             if col not in X.columns:
                 raise ValueError(f"Required passthrough feature is missing: {col}")
@@ -225,10 +283,7 @@ class FeatureTransformer:
             if values.isna().any():
                 raise ValueError(f"Passthrough feature contains missing or non-numeric values: {col}")
             arrays.append(values.astype(float).to_numpy().reshape(-1, 1))
-
-        if not arrays:
-            raise ValueError("No feature arrays were produced.")
-        return np.hstack(arrays)
+        return arrays
 
 
 def build_feature_pipeline(name: str, X: pd.DataFrame, params: dict[str, Any] | None = None) -> FeatureTransformer:

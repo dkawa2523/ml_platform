@@ -23,8 +23,6 @@ clearml:
   # stage queue has only one worker.
   controller_queue: controller
   stage_queue: default
-  # Backward-compatible alias for older code paths; same meaning as stage_queue.
-  queue: default
   execution:
     # Pullable execution image used by ClearML Agent for template runs.
     # Replace with the dev registry/image tag available to the target workers.

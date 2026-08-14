@@ -1,0 +1,35 @@
+name: smoke-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  local-product-smoke:
+    # Use a GitHub-hosted runner for portable PR validation.
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project and dev dependencies
+        run: uv sync --frozen --extra clearml --dev
+      - name: Create sample data
+        run: uv run python scripts/make_sample_data.py
+      - name: Run tabular pipeline smoke
+        run: >-
+          uv run python scripts/local_run.py
+          --task config/tasks/tabular_pipeline.yaml
+          --profile config/profiles/local.yaml
+          --set 'model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]'
+      - name: Run tabular inference smoke
+        run: uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml

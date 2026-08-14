@@ -1,0 +1,21 @@
+{
+  "folders": [
+    {
+      "name": "ml_platform",
+      "path": "."
+    },
+    {
+      "name": "pkgs/core",
+      "path": "pkgs/core"
+    },
+    {
+      "name": "pkgs/tabular",
+      "path": "pkgs/tabular"
+    }
+  ],
+  "settings": {
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": ["tests"],
+    "python.testing.unittestEnabled": false
+  }
+}
