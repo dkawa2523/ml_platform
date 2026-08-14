@@ -16,6 +16,10 @@ gates. `quality-nightly` adds three Hypothesis seeds, the synthetic load check,
 and mutation testing. Mutmut 3 requires fork support, so nightly must run on
 Linux or WSL and fails explicitly on native Windows.
 
+Set `QUALITY_UPDATE_MUTATION=1` when running `quality-baseline` on Linux or
+WSL to refresh mutation results. Without it, baseline maintenance preserves
+the reviewed mutation snapshot.
+
 Only `quality-baseline` may update `quality/baseline.json`,
 `quality/pyrefly-baseline.json`, or `.secrets.baseline`. Every finding should be
 reviewed before committing a baseline change. Existing findings may improve

@@ -35,7 +35,7 @@ MUTATION_WORKSPACE = ROOT / ".quality" / "mutation-workspace"
 SOURCE_PATHS = ("clearml", "pkgs", "scripts", "quality", "noxfile.py")
 SECRETS_EXCLUDE = (
     r"(?:^|[\\/])(?:\.git|\.venv(?:-[^\\/]+)?|\.quality|\.import_linter_cache|\.mypy_cache|"
-    r"\.ruff_cache|\.uv-cache(?:-codex)?|\.pytest_cache|\.hypothesis|outputs|data)(?:[\\/]|$)"
+    r"\.ruff_cache|\.uv-cache(?:-codex)?|\.pytest_cache|\.hypothesis|mutants|outputs|data)(?:[\\/]|$)"
     r"|(?:^|[\\/])\.secrets\.baseline$"
 )
 BANDIT_RATIONALE = {
