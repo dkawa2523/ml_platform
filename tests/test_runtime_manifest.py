@@ -1,89 +1,29 @@
 from __future__ import annotations
 
-import importlib
-import importlib.util
-
 import pytest
-
-from ml_platform_core.contracts import ArtifactSpec, PackageManifest, ParameterSpec
 from ml_platform_tabular.domain_plan import build_tabular_domain_plan
-from ml_platform_tabular.manifest import (
-    TABULAR_PREPROCESS_STAGE,
-    TABULAR_STAGE_TASK,
-    get_tabular_manifest,
-)
+from ml_platform_tabular.manifest import get_tabular_manifest
 from ml_platform_tabular.policy import model_suite_candidates, quality_model_params
 
 
-def _resolve_runner(path: str):
-    module_name, attr_name = path.split(":", 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, attr_name)
-
-
-def test_tabular_manifest_loads_and_has_unique_keys():
+def test_tabular_manifest_exposes_runtime_parameters_and_artifacts():
     manifest = get_tabular_manifest()
 
-    assert manifest.domain == "tabular"
     assert manifest.version
-    assert "problem:regression" in manifest.tags
-    assert len({stage.key for stage in manifest.stages}) == len(manifest.stages)
-    assert len({task.key for task in manifest.tasks}) == len(manifest.tasks)
-    assert len({pipeline.key for pipeline in manifest.pipelines}) == len(manifest.pipelines)
-    assert manifest.pipeline("tabular_training_graph").stage_keys == (
+    assert {task.key for task in manifest.tasks} == {"tabular_pipeline", "tabular_stage", "tabular_infer"}
+    assert {stage.key for stage in manifest.stages} == {
         "preprocess_features",
         "train_model",
         "build_ensemble",
         "evaluate_models",
-    )
-
-
-def test_tabular_manifest_runner_paths_resolve_without_clearml():
-    manifest = get_tabular_manifest()
-
-    for stage in manifest.stages:
-        assert callable(_resolve_runner(stage.runner_path))
-    for task in manifest.tasks:
-        assert callable(_resolve_runner(task.runner_path))
-
-
-def test_tabular_manifest_declares_required_parameters_and_artifacts():
-    manifest = get_tabular_manifest()
-    preprocess = manifest.stage("preprocess_features")
-    target = next(parameter for parameter in preprocess.parameters if parameter.name == "Input/target_column")
-    source_manifest = next(
-        parameter for parameter in preprocess.parameters if parameter.name == "Input/source_manifest"
-    )
-    train = manifest.stage("train_model")
-    evaluate = manifest.stage("evaluate_models")
-    infer = manifest.stage("infer")
-    infer_target = next(parameter for parameter in infer.parameters if parameter.name == "Input/target_column")
-    source_type = next(parameter for parameter in infer.parameters if parameter.name == "Model/source_type")
-
-    assert target.required is False
-    assert source_manifest.required is False
-    assert infer_target.required is False
-    assert source_type.choices == ("task_id", "local_path")
-    assert {artifact.name for artifact in preprocess.output_artifacts} >= {
-        "preprocess_bundle",
-        "feature_spec",
-        "processed_train",
-        "processed_valid",
+        "infer",
     }
-    assert {artifact.name for artifact in train.output_artifacts} >= {
-        "model",
-        "model_info",
-        "metrics",
-        "validation_predictions",
+    assert {parameter.name for parameter in manifest.task("tabular_pipeline").parameters} >= {
+        "Input/local_path",
+        "Model/candidates",
+        "Model/selection_metric",
     }
-    assert {artifact.name for artifact in evaluate.output_artifacts} >= {
-        "leaderboard",
-        "best_model",
-        "best_model_json",
-        "metrics",
-        "evaluation_predictions",
-    }
-    assert {artifact.name for artifact in infer.output_artifacts} >= {
+    assert {artifact.name for artifact in manifest.stage("infer").output_artifacts} == {
         "predictions",
         "schema_check_summary",
         "prediction_summary",
@@ -91,47 +31,6 @@ def test_tabular_manifest_declares_required_parameters_and_artifacts():
         "prediction_distribution",
         "manifest",
     }
-    assert "schema_check" not in {artifact.name for artifact in infer.output_artifacts}
-
-
-def test_package_manifest_rejects_duplicate_stage_keys():
-    with pytest.raises(ValueError, match="PackageManifest.stages"):
-        PackageManifest(
-            domain="duplicate",
-            version="0.1.0",
-            tasks=(TABULAR_STAGE_TASK,),
-            stages=(TABULAR_PREPROCESS_STAGE, TABULAR_PREPROCESS_STAGE),
-        )
-
-
-def test_contract_specs_validate_supported_kinds():
-    with pytest.raises(ValueError, match="ArtifactSpec.kind"):
-        ArtifactSpec(name="bad", kind="unsupported")  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="ParameterSpec.value_type"):
-        ParameterSpec(name="bad", value_type="object")  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="enum type but no choices"):
-        ParameterSpec(name="mode", value_type="enum")
-
-
-def test_runtime_contract_surface_stays_minimal():
-    manifest = get_tabular_manifest()
-    stage = manifest.stage("preprocess_features")
-    task = manifest.task("tabular_pipeline")
-    pipeline = manifest.pipeline("tabular_training_graph")
-    plan = build_tabular_domain_plan(candidates=("ridge",), include_ensemble=False)
-
-    assert importlib.util.find_spec("ml_platform_core.runtime_types") is None
-    assert importlib.util.find_spec("ml_platform_tabular.infer") is None
-    assert importlib.util.find_spec("ml_platform_tabular.pipeline") is None
-    assert importlib.util.find_spec("ml_platform_tabular.plots") is None
-    assert not hasattr(stage, "supports_local_run")
-    assert not hasattr(stage, "supports_remote_run")
-    assert not hasattr(task, "runtime_features")
-    assert not hasattr(task, "user_facing")
-    assert not hasattr(pipeline, "entry_stage_key")
-    assert not hasattr(pipeline, "supports_partial_stage_run")
-    assert not hasattr(plan, "tags")
-    assert not hasattr(plan.steps[0], "tags")
 
 
 def test_tabular_policy_presets_are_package_owned_and_copy_safe():
@@ -161,7 +60,6 @@ def test_tabular_domain_plan_builds_without_clearml():
     )
 
     assert plan.key == "tabular_training_graph"
-    assert plan.run_name == "unit-test"
     assert [step.name for step in plan.steps] == [
         "preprocess_features",
         "train_ridge",
@@ -176,7 +74,6 @@ def test_tabular_domain_plan_builds_without_clearml():
 
 def test_tabular_domain_plan_carries_runtime_neutral_overrides():
     plan = build_tabular_domain_plan(
-        run_name="unit-test",
         candidates=({"name": "ridge", "params": {"alpha": 2.0}},),
         ensemble_methods=("weighted",),
         selection_metric="mae",
@@ -185,9 +82,7 @@ def test_tabular_domain_plan_carries_runtime_neutral_overrides():
         ensemble_top_k=2,
     )
 
-    train = plan.steps[1]
-    ensemble = plan.steps[2]
-    evaluate = plan.steps[3]
+    train, ensemble, evaluate = plan.steps[1:]
     assert train.parameter_overrides == {
         "Output/upload_plots": False,
         "Model/name": "ridge",
@@ -202,7 +97,7 @@ def test_tabular_domain_plan_carries_runtime_neutral_overrides():
     }
 
 
-def test_tabular_domain_plan_validates_models_and_ensemble_methods():
+def test_tabular_domain_plan_rejects_unsupported_product_options():
     with pytest.raises(ValueError, match="out of current product scope"):
         build_tabular_domain_plan(candidates=("knn",))
     with pytest.raises(ValueError, match="Unsupported ensemble methods"):

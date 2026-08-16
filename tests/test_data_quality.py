@@ -1,5 +1,4 @@
 import pandas as pd
-
 from ml_platform_tabular.data_quality import build_data_quality_report
 
 
@@ -47,7 +46,7 @@ def test_data_quality_report_uses_learned_feature_roles_without_name_heuristics(
 
 def test_data_quality_report_summarizes_actionable_input_risks():
     rows = 60
-    data = {
+    data: dict[str, object] = {
         "id": [0, 0, *range(2, rows)],
         "target": range(rows),
         "category": [f"value_{index}" for index in range(rows)],

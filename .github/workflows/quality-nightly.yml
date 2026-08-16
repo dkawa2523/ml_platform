@@ -1,0 +1,30 @@
+name: quality-nightly
+
+on:
+  workflow_dispatch:
+
+jobs:
+  quality-nightly:
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      QUALITY_BASE_REF: origin/${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Sync locked nightly environment
+        run: uv sync --frozen --group quality --group nightly
+      - name: Run nightly quality gate
+        run: uv run --group nightly nox -s quality-nightly
+      - name: Upload nightly reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-quality-reports
+          path: .quality/reports/
+          if-no-files-found: warn

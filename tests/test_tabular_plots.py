@@ -1,5 +1,4 @@
 import pandas as pd
-
 from ml_platform_tabular.plotting import (
     write_leaderboard_table,
     write_metrics_bar_plot,

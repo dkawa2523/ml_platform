@@ -36,6 +36,7 @@
 | --- | --- | --- | --- |
 | `split.method` | string | all | `random`, `group`, `time`, `fixed` |
 | `split.valid_size` | float | `random`, `group`, `time` | validation 比率。0〜1 の間 |
+| `split.selection_size` | float | all | training partition 内でモデル選択に使う比率。最終 test holdout とは分離 |
 | `split.group_column` | string/null | `group` | group 単位で train/valid を分ける列 |
 | `split.time_column` | string/null | `time` | 時系列順に並べる列 |
 | `split.valid_filter_column` | string/null | `fixed` | validation flag 相当の列 |
@@ -55,6 +56,7 @@
 | `features.scaling` | `standard`, `none` | 数値標準化 |
 | `features.drop_columns` | list | 除外列 |
 | `features.passthrough_columns` | list | 補完・標準化せず数値として通す列 |
+| `features.max_dense_cells` | int | dense 行列の最大 cell 数。one-hot の過大メモリ確保を実行前に拒否 |
 | `features.params` | object | 将来用または追加設定 |
 
 ## `model`

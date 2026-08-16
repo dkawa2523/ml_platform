@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Iterable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -54,6 +54,22 @@ def target_regression_metrics(
     baseline_means: Mapping[str, float] | None = None,
 ) -> tuple[dict[str, float], pd.DataFrame]:
     """Calculate target-level diagnostics and equal-target macro metrics."""
+    actual, prediction, target_series = _target_metric_inputs(y_true, y_pred, targets)
+    selected, raw_metrics = _target_metric_plan(metrics)
+    rows, values_by_metric = _target_metric_rows(
+        actual,
+        prediction,
+        target_series,
+        raw_metrics,
+        baseline_means,
+    )
+    all_aggregates = _append_macro_metric_rows(rows, values_by_metric, len(actual))
+    requested = [_normalize_metric_name(name) for name in selected]
+    aggregate = {name: all_aggregates[name] for name in requested if name in all_aggregates}
+    return aggregate, pd.DataFrame(rows)
+
+
+def _target_metric_inputs(y_true, y_pred, targets) -> tuple[pd.Series, np.ndarray, pd.Series]:
     actual = pd.Series(np.asarray(y_true, dtype=float).reshape(-1))
     prediction = np.asarray(y_pred, dtype=float).reshape(-1)
     target_series = pd.Series(targets).reset_index(drop=True)
@@ -61,20 +77,32 @@ def target_regression_metrics(
         raise ValueError("y_true, y_pred, and targets must have the same length.")
     if target_series.isna().any():
         raise ValueError("targets must not contain missing values.")
-    target_series = target_series.astype(str)
+    return actual, prediction, target_series.astype(str)
 
+
+def _target_metric_plan(metrics: Iterable[str] | str | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
     selected = _normalize_metric_names(metrics)
     derived = {"relative_rmse", "skill"}
-    raw_metrics = tuple(name for name in selected if _normalize_metric_name(name) not in derived)
     unknown = [
         name for name in selected if _normalize_metric_name(name) not in {*DEFAULT_REGRESSION_METRICS, "mse", *derived}
     ]
     if unknown:
         raise ValueError(f"Unsupported regression metric: {unknown[0]}")
+    raw_metrics = tuple(name for name in selected if _normalize_metric_name(name) not in derived)
+    return selected, raw_metrics
 
+
+def _target_metric_rows(
+    actual: pd.Series,
+    prediction: np.ndarray,
+    target_series: pd.Series,
+    raw_metrics: tuple[str, ...],
+    baseline_means: Mapping[str, float] | None,
+) -> tuple[list[dict[str, object]], dict[str, list[float]]]:
     rows: list[dict[str, object]] = []
     values_by_metric: dict[str, list[float]] = {}
     for target in target_series.drop_duplicates():
+        target = str(target)
         mask = target_series.eq(target).to_numpy()
         values = regression_metrics(actual[mask], prediction[mask], metrics=raw_metrics)
         _append_target_metric_rows(rows, values_by_metric, target, values, int(mask.sum()))
@@ -86,7 +114,12 @@ def target_regression_metrics(
                 target,
             )
             _append_target_metric_rows(rows, values_by_metric, target, baseline_values, int(mask.sum()))
+    return rows, values_by_metric
 
+
+def _append_macro_metric_rows(
+    rows: list[dict[str, object]], values_by_metric: Mapping[str, list[float]], observation_count: int
+) -> dict[str, float]:
     all_aggregates = {name: float(np.mean(values)) for name, values in values_by_metric.items() if values}
     for name, value in all_aggregates.items():
         rows.append(
@@ -94,12 +127,10 @@ def target_regression_metrics(
                 "target": "__macro__",
                 "metric": name,
                 "value": value,
-                "observation_count": int(len(actual)),
+                "observation_count": observation_count,
             }
         )
-    requested = [_normalize_metric_name(name) for name in selected]
-    aggregate = {name: all_aggregates[name] for name in requested if name in all_aggregates}
-    return aggregate, pd.DataFrame(rows)
+    return all_aggregates
 
 
 def target_means(y, targets) -> dict[str, float]:
@@ -168,7 +199,7 @@ def _regression_metric_values(y_true: np.ndarray, y_pred: np.ndarray) -> dict[st
     rmse = float(np.sqrt(mse))
     residual_sum = float(np.sum(residual**2))
     denom = float(np.sum((y_true - np.mean(y_true)) ** 2))
-    r2 = 1.0 - residual_sum / denom if denom else float(residual_sum == 0.0)
+    r2 = float(residual_sum == 0.0) if denom < np.finfo(float).tiny else 1.0 - residual_sum / denom
     return {"mae": mae, "rmse": rmse, "r2": float(r2), "mse": mse}
 
 

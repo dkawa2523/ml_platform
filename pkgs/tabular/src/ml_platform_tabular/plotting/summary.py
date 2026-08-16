@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-
 from ml_platform_core.io import write_table
 
 from .common import write_histogram_plot

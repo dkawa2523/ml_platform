@@ -4,8 +4,8 @@ from .common import write_histogram_plot, write_metrics_bar_plot
 from .feature import (
     feature_role,
     transformed_columns_from_transformer,
-    write_feature_importance_plot_if_available,
     write_feature_diagnostics,
+    write_feature_importance_plot_if_available,
 )
 from .leaderboard import (
     write_leaderboard_metric_panel,
@@ -19,12 +19,11 @@ from .prediction import (
 )
 from .summary import write_prediction_summary_tables
 
-
 __all__ = [
     "feature_role",
     "transformed_columns_from_transformer",
-    "write_feature_importance_plot_if_available",
     "write_feature_diagnostics",
+    "write_feature_importance_plot_if_available",
     "write_histogram_plot",
     "write_leaderboard_metric_panel",
     "write_leaderboard_table",

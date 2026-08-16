@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -26,8 +26,6 @@ undoing product behavior or ClearML template compatibility.
   before preserving public API compatibility for internal-only helpers.
 - If an API is already externally published, record the compatibility impact
   before deletion.
-- Do not delete or rewrite `docs/review/source`; those files are review
-  evidence.
 - Keep diagnostics actionable. If a warning does not tell the user what to do,
   remove it or rewrite it.
 - Keep facades only for a defined migration period. After internal callers,
@@ -38,8 +36,6 @@ undoing product behavior or ClearML template compatibility.
 
 ## Consequences
 
-- Cleanup work should be managed through Sxx tickets in
-  `docs/review/SIMPLIFICATION_FIX_MAP.md`.
 - Deletion commits should cite the confirmation method: static analysis, grep,
   tests, entrypoint checks, or ClearML manual verification.
 - Large files are not automatically bad, but files with mixed product policy,

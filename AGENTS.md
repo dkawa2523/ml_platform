@@ -67,12 +67,12 @@ roadmap items. Do not implement them in the current product flow.
 
 Prefer small, product-facing additions:
 
-- feature logic in `features.py`
-- model builders in `models.py`
+- feature presets in `feature_config.py`, transformer behavior in `features.py`
+- model registration in `model_catalog.py`, candidate parsing in `model_candidates.py`, builders in `models.py`
 - ensemble behavior in `ensemble.py`
 - metrics in `metrics.py`
-- plot/table writers in `plots.py`
-- ClearML presentation in `clearml/reports.py`
+- plot/table writers in `plotting/` and `training/*_artifacts.py`
+- ClearML presentation in `pkgs/clearml/src/ml_platform_clearml/reports.py`
 
 Avoid sprawl:
 
@@ -103,19 +103,16 @@ A successful run is not enough. ClearML UI must show:
 
 ## Checks
 
-For product-flow changes, run:
+During development, run:
 
 ```powershell
-uv run python scripts/make_sample_data.py
-uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; uv run python -m pytest -q
+uv run --group quality nox -s quality-fast
 ```
 
-Boundary check:
+Before finishing a change, run:
 
 ```powershell
-rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core pkgs/tabular
+uv run --group quality nox -s quality-pr
 ```
 
 ## Review Response Rules
@@ -123,9 +120,6 @@ rg -n "from clearml|import clearml|PipelineController|StorageManager" pkgs/core 
 - Do not run `git push` from this repository unless the user explicitly requests it.
 - Do not display, create, or commit secrets, credentials, ClearML API keys, or `.env` contents.
 - Keep each change focused on one purpose. Do not mix review responses with unrelated improvements.
-- Include `Review-Refs: Rxx` in the body of commits that address review comments.
-- Put review-external improvements on `feature/non-review-improvements`.
-- After each review response task, update `docs/review/PR28_REVIEW_MAP.md` and `docs/review/CODEX_WORK_LOG.md`.
 - Add characterization tests before large refactors.
 - Split `pipeline.py`, `infer.py`, and `plots.py` only after existing-output compatibility tests are in place.
 - If ClearML localhost UI or Kubernetes verification cannot be run, record `manual verification required`.

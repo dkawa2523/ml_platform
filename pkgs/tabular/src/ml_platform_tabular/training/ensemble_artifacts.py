@@ -5,14 +5,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import numpy as np
-
 from ml_platform_core.io import write_json, write_table
 
-from ..selection import metric_value
-from ..metrics import regression_prediction_frame
 from ..model_artifact import write_model_info
 from ..models import Predictor
+from ..selection import metric_value
 from .artifacts import (
     CandidateResult,
     EnsembleMember,
@@ -32,14 +29,8 @@ def write_member_table(selected_base_models: list[EnsembleMember], method: str, 
     )
 
 
-def write_method_predictions(preprocess: PreprocessResult, method: str, y_pred: np.ndarray, stage_dir: Path) -> Path:
-    predictions_frame = regression_prediction_frame(
-        preprocess.X_valid,
-        preprocess.y_valid,
-        y_pred,
-        model_name=method,
-    )
-    return write_table(predictions_frame, stage_dir / f"ensemble_predictions_{method}.csv")
+def write_method_predictions(predictions: pd.DataFrame, method: str, stage_dir: Path) -> Path:
+    return write_table(predictions, stage_dir / f"selection_predictions_{method}.csv")
 
 
 def write_method_model_info(
@@ -48,6 +39,7 @@ def write_method_model_info(
     model_params: dict[str, Any],
     selected_base_models: list[EnsembleMember],
     weights: list[float],
+    model_path: Path,
     stage_dir: Path,
 ) -> Path:
     return write_model_info(
@@ -58,6 +50,7 @@ def write_method_model_info(
         model_name=method,
         model_params=model_params,
         artifact_kind="ensemble",
+        model_path=model_path,
         extra={
             "stage": "build_ensemble",
             "feature_config": preprocess.feature_config,
@@ -132,7 +125,7 @@ def copy_best_ensemble_artifacts(best_ensemble: CandidateResult, stage_dir: Path
     shutil.copy2(best_ensemble.artifacts["model"], stage_dir / "model.joblib")
     shutil.copy2(best_ensemble.artifacts["model_info"], stage_dir / "model_info.json")
     shutil.copy2(best_ensemble.artifacts["metrics"], stage_dir / "metrics.json")
-    shutil.copy2(best_ensemble.tables["ensemble_predictions"], stage_dir / "ensemble_predictions.csv")
+    shutil.copy2(best_ensemble.tables["selection_predictions"], stage_dir / "selection_predictions.csv")
     shutil.copy2(best_ensemble.tables["metrics_table"], stage_dir / "metrics_table.csv")
 
 
@@ -170,7 +163,7 @@ def ensemble_outputs(
         "ensemble_refs": ensemble_refs_path,
     }
     tables: dict[str, Path] = {
-        "ensemble_predictions": stage_dir / "ensemble_predictions.csv",
+        "selection_predictions": stage_dir / "selection_predictions.csv",
         "ensemble_metrics_table": ensemble_metrics_table_path,
         "ensemble_target_metrics": stage_dir / "metrics_table.csv",
     }
@@ -184,6 +177,6 @@ def _add_method_outputs(artifacts: dict[str, Path], tables: dict[str, Path], ite
     artifacts[f"model_{method}"] = item.artifacts["model"]
     artifacts[f"model_info_{method}"] = item.artifacts["model_info"]
     artifacts[f"metrics_{method}"] = item.artifacts["metrics"]
-    tables[f"ensemble_predictions_{method}"] = item.tables["ensemble_predictions"]
+    tables[f"selection_predictions_{method}"] = item.tables["selection_predictions"]
     tables[f"ensemble_target_metrics_{method}"] = item.tables["metrics_table"]
     tables[f"ensemble_members_{method}"] = item.tables["ensemble_members"]

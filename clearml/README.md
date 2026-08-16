@@ -1,32 +1,16 @@
-# clearml
+# ClearML entrypoints
 
-ClearML-specific code lives here. Training, preprocessing, evaluation, ensemble,
-and inference logic belongs in `pkgs/tabular`.
+This directory contains only the direct file paths already stored in synced
+ClearML templates:
 
-Files:
+- `app.py`: stage and inference entrypoint
+- `pipelines.py`: training pipeline entrypoint
+- `templates.py`: template-sync compatibility import
+- `_entrypoint_bootstrap.py`: exposes the three workspace package source roots
 
-```text
-app.py                  task entrypoint
-adapter.py              ClearML Task, Dataset, StorageManager, and Logger wrapper
-execution.py            immutable repository revision, image, and Python runtime
-support.py              shared ClearML task/logger helpers
-param_bindings.py       manifest ParameterSpec -> config binding
-param_defaults.py       config -> ClearML runtime parameter defaults
-param_transport.py      ClearML parameter serialization/coercion
-param_apply.py          ClearML runtime parameters -> nested config
-source_resolution.py    inference source task and artifact resolution
-reports.py              RunResult reporting orchestration
-reporting_scalars.py    scalar extraction from metrics artifacts and tables
-reporting_targets.py    table/plot report names and duplicate suppression
-pipeline_params.py      Pipeline New Run defaults and parameter normalization
-pipeline_steps.py       Domain plan artifact wiring and ClearML step rendering
-pipeline_plan.py        Training plan orchestration and dry-run presentation
-pipeline_controller.py  PipelineController draft sync and run orchestration
-pipelines.py            direct pipeline entrypoint
-templates.py            template sync
-_entrypoint_bootstrap.py
-                        local/remote entrypoint import bootstrap
-```
+The implementation lives in `pkgs/clearml/src/ml_platform_clearml`. Training,
+preprocessing, evaluation, ensemble, and inference behavior remains in
+`pkgs/tabular`.
 
 Current sync targets:
 
@@ -57,24 +41,29 @@ Tags include `domain:tabular`, `run_type:*`, `user_facing:true`,
 The training template pre-fills all 10 supported models. Template sync resolves
 `clearml.execution.revision` once and pins the same commit, image, and Python
 binary on the PipelineController, every stage template, and inference template.
-GBM packages are installed in the task venv; the Agent image does not contain a
-second copy of this repository.
+Task dependencies come from the exact lock selected by
+`clearml.execution.requirements_file`; the Agent image does not contain a second
+copy of this repository.
+
+Agent topology is environment configuration, not application code. To deploy to
+another server or worker pool, copy a profile and change `projects`, queues,
+`execution.repository`, `revision`, `image`, `python_binary`,
+`requirements_file`, and Dataset defaults. `clearml.model_source` independently
+controls which statuses, tags, run types, and project keys inference may trust.
+Regenerate the task lock deliberately with:
+
+```text
+uv export --frozen --no-dev --extra clearml --extra gbm --no-emit-project --no-emit-workspace --no-hashes --output-file config/requirements/clearml-agent.lock
+```
 
 For remote training, start the PipelineController on `clearml.controller_queue`
 and let stage tasks run on `clearml.stage_queue`. Using the same one-worker queue
 for both can leave `preprocess_features` queued while the controller occupies
 the only worker slot.
 
-Because this operations directory is named `clearml`, code here must import the
-official SDK through `adapter.import_clearml_sdk()` or
-`adapter.import_clearml_symbol()`. Do not import the SDK directly from new
-runtime code.
-
 Runtime parameter keys are declared in `ml_platform_tabular.manifest` as
-`ParameterSpec`s. Keep defaults, coercion, config application, and pipeline
-overrides derived through `param_bindings.py` rather than adding parallel key
-lists.
+`ParameterSpec`s. Defaults come from task/profile configuration; do not duplicate
+them in the manifest.
 
-Shared ClearML Task and Logger mechanics belong in `support.py`; entrypoints
-and sync code should keep only product-specific decisions. Avoid adding thin
-re-export modules or one-class files unless they remove substantial complexity.
+New ClearML runtime behavior belongs in the `ml_platform_clearml` package, not
+in these wrappers.

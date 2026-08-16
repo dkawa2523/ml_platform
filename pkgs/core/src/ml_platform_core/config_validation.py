@@ -63,7 +63,6 @@ _LIST_FIELDS = (
     "metrics.names",
     "features.drop_columns",
     "features.passthrough_columns",
-    "model.evaluation_metrics",
     "model.ensemble.methods",
 )
 
@@ -116,8 +115,10 @@ def _validate_scalars(config: Mapping[str, Any]) -> None:
     _require_type(config, "model.ensemble.enabled", bool, "a boolean")
     _require_int(config, "run.seed")
     _require_int(config, "model.ensemble.top_k")
+    _require_int(config, "features.max_dense_cells")
     _validate_stage(config)
-    _validate_valid_size(config)
+    _validate_fraction(config, "split.valid_size")
+    _validate_fraction(config, "split.selection_size")
     _validate_top_k(config)
 
 
@@ -133,20 +134,23 @@ def _validate_stage(config: Mapping[str, Any]) -> None:
         raise ConfigValidationError(str(exc)) from exc
 
 
-def _validate_valid_size(config: Mapping[str, Any]) -> None:
-    valid_size = _get(config, "split.valid_size")
-    if valid_size is None:
+def _validate_fraction(config: Mapping[str, Any], path: str) -> None:
+    value = _get(config, path)
+    if value is None:
         return
-    if isinstance(valid_size, bool) or not isinstance(valid_size, (int, float)):
-        raise ConfigValidationError("split.valid_size must be a number or null.")
-    if not 0 < float(valid_size) < 1:
-        raise ConfigValidationError("split.valid_size must be between 0 and 1.")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigValidationError(f"{path} must be a number or null.")
+    if not 0 < float(value) < 1:
+        raise ConfigValidationError(f"{path} must be between 0 and 1.")
 
 
 def _validate_top_k(config: Mapping[str, Any]) -> None:
     top_k = _get(config, "model.ensemble.top_k")
     if top_k is not None and top_k < 1:
         raise ConfigValidationError("model.ensemble.top_k must be at least 1.")
+    max_dense_cells = _get(config, "features.max_dense_cells")
+    if max_dense_cells is not None and max_dense_cells < 1:
+        raise ConfigValidationError("features.max_dense_cells must be at least 1.")
 
 
 def _require_type(config: Mapping[str, Any], path: str, expected: type, description: str) -> None:

@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import write_table
 
 from .common import write_metrics_bar_plot
@@ -78,10 +77,10 @@ def _feature_importance_frame(estimator: Any) -> pd.DataFrame | None:
     raw_values = None
     source = None
     if hasattr(model, "feature_importances_"):
-        raw_values = np.asarray(getattr(model, "feature_importances_"), dtype=float).reshape(-1)
+        raw_values = np.asarray(model.feature_importances_, dtype=float).reshape(-1)
         source = "feature_importances_"
     elif hasattr(model, "coef_"):
-        raw_values = np.asarray(getattr(model, "coef_"), dtype=float).reshape(-1)
+        raw_values = np.asarray(model.coef_, dtype=float).reshape(-1)
         if raw_values.shape[0] == len(columns) + 1:
             raw_values = raw_values[1:]
         source = "coef_"
@@ -106,9 +105,13 @@ def write_feature_importance_plot_if_available(estimator: Any, output_dir: Path)
         return None, None
     table_path = write_table(frame, output_dir / "feature_importance.csv")
     plot_path = write_metrics_bar_plot(
-        [(row.feature, row.importance) for row in frame.itertuples(index=False)],
+        [(str(row.feature), _as_float(row.importance)) for row in frame.itertuples(index=False)],
         output_dir / "feature_importance.png",
         title="Feature importance",
         value_label="importance",
     )
     return table_path, plot_path
+
+
+def _as_float(value: Any) -> float:
+    return float(value)

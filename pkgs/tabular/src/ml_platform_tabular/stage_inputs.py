@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -41,24 +42,63 @@ def load_preprocess(cfg: dict[str, Any]) -> PreprocessResult:
     bundle_path = required_path(inputs, "preprocess_bundle")
     processed_train_path = required_path(inputs, "processed_train")
     processed_valid_path = required_path(inputs, "processed_valid")
-
-    bundle = load_joblib(bundle_path)
+    bundle = _preprocess_bundle(bundle_path)
     train_df = read_table(processed_train_path)
     valid_df = read_table(processed_valid_path)
+    target_column, feature_columns, input_columns = _preprocess_columns(bundle, train_df)
+    return _preprocess_result(
+        bundle,
+        train_df,
+        valid_df,
+        target_column,
+        feature_columns,
+        input_columns,
+        bundle_path,
+        processed_train_path,
+        processed_valid_path,
+    )
+
+
+def _preprocess_bundle(path: Path) -> dict[str, Any]:
+    bundle = load_joblib(path)
+    if not isinstance(bundle, Mapping):
+        raise ValueError("preprocess_bundle must contain a mapping.")
+    return dict(bundle)
+
+
+def _preprocess_columns(bundle: Mapping[str, Any], train_df) -> tuple[str, list[str], list[str]]:
     target_column = bundle.get("target_column")
     if not target_column:
         raise ValueError("preprocess_bundle.target_column is required.")
+    target_column = str(target_column)
     feature_columns = bundle.get("feature_columns")
     if not feature_columns:
         feature_columns = [col for col in train_df.columns if col != target_column]
-    metadata_columns = [column for column in (TARGET_COLUMN, SOURCE_ROW_COLUMN) if column in train_df.columns]
+    feature_columns = [str(column) for column in feature_columns]
+    metadata_columns = bundle.get("metadata_columns") or [
+        column for column in (TARGET_COLUMN, SOURCE_ROW_COLUMN) if column in train_df.columns
+    ]
+    metadata_columns = [str(column) for column in metadata_columns]
     input_columns = [*feature_columns, *metadata_columns]
+    return target_column, feature_columns, input_columns
+
+
+def _preprocess_result(
+    bundle: Mapping[str, Any],
+    train_df,
+    valid_df,
+    target_column: str,
+    feature_columns: list[str],
+    input_columns: list[str],
+    bundle_path: Path,
+    processed_train_path: Path,
+    processed_valid_path: Path,
+) -> PreprocessResult:
     target_names = bundle.get("target_names") or [target_column]
     coordinate_columns = bundle.get("coordinate_columns") or []
-
     return PreprocessResult(
         transformer=bundle["transformer"],
-        feature_columns=list(feature_columns),
+        feature_columns=feature_columns,
         target_column=target_column,
         target_names=[str(name) for name in target_names],
         coordinate_columns=[str(name) for name in coordinate_columns],
@@ -167,15 +207,10 @@ def _model_params(item: dict[str, Any], model_info: dict[str, Any], model_name: 
 
 
 def _prediction_tables(item: dict[str, Any]) -> dict[str, Path]:
-    path = _optional_path(item, "validation_predictions", label="Validation predictions ref")
-    return {"validation_predictions": path} if path is not None else {}
+    path = _optional_path(item, "selection_predictions", label="Selection predictions ref")
+    return {"selection_predictions": path} if path is not None else {}
 
 
 def _ensemble_reference(item: dict[str, Any]) -> CandidateResult:
     ref = replace(_model_ref(item), artifact_kind="ensemble")
-    artifacts = dict(ref.artifacts)
-    tables = dict(ref.tables)
-    ensemble_predictions = _optional_path(item, "ensemble_predictions", label="Ensemble predictions ref")
-    if ensemble_predictions is not None:
-        tables["ensemble_predictions"] = ensemble_predictions
-    return replace(ref, artifacts=artifacts, tables=tables)
+    return replace(ref, artifacts=dict(ref.artifacts), tables=dict(ref.tables))

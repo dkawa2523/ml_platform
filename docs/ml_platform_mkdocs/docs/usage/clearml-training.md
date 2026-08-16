@@ -74,7 +74,7 @@ Basic で足りない場合は、詳細項目を編集します。
 | Stage | Project | 最初に見るもの |
 | --- | --- | --- |
 | `preprocess_features` | `Runs/Tabular/Preprocess` | `data_quality_summary`, `data_quality_warnings` |
-| `train_<model>` | `Runs/Tabular/Train` | `metrics`, `validation_predictions` |
+| `train_<model>` | `Runs/Tabular/Train` | `metrics`, `selection_predictions` |
 | `build_ensemble_<method>` | `Runs/Tabular/Ensemble` | ensemble metrics、members |
 | `evaluate_models` | `Runs/Tabular/Evaluate` | `best_model.json`, `leaderboard` |
 

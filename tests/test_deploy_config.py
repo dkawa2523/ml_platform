@@ -1,7 +1,7 @@
 from pathlib import Path
-import importlib.util
 
 import yaml
+from ml_platform_clearml.template_spec import remote_packages
 
 
 def test_execution_image_does_not_bake_repository_code():
@@ -48,6 +48,7 @@ def test_profiles_define_environment_specific_execution_image_reference():
     assert "execution:" in prod_profile
     assert "image: ${ML_PLATFORM_CLEARML_IMAGE}" in prod_profile
     assert "python_binary: python3.11" in dev_profile
+    assert "requirements_file: config/requirements/clearml-agent.lock" in dev_profile
     assert "revision: HEAD" in dev_profile
 
 
@@ -60,13 +61,10 @@ def test_gbm_packages_are_not_required_runtime_dependencies():
 
 
 def test_clearml_remote_packages_install_gbm_into_execution_venv():
-    spec = importlib.util.spec_from_file_location("ml_platform_clearml_templates", Path("clearml/templates.py"))
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    packages = remote_packages()
 
-    packages = module._remote_packages()
-
-    assert "lightgbm>=4.0" in packages
-    assert "xgboost>=2.0" in packages
-    assert "catboost>=1.2" in packages
+    assert "clearml==2.1.7" in packages
+    assert "lightgbm==4.6.0" in packages
+    assert any(package.startswith("xgboost==") for package in packages)
+    assert "catboost==1.2.10" in packages
+    assert all("==" in package for package in packages)

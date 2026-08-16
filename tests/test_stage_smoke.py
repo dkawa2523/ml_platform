@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
 from ml_platform_tabular import run_task
@@ -47,7 +46,7 @@ def _model_ref(stage, result):
         "model": str(result.artifacts["model"]),
         "model_info": str(result.artifacts["model_info"]),
         "metrics": str(result.artifacts["metrics"]),
-        "validation_predictions": str(result.tables["validation_predictions"]),
+        "selection_predictions": str(result.tables["selection_predictions"]),
     }
 
 
@@ -85,6 +84,7 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
     eval_cfg = _stage_cfg(tmp_path, "evaluate_models", train_path)
     eval_cfg["run"]["stage"] = "evaluate_models"
     eval_cfg["model"]["selection_metric"] = "rmse"
+    eval_cfg["stage_inputs"].update(_preprocess_refs(preprocess))
     eval_cfg["stage_inputs"]["model_refs"] = model_refs
     eval_cfg["stage_inputs"]["ensemble_refs"] = [
         {
@@ -93,7 +93,7 @@ def test_tabular_stage_runner_executes_training_graph_pieces(tmp_path):
             "model": str(ensemble.artifacts["model"]),
             "model_info": str(ensemble.artifacts["model_info"]),
             "metrics": str(ensemble.artifacts["metrics"]),
-            "ensemble_predictions": str(ensemble.tables["ensemble_predictions"]),
+            "selection_predictions": str(ensemble.tables["selection_predictions"]),
         }
     ]
     evaluation = run_task(eval_cfg)
@@ -120,7 +120,7 @@ def _assert_preprocess_stage_outputs(result):
 
 def _assert_train_stage_outputs(result):
     _assert_stage_paths(result.artifacts, ["model", "model_info", "metrics"])
-    _assert_stage_paths(result.tables, ["metrics_table", "validation_predictions"])
+    _assert_stage_paths(result.tables, ["metrics_table", "selection_predictions"])
     assert result.plots == {}
 
 
@@ -130,7 +130,7 @@ def _assert_ensemble_stage_outputs(result):
         result.tables,
         [
             "ensemble_metrics_table",
-            "ensemble_predictions",
+            "selection_predictions",
             "ensemble_members_mean_topk",
         ],
     )

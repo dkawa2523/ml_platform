@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-
 from ml_platform_tabular.data import split_xy, train_valid_split
 
 

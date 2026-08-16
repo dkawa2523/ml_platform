@@ -72,7 +72,7 @@ graph TB
 | Stage | 確認対象 | 期待 |
 | --- | --- | --- |
 | `preprocess_features` | `data_quality_warnings` | 致命的な警告がない |
-| `train_<model>` | `metrics`, `validation_predictions` | 指標と残差が妥当 |
+| `train_<model>` | `metrics`, `selection_predictions` | 指標と残差が妥当 |
 | `build_ensemble_<method>` | `ensemble_metrics_table`, weights | 単体 best と比較する |
 | `evaluate_models` | `best_model.json`, `leaderboard` | 推論に使う候補が明確 |
 

@@ -51,7 +51,7 @@ xgboost
 catboost
 ```
 
-`lightgbm`、`xgboost`、`catboost` は optional dependency です。ローカルの軽量環境では標準インストールに含めず、ClearML remote template では Agent 側の実行 venv に GBM 依存を入れる設計です。
+`lightgbm`、`xgboost`、`catboost` は optional dependency です。ローカルの軽量環境では標準インストールに含めず、ClearML remote template は profile の `clearml.execution.requirements_file` が示す固定 lock から Agent 側の実行 venv を作ります。Server、Queue、image、lock、model-source policy は環境 profile ごとに差し替えられます。
 
 ローカルで 10 モデルすべてを動かす場合は、事前に `pkgs/tabular[gbm]` 相当の依存を入れてください。軽量に試す場合は `Model/candidates` や `Basic/model_suite=fast` で GBM 系を外します。
 
@@ -91,7 +91,7 @@ uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --prof
 テスト:
 
 ```powershell
-uv run python -m pytest -q
+uv run --group quality nox -s quality-fast
 ```
 
 ## ClearML 実行

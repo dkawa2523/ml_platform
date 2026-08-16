@@ -1,5 +1,4 @@
 import pytest
-
 from ml_platform_core.config import load_run_config
 from ml_platform_core.config_validation import ConfigValidationError, validate_run_config
 
@@ -9,14 +8,20 @@ def test_validate_run_config_accepts_valid_minimal_config():
 
 
 def test_validate_run_config_rejects_invalid_public_values():
-    with pytest.raises(ConfigValidationError, match="runtime.use_clearml must be a boolean"):
+    with pytest.raises(ConfigValidationError, match=r"runtime\.use_clearml must be a boolean"):
         validate_run_config({"task": "tabular_pipeline", "runtime": {"use_clearml": "true"}})
 
-    with pytest.raises(ConfigValidationError, match="model.params must be a mapping"):
+    with pytest.raises(ConfigValidationError, match=r"model\.params must be a mapping"):
         validate_run_config({"task": "tabular_pipeline", "model": {"params": "ridge"}})
 
     with pytest.raises(ConfigValidationError, match="Unsupported tabular stage"):
         validate_run_config({"task": "tabular_stage", "run": {"stage": "unknown_stage"}})
+
+    with pytest.raises(ConfigValidationError, match=r"split\.selection_size must be between"):
+        validate_run_config({"task": "tabular_pipeline", "split": {"selection_size": 1.0}})
+
+    with pytest.raises(ConfigValidationError, match=r"features\.max_dense_cells must be at least 1"):
+        validate_run_config({"task": "tabular_pipeline", "features": {"max_dense_cells": 0}})
 
 
 def test_load_run_config_preserves_effective_dictionary_and_overrides():

@@ -1,17 +1,15 @@
 import json
 
 import pytest
-
-from ml_platform_core.config import load_run_config
-from ml_platform_core.contracts import ParameterSpec
-from ml_platform_core.value_coercion import as_str_list
-from ml_platform_tabular.manifest import get_tabular_manifest
-
 from clearml_test_utils import (
     load_clearml_adapter_module,
     load_clearml_params_module,
     load_clearml_pipeline_params_module,
 )
+from ml_platform_core.config import load_run_config
+from ml_platform_core.contracts import ParameterSpec
+from ml_platform_core.value_coercion import as_str_list
+from ml_platform_tabular.manifest import get_tabular_manifest
 
 
 def test_clearml_runtime_param_helpers_use_current_names():
@@ -77,7 +75,7 @@ def test_clearml_runtime_bindings_reject_conflicting_duplicate_specs():
     params = load_clearml_params_module()
     base = ParameterSpec(name="Input/example", value_type="str")
 
-    assert params.unique_specs(((base,), (ParameterSpec(name="Input/example", value_type="str", required=True),)))
+    assert params.unique_specs(((base,), (ParameterSpec(name="Input/example", value_type="str"),)))
     with pytest.raises(ValueError, match="Input/example"):
         params.unique_specs(((base,), (ParameterSpec(name="Input/example", value_type="int"),)))
 

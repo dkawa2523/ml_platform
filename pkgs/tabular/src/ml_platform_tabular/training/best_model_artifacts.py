@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ml_platform_core.io import write_json
 
 from ..selection import metric_value
-from .artifacts import CandidateResult, LEADERBOARD_REPORT_SCHEMA_VERSION, candidate_selector
+from .artifacts import LEADERBOARD_REPORT_SCHEMA_VERSION, CandidateResult, candidate_selector
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ def best_model_payload(
     best: CandidateResult,
     selection_metric: str,
     *,
+    final_metrics: dict[str, float],
     task_id: str | None,
     code_version: str,
 ) -> dict[str, Any]:
@@ -34,7 +35,10 @@ def best_model_payload(
         "stage": best.stage,
         "selection_metric": selection_metric,
         "selection_value": metric_value(best.metrics, selection_metric),
-        "metrics": best.metrics,
+        "selection_scope": "selection_holdout",
+        "selection_metrics": best.metrics,
+        "metric_scope": "test_holdout",
+        "metrics": final_metrics,
         "model_params": best.model_params,
         "ensemble_method": best.ensemble_method,
         "model_selector": "best",
@@ -57,7 +61,8 @@ def best_ensemble_payload(best_ensemble: CandidateResult | None, selection_metri
         "stage": best_ensemble.stage,
         "selection_metric": selection_metric,
         "selection_value": metric_value(best_ensemble.metrics, selection_metric),
-        "metrics": best_ensemble.metrics,
+        "selection_scope": "selection_holdout",
+        "selection_metrics": best_ensemble.metrics,
         "model_params": best_ensemble.model_params,
     }
 
@@ -70,6 +75,7 @@ def write_best_model_artifacts(
     stage_dir: Path,
     task_id: str | None,
     code_version: str,
+    final_metrics: dict[str, float],
 ) -> BestModelArtifacts:
     best_model_path = stage_dir / "best_model.joblib"
     model_info_path = stage_dir / "model_info.json"
@@ -78,6 +84,7 @@ def write_best_model_artifacts(
     best_payload = best_model_payload(
         best,
         selection_metric,
+        final_metrics=final_metrics,
         task_id=task_id,
         code_version=code_version,
     )

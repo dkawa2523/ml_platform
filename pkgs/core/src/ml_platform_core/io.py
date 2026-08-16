@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
+import pickle
 from pathlib import Path
 from typing import Any
 
-import pickle
 import pandas as pd
 
 TABLE_SUFFIXES = {".csv", ".parquet", ".pq"}
@@ -103,12 +103,7 @@ def write_json(data: dict[str, Any], path: str | Path) -> Path:
 
 
 def dump_joblib(obj: Any, path: str | Path) -> Path:
-    """Serialize a Python object for MVP model artifacts.
-
-    The function name is kept for compatibility with existing code, but the MVP
-    intentionally uses stdlib pickle to avoid adding serialization complexity.
-    Codex may switch this to joblib later if the target runtime prefers it.
-    """
+    """Serialize a trusted internal model artifact using the stable public API name."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as f:
@@ -117,6 +112,10 @@ def dump_joblib(obj: Any, path: str | Path) -> Path:
 
 
 def load_joblib(path: str | Path) -> Any:
+    """Load a trusted model artifact produced by this platform.
+
+    Pickle-compatible artifacts must never be accepted from an untrusted source.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Model artifact file not found: {path}")

@@ -28,6 +28,12 @@ clearml:
     # Set this to the immutable registry image available to every worker.
     image: ${ML_PLATFORM_CLEARML_IMAGE}
     python_binary: python3.11
+    requirements_file: config/requirements/clearml-agent.lock
+  model_source:
+    allowed_statuses: [completed, published]
+    required_tags: [domain:tabular]
+    allowed_run_types: [stage, pipeline]
+    project_keys: [train, ensemble, evaluate, stages]
   dataset_project: datasets
   # Set this when the ClearML server has no default artifact storage.
   artifact_output_uri: null

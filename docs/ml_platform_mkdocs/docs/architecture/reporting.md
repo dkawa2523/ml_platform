@@ -13,7 +13,7 @@ graph LR
   B --> D[artifacts]
   B --> E[tables]
   B --> F[plots]
-  C --> G[clearml/reports.py]
+  C --> G[ml_platform_clearml.reports]
   D --> G
   E --> G
   F --> G
@@ -45,7 +45,7 @@ graph LR
 
 ## Reporting 改修時の確認
 
-- 新しい table は `clearml/reports.py` の表示対象に含める。
+- 新しい table は `ml_platform_clearml.reports` の表示対象に含める。
 - 重要な JSON は Artifact として必ず upload する。
 - Plot は冗長にならないよう top-k または best に絞る。
 - 推論 Task では候補比較 Plot を出さない。

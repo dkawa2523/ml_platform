@@ -2,19 +2,26 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from dataclasses import dataclass
 from numbers import Complex, Number, Real
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import read_table
 
 TARGET_COLUMN = "__target__"
 VALUE_COLUMN = "__value__"
 SOURCE_ROW_COLUMN = "__source_row__"
 _RESERVED_COLUMNS = {TARGET_COLUMN, VALUE_COLUMN, SOURCE_ROW_COLUMN, "value", "target", "source_row"}
+
+
+@dataclass(frozen=True)
+class _TargetSourceSpec:
+    name: str
+    relative_file: str
+    columns: dict[str, str]
 
 
 def load_target_sources(
@@ -32,17 +39,7 @@ def load_target_sources(
     """
     root = _dataset_root(dataset_root)
     coordinate_columns, sources = _source_specs(manifest)
-    frames = [
-        _load_source(
-            root,
-            target_name,
-            relative_file,
-            columns,
-            coordinate_columns,
-            require_values=require_values,
-        )
-        for target_name, relative_file, columns in sources
-    ]
+    frames = [_load_source(root, source, coordinate_columns, require_values=require_values) for source in sources]
     result_columns = [TARGET_COLUMN, *coordinate_columns]
     if require_values:
         result_columns.append(VALUE_COLUMN)
@@ -61,12 +58,20 @@ def _dataset_root(dataset_root: str | Path) -> Path:
 
 def _source_specs(
     manifest: Mapping[str, Any],
-) -> tuple[tuple[str, ...], list[tuple[str, str, dict[str, str]]]]:
+) -> tuple[tuple[str, ...], list[_TargetSourceSpec]]:
     if not isinstance(manifest, Mapping):
         raise TypeError("target source manifest must be a mapping.")
     if manifest.get("schema_version") != 1:
         raise ValueError("target source manifest schema_version must be 1.")
 
+    default_columns, coordinate_columns = _default_columns(manifest)
+    targets = manifest.get("targets")
+    if not isinstance(targets, list) or not targets:
+        raise ValueError("manifest.targets must be a non-empty list.")
+    return coordinate_columns, _target_specs(targets, default_columns)
+
+
+def _default_columns(manifest: Mapping[str, Any]) -> tuple[dict[str, str], tuple[str, ...]]:
     defaults = _required_mapping(manifest.get("defaults"), "manifest.defaults")
     default_columns = _column_mapping(
         _required_mapping(defaults.get("columns"), "manifest.defaults.columns"),
@@ -78,34 +83,36 @@ def _source_specs(
     coordinate_columns = tuple(name for name in default_columns if name != "value")
     if not coordinate_columns:
         raise ValueError("manifest.defaults.columns requires at least one coordinate column.")
+    return default_columns, coordinate_columns
 
-    targets = manifest.get("targets")
-    if not isinstance(targets, list) or not targets:
-        raise ValueError("manifest.targets must be a non-empty list.")
 
+def _target_specs(targets: list[Any], default_columns: dict[str, str]) -> list[_TargetSourceSpec]:
     seen_names: set[str] = set()
-    sources: list[tuple[str, str, dict[str, str]]] = []
+    sources: list[_TargetSourceSpec] = []
     for index, raw_target in enumerate(targets):
-        context = f"manifest.targets[{index}]"
-        target = _required_mapping(raw_target, context)
-        name = _required_name(target.get("name"), f"{context}.name")
-        if name in seen_names:
-            raise ValueError(f"Duplicate target name: {name}")
-        seen_names.add(name)
+        source = _target_spec(raw_target, index, default_columns)
+        if source.name in seen_names:
+            raise ValueError(f"Duplicate target name: {source.name}")
+        seen_names.add(source.name)
+        sources.append(source)
+    return sources
 
-        relative_file = _required_name(target.get("file"), f"{context}.file")
-        overrides = _column_mapping(
-            _required_mapping(target.get("columns", {}), f"{context}.columns"),
-            f"{context}.columns",
-        )
-        unknown_roles = sorted(set(overrides) - set(default_columns))
-        if unknown_roles:
-            raise ValueError(f"{context}.columns contains unknown canonical columns: {unknown_roles}")
-        columns = {**default_columns, **overrides}
-        _validate_distinct_source_columns(columns, context)
-        sources.append((name, relative_file, columns))
 
-    return coordinate_columns, sources
+def _target_spec(raw_target: Any, index: int, default_columns: dict[str, str]) -> _TargetSourceSpec:
+    context = f"manifest.targets[{index}]"
+    target = _required_mapping(raw_target, context)
+    name = _required_name(target.get("name"), f"{context}.name")
+    relative_file = _required_name(target.get("file"), f"{context}.file")
+    overrides = _column_mapping(
+        _required_mapping(target.get("columns", {}), f"{context}.columns"),
+        f"{context}.columns",
+    )
+    unknown_roles = sorted(set(overrides) - set(default_columns))
+    if unknown_roles:
+        raise ValueError(f"{context}.columns contains unknown canonical columns: {unknown_roles}")
+    columns = {**default_columns, **overrides}
+    _validate_distinct_source_columns(columns, context)
+    return _TargetSourceSpec(name, relative_file, columns)
 
 
 def _required_mapping(value: Any, setting: str) -> Mapping[str, Any]:
@@ -124,9 +131,8 @@ def _column_mapping(value: Mapping[str, Any], setting: str) -> dict[str, str]:
     columns: dict[str, str] = {}
     for raw_role, raw_source in value.items():
         role = _required_name(raw_role, f"{setting} canonical column")
-        if role in _RESERVED_COLUMNS:
-            if role != "value":
-                raise ValueError(f"{setting} uses reserved canonical column: {role}")
+        if role in _RESERVED_COLUMNS and role != "value":
+            raise ValueError(f"{setting} uses reserved canonical column: {role}")
         columns[role] = _required_name(raw_source, f"{setting}.{role}")
     return columns
 
@@ -157,37 +163,52 @@ def _source_path(root: Path, relative_file: str) -> Path:
 
 def _load_source(
     root: Path,
-    target_name: str,
-    relative_file: str,
-    columns: Mapping[str, str],
+    spec: _TargetSourceSpec,
     coordinate_columns: tuple[str, ...],
     *,
     require_values: bool,
 ) -> pd.DataFrame:
-    source_path = _source_path(root, relative_file)
+    source_path = _source_path(root, spec.relative_file)
     source = read_table(source_path)
     if source.empty:
-        raise ValueError(f"Target source is empty: {target_name}")
+        raise ValueError(f"Target source is empty: {spec.name}")
 
     canonical_columns = [*coordinate_columns, *(["value"] if require_values else [])]
-    source_columns = [columns[name] for name in canonical_columns]
-    missing = [source_name for source_name in source_columns if source_name not in source.columns]
-    if missing:
-        raise ValueError(f"Target source {target_name!r} is missing columns: {missing}")
+    source_columns = _required_source_columns(source, spec, canonical_columns)
+    observations = _canonical_observations(source, spec, canonical_columns, source_columns)
+    _validate_coordinates(observations, spec.name, coordinate_columns)
+    if require_values:
+        observations[VALUE_COLUMN] = _finite_values(observations[VALUE_COLUMN], spec.name)
+    _validate_unique_coordinates(observations, spec.name, coordinate_columns)
+    return observations
 
+
+def _required_source_columns(
+    source: pd.DataFrame,
+    spec: _TargetSourceSpec,
+    canonical_columns: list[str],
+) -> list[str]:
+    source_columns = [spec.columns[name] for name in canonical_columns]
+    missing = [column for column in source_columns if column not in source.columns]
+    if missing:
+        raise ValueError(f"Target source {spec.name!r} is missing columns: {missing}")
+    return source_columns
+
+
+def _canonical_observations(
+    source: pd.DataFrame,
+    spec: _TargetSourceSpec,
+    canonical_columns: list[str],
+    source_columns: list[str],
+) -> pd.DataFrame:
     rename = {
         source_name: VALUE_COLUMN if canonical_name == "value" else canonical_name
-        for canonical_name, source_name in columns.items()
+        for canonical_name, source_name in spec.columns.items()
         if canonical_name in canonical_columns
     }
     observations = source[source_columns].rename(columns=rename).copy()
-    observations.insert(0, TARGET_COLUMN, target_name)
+    observations.insert(0, TARGET_COLUMN, spec.name)
     observations[SOURCE_ROW_COLUMN] = np.arange(len(observations), dtype=np.int64)
-
-    _validate_coordinates(observations, target_name, coordinate_columns)
-    if require_values:
-        observations[VALUE_COLUMN] = _finite_values(observations[VALUE_COLUMN], target_name)
-    _validate_unique_coordinates(observations, target_name, coordinate_columns)
     return observations
 
 
@@ -210,9 +231,13 @@ def _is_invalid_number(value: Any) -> bool:
     if isinstance(value, Complex) and not isinstance(value, Real):
         return True
     try:
-        return not math.isfinite(float(value))
+        return not math.isfinite(_number_as_float(value))
     except (TypeError, ValueError, OverflowError):
         return True
+
+
+def _number_as_float(value: Any) -> float:
+    return float(value)
 
 
 def _is_unhashable(value: Any) -> bool:

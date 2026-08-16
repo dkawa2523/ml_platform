@@ -114,6 +114,7 @@ Detailed user-facing parameters remain available:
 - `Input/id_columns`
 - `Split/method`
 - `Split/valid_size`
+- `Split/selection_size`
 - `Split/group_column`
 - `Split/time_column`
 - `Split/valid_filter_column`
@@ -125,6 +126,7 @@ Detailed user-facing parameters remain available:
 - `Features/scaling`
 - `Features/drop_columns`
 - `Features/passthrough_columns`
+- `Features/max_dense_cells`
 - `Model/candidates`
 - `Model/model_params_by_name`
 - `Model/ensemble_enabled`

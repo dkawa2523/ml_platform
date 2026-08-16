@@ -6,10 +6,11 @@ requires-python = ">=3.10"
 dependencies = [
   "ml-platform-core",
   "ml-platform-tabular",
+  "ml-platform-clearml",
 ]
 
 [project.optional-dependencies]
-clearml = ["clearml==2.1.7"]
+clearml = ["ml-platform-clearml[sdk]"]
 gbm = ["ml-platform-tabular[gbm]"]
 
 [dependency-groups]
@@ -22,10 +23,29 @@ dev = [
   "radon>=6.0",
   "import-linter>=2.0",
 ]
+quality = [
+  "bandit[toml]>=1.8.6",
+  "coverage[toml]>=7.10",
+  "detect-secrets>=1.5",
+  "diff-cover>=9.7",
+  "hypothesis>=6.135",
+  "import-linter>=2.0",
+  "nox>=2025.5.1",
+  "pip-audit>=2.9",
+  "pyrefly>=0.34",
+  "pytest>=8.0",
+  "radon>=6.0",
+  "ruff>=0.12",
+  "vulture>=2.14",
+]
+nightly = [
+  { include-group = "quality" },
+  "mutmut>=3.3",
+]
 docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
-  "pymdown-extensions>=10.8",
+  "pymdown-extensions>=11.0.1",
 ]
 
 [tool.uv]
@@ -35,20 +55,69 @@ package = false
 members = [
   "pkgs/core",
   "pkgs/tabular",
+  "pkgs/clearml",
 ]
 
 [tool.uv.sources]
 ml-platform-core = { workspace = true }
 ml-platform-tabular = { workspace = true }
+ml-platform-clearml = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = [
   "pkgs/core/src",
   "pkgs/tabular/src",
+  "pkgs/clearml/src",
   "."
 ]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+branch = true
+source = [
+  "ml_platform_clearml",
+  "ml_platform_core",
+  "ml_platform_tabular",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 81
+
+[tool.coverage.json]
+output = ".quality/reports/coverage.json"
+
+[tool.coverage.xml]
+output = ".quality/reports/coverage.xml"
+
+[tool.pyrefly]
+preset = "default"
+python-version = "3.11"
+check-unannotated-defs = true
+project-includes = [
+  "clearml/**/*.py",
+  "pkgs/clearml/src/**/*.py",
+  "pkgs/core/src/**/*.py",
+  "pkgs/tabular/src/**/*.py",
+  "scripts/**/*.py",
+  "tests/**/*.py",
+  "quality/**/*.py",
+  "noxfile.py",
+]
+project-excludes = [
+  ".quality/**",
+  "docs/ml_platform_mkdocs/site/**",
+  "outputs/**",
+]
+search-path = [
+  ".",
+  "clearml",
+  "tests",
+  "pkgs/core/src",
+  "pkgs/tabular/src",
+  "pkgs/clearml/src",
+]
 [tool.ruff]
 target-version = "py310"
 line-length = 120
@@ -58,22 +127,76 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "A",
+  "PT",
+  "RUF",
+  "S",
+  "C90",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 # ClearML templates execute these files directly, so they must bootstrap the
-# operations directory before sibling imports until R18 moves runtime entrypoints
-# behind a package/manifest boundary.
+# workspace packages before importing their implementation.
 "clearml/app.py" = ["E402"]
 "clearml/pipelines.py" = ["E402"]
 "clearml/templates.py" = ["E402"]
+"tests/**/*.py" = ["S101"]
+
+[tool.bandit]
+exclude_dirs = [
+  ".quality",
+  ".venv",
+  "docs",
+  "outputs",
+  "tests",
+]
+targets = ["clearml", "pkgs", "scripts"]
+
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = [
+  "src/ml_platform_core/config_validation.py",
+  "src/ml_platform_tabular/inference/schema.py",
+  "src/ml_platform_tabular/metrics.py",
+  "src/ml_platform_tabular/target_model_bundle.py",
+]
+also_copy = ["clearml/", "config/"]
+pytest_add_cli_args_test_selection = [
+  "tests/test_config_validation.py",
+  "tests/test_infer_schema_check.py",
+  "tests/test_target_metrics.py",
+  "tests/test_target_model_bundle.py",
+]
 
 [tool.importlinter]
 root_packages = [
+  "ml_platform_clearml",
   "ml_platform_core",
   "ml_platform_tabular",
 ]
 include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Runtime layers flow from ClearML to tabular to core"
+type = "layers"
+layers = [
+  "ml_platform_clearml",
+  "ml_platform_tabular",
+  "ml_platform_core",
+]
 
 [[tool.importlinter.contracts]]
 name = "Core and tabular stay free of ClearML runtime imports"
@@ -84,4 +207,12 @@ source_modules = [
 ]
 forbidden_modules = [
   "clearml",
+]
+
+[[tool.importlinter.contracts]]
+name = "Training and inference are independent features"
+type = "independence"
+modules = [
+  "ml_platform_tabular.training",
+  "ml_platform_tabular.inference",
 ]

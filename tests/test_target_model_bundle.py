@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import pytest
-
 from ml_platform_core.io import dump_joblib, load_joblib
 from ml_platform_tabular.target_model_bundle import TargetModelBundle
 
@@ -20,7 +19,7 @@ class _LinearPredictor:
     scale: float
     offset: float
 
-    def fit(self, X: object, y: object) -> "_LinearPredictor":
+    def fit(self, X: object, y: object) -> _LinearPredictor:
         return self
 
     def predict(self, X: object) -> np.ndarray:
@@ -29,7 +28,7 @@ class _LinearPredictor:
 
 
 class _TwoDimensionalPredictor:
-    def fit(self, X: object, y: object) -> "_TwoDimensionalPredictor":
+    def fit(self, X: object, y: object) -> _TwoDimensionalPredictor:
         return self
 
     def predict(self, X: object) -> np.ndarray:

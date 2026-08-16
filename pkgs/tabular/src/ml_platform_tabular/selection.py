@@ -5,7 +5,6 @@ from typing import Any
 
 from .metrics import DEFAULT_REGRESSION_METRICS
 
-
 REPORT_METRICS = ("rmse", "mae", "r2")
 HIGHER_IS_BETTER_METRICS = {"r2", "skill"}
 SELECTION_METRICS = {*REPORT_METRICS, "relative_rmse", "skill"}

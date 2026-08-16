@@ -1,0 +1,47 @@
+{
+  "bandit": {
+    "[\"B301\",\"pkgs/core/src/ml_platform_core/io.py\",\"load_joblib\",\"Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.\"]": 1,
+    "[\"B403\",\"pkgs/core/src/ml_platform_core/io.py\",\"<module>\",\"Consider possible security implications associated with pickle module.\"]": 1
+  },
+  "coverage": {
+    "branch_percent": 67.8571
+  },
+  "mutation": {
+    "ml_platform_core/config_validation.py": {
+      "incomplete": 0,
+      "kill_rate": 62.4309,
+      "killed": 113,
+      "survived": 68,
+      "total": 181,
+      "untested": 0
+    },
+    "ml_platform_tabular/inference/schema.py": {
+      "incomplete": 0,
+      "kill_rate": 64.1638,
+      "killed": 188,
+      "survived": 64,
+      "total": 293,
+      "untested": 41
+    },
+    "ml_platform_tabular/metrics.py": {
+      "incomplete": 0,
+      "kill_rate": 55.4245,
+      "killed": 235,
+      "survived": 112,
+      "total": 424,
+      "untested": 77
+    },
+    "ml_platform_tabular/target_model_bundle.py": {
+      "incomplete": 0,
+      "kill_rate": 86.4198,
+      "killed": 70,
+      "survived": 11,
+      "total": 81,
+      "untested": 0
+    }
+  },
+  "ruff": {
+    "[\"S301\",\"pkgs/core/src/ml_platform_core/io.py\",\"load_joblib\",\"`pickle` and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue\"]": 1
+  },
+  "schema_version": 1
+}

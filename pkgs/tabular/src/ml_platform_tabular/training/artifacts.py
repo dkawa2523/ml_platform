@@ -10,7 +10,6 @@ from ..features import FeatureTransformer
 from ..models import Predictor
 from ..selection import REPORT_METRICS
 
-
 LEADERBOARD_METRICS = list(REPORT_METRICS)
 LEADERBOARD_TOP_K = 5
 LEADERBOARD_REPORT_SCHEMA_VERSION = "leaderboard_dashboard_v2"
@@ -78,7 +77,7 @@ class CandidateResult:
     ensemble_method: str | None = None
     artifact_name: str = "model"
     selected_base_models: list[EnsembleMember] = field(default_factory=list)
-    ensemble_results: list["CandidateResult"] = field(default_factory=list)
+    ensemble_results: list[CandidateResult] = field(default_factory=list)
 
 
 def candidate_selector(item: CandidateResult) -> str:
@@ -97,8 +96,7 @@ def candidate_ref_payload(item: CandidateResult) -> dict[str, Any]:
         "model": _path_text(item.artifacts.get("model")),
         "model_info": _path_text(item.artifacts.get("model_info")),
         "metrics": _path_text(item.artifacts.get("metrics")),
-        "validation_predictions": _path_text(item.tables.get("validation_predictions")),
-        "ensemble_predictions": _path_text(item.tables.get("ensemble_predictions")),
+        "selection_predictions": _path_text(item.tables.get("selection_predictions")),
     }
     return {key: value for key, value in payload.items() if value is not None}
 

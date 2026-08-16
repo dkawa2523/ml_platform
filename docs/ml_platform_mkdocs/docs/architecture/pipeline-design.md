@@ -33,7 +33,7 @@ graph LR
 
 ## Stage handoff
 
-ClearML Pipeline では、前段 Stage の Artifact URL を後段 Stage に渡します。`clearml/adapter.py` が実行時に URL を local path に解決し、`pkgs/tabular` には ClearML に依存しない path と JSON refs として渡します。
+ClearML Pipeline では、前段 Stage の Artifact URL を後段 Stage に渡します。`ml_platform_clearml.adapter` が実行時に URL を local path に解決し、`pkgs/tabular` には ClearML に依存しない path と JSON refs として渡します。
 
 ```mermaid
 sequenceDiagram

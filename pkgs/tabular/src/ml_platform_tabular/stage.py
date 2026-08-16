@@ -120,13 +120,14 @@ def _run_build_ensemble(cfg: dict[str, Any]) -> RunResult:
 
 
 def _run_evaluate_models(cfg: dict[str, Any]) -> RunResult:
+    preprocess = load_preprocess(cfg)
     inputs = stage_inputs(cfg)
     selection_metric, _ = _metric_settings(cfg)
     models = model_refs(inputs)
     ensembles = ensemble_refs(inputs)
 
     run_dir = stage_run_dir(cfg, "evaluate_models")
-    result = evaluate_model_candidates(cfg, models, ensembles, run_dir, selection_metric)
+    result = evaluate_model_candidates(cfg, preprocess, models, ensembles, run_dir, selection_metric)
     artifacts = dict(result.artifacts)
     tables = dict(result.tables)
     metrics = dict(result.metrics)

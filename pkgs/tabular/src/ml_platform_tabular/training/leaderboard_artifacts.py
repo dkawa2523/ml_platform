@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +9,7 @@ from ..plotting import (
     write_leaderboard_metric_panel,
     write_leaderboard_table,
 )
-from .artifacts import CandidateResult, LEADERBOARD_METRICS, LEADERBOARD_TOP_K, candidate_selector
+from .artifacts import LEADERBOARD_METRICS, LEADERBOARD_TOP_K, CandidateResult, candidate_selector
 
 
 @dataclass(frozen=True)
@@ -19,15 +19,16 @@ class LeaderboardArtifacts:
 
 
 def build_leaderboard_rows(results: list[CandidateResult], selection_metric: str) -> list[dict[str, Any]]:
-    rows = []
+    rows: list[dict[str, Any]] = []
     for rank, item in enumerate(results, start=1):
-        row = {
+        row: dict[str, Any] = {
             "rank": rank,
             "model_name": item.model_name,
             "artifact_kind": item.artifact_kind,
             "ensemble_method": item.ensemble_method,
             "stage": item.stage,
             "selection_metric": selection_metric,
+            "metric_scope": "selection_holdout",
             "ref_kind": "task_artifact",
             "infer_selector": "Model/model_selector",
             "infer_target": candidate_selector(item),

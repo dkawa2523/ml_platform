@@ -1,5 +1,4 @@
 import pytest
-
 from ml_platform_core.config import load_run_config, parse_overrides
 from ml_platform_core.value_coercion import as_bool
 
@@ -21,7 +20,7 @@ def test_cli_override_parser():
 
 
 def test_config_override_is_validated_after_application():
-    with pytest.raises(ValueError, match="runtime.use_clearml must be a boolean"):
+    with pytest.raises(ValueError, match=r"runtime\.use_clearml must be a boolean"):
         load_run_config(
             "config/tasks/tabular_pipeline.yaml",
             "config/profiles/local.yaml",

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import write_table
 
 from .common import _canvas, _font, _save, _short_label
@@ -58,8 +58,11 @@ def _metric_panel_items(rows: list[dict[str, Any]], metric: str) -> list[tuple[s
 
 
 def _finite_metric_value(row: dict[str, Any], metric: str) -> float | None:
+    raw_value = row.get(metric)
+    if raw_value is None:
+        return None
     try:
-        value = float(row.get(metric))
+        value = float(raw_value)
     except (TypeError, ValueError):
         return None
     return value if np.isfinite(value) else None
