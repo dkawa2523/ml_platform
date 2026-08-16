@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from ml_platform_core.config import load_run_config
 from ml_platform_core.io import read_json
 from ml_platform_tabular.inference import run_infer
@@ -71,8 +70,8 @@ def _assert_training_leaderboard_outputs(result):
     )
     assert "ensemble:median" in set(leaderboard["infer_target"])
     assert list(leaderboard["rank"]) == list(range(1, len(leaderboard) + 1))
-    validation_predictions = pd.read_csv(result.tables["validation_predictions_linear"])
-    assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(validation_predictions.columns)
+    selection_predictions = pd.read_csv(result.tables["selection_predictions_linear"])
+    assert {"actual", "prediction", "residual", "abs_error", "model_name"} <= set(selection_predictions.columns)
     assert _expected_training_plots_present() <= set(result.plots)
     assert _expected_training_plots_absent().isdisjoint(result.plots)
     assert result.plots["best_feature_importance"].suffix == ".png"
@@ -167,19 +166,19 @@ def _expected_training_tables():
         "leaderboard",
         "evaluation_predictions",
         "metrics_table_linear",
-        "validation_predictions_linear",
-        "validation_predictions_ridge",
-        "validation_predictions_lasso",
-        "validation_predictions_elasticnet",
-        "validation_predictions_random_forest",
-        "validation_predictions_extra_trees",
-        "validation_predictions_gradient_boosting",
+        "selection_predictions_linear",
+        "selection_predictions_ridge",
+        "selection_predictions_lasso",
+        "selection_predictions_elasticnet",
+        "selection_predictions_random_forest",
+        "selection_predictions_extra_trees",
+        "selection_predictions_gradient_boosting",
         "feature_importance",
-        "ensemble_predictions",
+        "selection_predictions",
         "ensemble_metrics_table",
-        "ensemble_predictions_mean_topk",
-        "ensemble_predictions_weighted",
-        "ensemble_predictions_median",
+        "selection_predictions_mean_topk",
+        "selection_predictions_weighted",
+        "selection_predictions_median",
         "ensemble_members_mean_topk",
         "ensemble_members_weighted",
         "ensemble_members_median",

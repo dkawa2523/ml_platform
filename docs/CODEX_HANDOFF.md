@@ -50,13 +50,11 @@ Supported ensemble methods are `mean_topk`, `weighted`, and `median`.
 
 ## Local Checks
 
-Use dependency-free candidates unless GBM extras are installed locally:
+Use the shared quality commands rather than repeating individual checks:
 
 ```powershell
-uv run python scripts/make_sample_data.py
-uv run python scripts/local_run.py --task config/tasks/tabular_pipeline.yaml --profile config/profiles/local.yaml --set "model.candidates=[linear,ridge,lasso,elasticnet,random_forest,extra_trees,gradient_boosting]"
-uv run python scripts/local_run.py --task config/tasks/tabular_infer.yaml --profile config/profiles/local.yaml
-uv run python -m pytest -q
+uv run --group quality nox -s quality-fast
+uv run --group quality nox -s quality-pr
 ```
 
 ## ClearML Checks

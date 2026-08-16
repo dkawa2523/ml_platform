@@ -2,7 +2,6 @@ import json
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.config import load_run_config
 from ml_platform_core.io import load_joblib, read_json
 from ml_platform_tabular.inference import run_infer

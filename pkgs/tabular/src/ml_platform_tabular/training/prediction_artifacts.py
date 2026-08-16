@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pandas as pd
+from ml_platform_core.io import write_table
 
 from ..plotting import (
     write_feature_importance_plot_if_available,
@@ -13,38 +13,20 @@ from ..plotting import (
 )
 from .artifacts import CandidateResult
 
-
 PREDICTION_COLUMNS = {"actual", "prediction"}
-
-
-def prediction_table_path(item: CandidateResult) -> Path | None:
-    path = item.tables.get("validation_predictions") or item.tables.get("ensemble_predictions")
-    return Path(path) if path else None
-
-
-def _prediction_frame(item: CandidateResult) -> pd.DataFrame | None:
-    source = prediction_table_path(item)
-    if source is None or not source.exists():
-        return None
-    frame = pd.read_csv(source)
-    if not PREDICTION_COLUMNS <= set(frame.columns):
-        return None
-    return frame
 
 
 def write_evaluation_diagnostics(
     best: CandidateResult,
+    frame: pd.DataFrame,
     stage_dir: Path,
 ) -> tuple[Path | None, dict[str, Path], dict[str, Path]]:
-    source = prediction_table_path(best)
-    if source is None or not source.exists():
-        return None, {}, {}
-    frame = _prediction_frame(best)
     destination = stage_dir / "evaluation_predictions.csv"
-    if source != destination:
-        shutil.copy2(source, destination)
+    if not set(frame.columns) >= PREDICTION_COLUMNS:
+        raise ValueError("Evaluation predictions must contain actual and prediction columns.")
+    write_table(frame, destination)
     tables: dict[str, Path] = {}
-    plots = _best_prediction_plots(frame, stage_dir) if frame is not None else {}
+    plots = _best_prediction_plots(frame, stage_dir)
     importance_table, importance_plot = write_feature_importance_plot_if_available(best.estimator, stage_dir)
     if importance_table is not None:
         tables["feature_importance"] = importance_table

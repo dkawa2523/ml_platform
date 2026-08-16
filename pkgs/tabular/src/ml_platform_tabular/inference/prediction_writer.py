@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from ml_platform_core.io import write_table
 
-from .prediction_frame import _prediction_frame
+from .prediction_frame import build_prediction_frame
 
 
 def _prediction_input(df, features: list[str], estimator):
@@ -28,7 +29,7 @@ def write_predictions(
     coordinate_columns: list[str],
 ) -> Path:
     y_pred = estimator.predict(_prediction_input(df, features, estimator))
-    prediction_frame = _prediction_frame(
+    prediction_frame = build_prediction_frame(
         df,
         y_pred,
         id_columns=id_columns,

@@ -1,12 +1,10 @@
 import pytest
-
-from ml_platform_core.config import load_run_config, load_yaml
-
 from clearml_test_utils import (
     load_clearml_adapter_module,
     load_clearml_app_module,
     load_clearml_execution_module,
 )
+from ml_platform_core.config import load_run_config, load_yaml
 
 
 def test_clearml_mapping_shape():
@@ -142,16 +140,22 @@ def test_clearml_prod_execution_image_is_explicitly_required(monkeypatch):
 
 def test_clearml_runtime_validation_checks_expected_sdk_contract():
     adapter = load_clearml_adapter_module()
-    FakeSdk = type("FakeSdk", (), {"__version__": "2.1.7", "Task": object, "StorageManager": object})
-    FakeAutomation = type("FakeAutomation", (), {"PipelineController": object})
 
-    setattr(adapter, "import_clearml_sdk", lambda: FakeSdk)
-    setattr(adapter, "import_clearml_automation", lambda: FakeAutomation)
+    class FakeSdk:
+        __version__ = "2.1.7"
+        Task = object
+        StorageManager = object
+
+    class FakeAutomation:
+        PipelineController = object
+
+    adapter.__dict__["import_clearml_sdk"] = lambda: FakeSdk
+    adapter.__dict__["import_clearml_automation"] = lambda: FakeAutomation
     adapter.validate_clearml_runtime()
     adapter.validate_clearml_runtime(require_automation=True)
 
-    setattr(FakeSdk, "__version__", "2.0.0")
-    with pytest.raises(adapter.ClearMLUnavailable, match="2.1"):
+    FakeSdk.__version__ = "2.0.0"
+    with pytest.raises(adapter.ClearMLUnavailable, match=r"2\.1"):
         adapter.validate_clearml_runtime()
 
 

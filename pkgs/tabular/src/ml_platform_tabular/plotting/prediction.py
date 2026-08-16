@@ -35,7 +35,7 @@ def write_prediction_vs_actual_plot(y_true, y_pred, path: Path, *, title: str = 
     min_value, _, span = _value_range(actual, prediction)
     draw.line((left, top + plot_h, left + plot_w, top), fill="#9aa4b2", width=1)
     draw.text((left + plot_w - 40, top + 8), "y=x", fill="#596579", font=font)
-    for a, p in zip(actual, prediction):
+    for a, p in zip(actual, prediction, strict=True):
         x = left + int((float(a) - min_value) / span * plot_w)
         y = top + plot_h - int((float(p) - min_value) / span * plot_h)
         draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill="#2878b8")
@@ -71,7 +71,7 @@ def write_residual_vs_predicted_plot(y_true, y_pred, path: Path, *, title: str =
         zero_y = top + plot_h - int((0.0 - y_min) / y_span * plot_h)
         draw.line((left, zero_y, left + plot_w, zero_y), fill="#9aa4b2", width=1)
         draw.text((left + plot_w - 32, zero_y + 4), "0", fill="#596579", font=font)
-    for p, r in zip(prediction, residual):
+    for p, r in zip(prediction, residual, strict=True):
         x = left + int((float(p) - x_min) / x_span * plot_w)
         y = top + plot_h - int((float(r) - y_min) / y_span * plot_h)
         draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill="#e17c45")

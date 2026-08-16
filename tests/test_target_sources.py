@@ -1,10 +1,9 @@
 from pathlib import Path
 
+import ml_platform_tabular.target_sources as target_sources
 import numpy as np
 import pandas as pd
 import pytest
-
-import ml_platform_tabular.target_sources as target_sources
 from ml_platform_tabular.target_sources import (
     SOURCE_ROW_COLUMN,
     TARGET_COLUMN,
@@ -173,7 +172,7 @@ def test_rejects_two_roles_mapped_to_the_same_source_column(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "manifest, message",
+    ("manifest", "message"),
     [
         ({}, "schema_version"),
         ({"schema_version": 1}, "manifest.defaults"),

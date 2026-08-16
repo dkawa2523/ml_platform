@@ -5,12 +5,12 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import write_json
 from ml_platform_core.value_coercion import as_str_list
 
 from ..data import select_features
 from ..target_sources import SOURCE_ROW_COLUMN, TARGET_COLUMN
+from .metadata import known_target_column
 
 
 def _as_list(value: Any) -> list[str]:
@@ -29,28 +29,33 @@ def _estimator_feature_columns(estimator: Any) -> list[str] | None:
     return None
 
 
-def _required_feature_columns(
+def required_feature_columns(
     cfg: dict[str, Any],
     *,
     estimator: Any,
     model_info: dict[str, Any],
 ) -> list[str] | None:
-    data_cfg = cfg.get("data", {})
-    learned_schemas = [
-        _as_list(feature_columns)
-        for feature_columns in (model_info.get("feature_columns"), _estimator_feature_columns(estimator))
-        if feature_columns
-    ]
-    learned = learned_schemas[0] if learned_schemas else None
-    if learned is not None and any(schema != learned for schema in learned_schemas[1:]):
-        raise ValueError(f"Trained model schema artifacts disagree: {learned_schemas}")
-
-    explicit = _as_list(data_cfg.get("feature_columns"))
+    learned = _learned_feature_columns(estimator, model_info)
+    explicit = _as_list(cfg.get("data", {}).get("feature_columns"))
     if learned is not None and explicit and explicit != learned:
         raise ValueError(
             f"data.feature_columns must match the trained model schema exactly; expected {learned}, got {explicit}"
         )
     return learned or explicit or None
+
+
+def _learned_feature_columns(estimator: Any, model_info: dict[str, Any]) -> list[str] | None:
+    schemas = [
+        _as_list(columns)
+        for columns in (model_info.get("feature_columns"), _estimator_feature_columns(estimator))
+        if columns
+    ]
+    if not schemas:
+        return None
+    learned = schemas[0]
+    if any(schema != learned for schema in schemas[1:]):
+        raise ValueError(f"Trained model schema artifacts disagree: {schemas}")
+    return learned
 
 
 def _effective_id_columns(cfg: dict[str, Any], model_info: dict[str, Any]) -> list[str]:
@@ -91,23 +96,27 @@ def _unseen_category_columns(df, preprocess_bundle: dict[str, Any]) -> list[str]
 
 
 def _invalid_numeric_columns(df: pd.DataFrame, preprocess_bundle: dict[str, Any]) -> list[str]:
+    columns, passthrough_columns = _numeric_columns(preprocess_bundle)
+    return [
+        column
+        for column in columns
+        if column in df.columns
+        and _has_invalid_numeric_values(df[column], require_complete=column in passthrough_columns)
+    ]
+
+
+def _numeric_columns(preprocess_bundle: dict[str, Any]) -> tuple[list[str], set[str]]:
     transformer = preprocess_bundle.get("transformer")
-    numeric_columns = getattr(transformer, "numeric_cols", []) or []
-    passthrough_columns = getattr(transformer, "passthrough_cols", []) or []
-    passthrough_set = {str(column) for column in passthrough_columns}
-    columns = list(dict.fromkeys(str(column) for column in [*numeric_columns, *passthrough_columns]))
-    invalid: list[str] = []
-    for column in columns:
-        if column not in df.columns:
-            continue
-        original = df[column]
-        numeric = pd.to_numeric(original, errors="coerce")
-        conversion_failed = original.notna() & numeric.isna()
-        non_finite = numeric.map(lambda value: bool(pd.notna(value)) and not np.isfinite(float(value)))
-        passthrough_missing = column in passthrough_set and numeric.isna().any()
-        if bool(conversion_failed.any() or non_finite.any() or passthrough_missing):
-            invalid.append(column)
-    return invalid
+    numeric = [str(column) for column in (getattr(transformer, "numeric_cols", []) or [])]
+    passthrough = {str(column) for column in (getattr(transformer, "passthrough_cols", []) or [])}
+    return list(dict.fromkeys([*numeric, *passthrough])), passthrough
+
+
+def _has_invalid_numeric_values(values: pd.Series, *, require_complete: bool) -> bool:
+    numeric = pd.to_numeric(values, errors="coerce")
+    conversion_failed = values.notna() & numeric.isna()
+    non_finite = numeric.map(lambda value: bool(pd.notna(value)) and not np.isfinite(float(value)))
+    return bool(conversion_failed.any() or non_finite.any() or (require_complete and numeric.isna().any()))
 
 
 def _category_metadata(preprocess_bundle: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
@@ -125,7 +134,7 @@ def _has_unseen_categories(values: pd.Series, levels: Any, fill_value: Any) -> b
     return any(value not in known for value in filled.unique().tolist())
 
 
-def _schema_check_summary(
+def schema_check_summary(
     df,
     *,
     feature_columns: list[str],
@@ -145,7 +154,7 @@ def _schema_check_summary(
         "extra_columns": extra_columns,
         "id_columns": existing_id_columns,
         "missing_id_columns": missing_id_columns,
-        "row_count": int(len(df)),
+        "row_count": len(df),
         "unknown_or_unseen_category_warning": bool(unseen_columns),
         "unseen_category_columns": unseen_columns,
         "invalid_numeric_features": invalid_numeric_columns,
@@ -197,5 +206,43 @@ def _schema_status(
     return "ok"
 
 
-def _write_schema_check(summary: dict[str, Any], run_dir: Path) -> Path:
+def check_inference_schema(
+    cfg: dict[str, Any],
+    df: pd.DataFrame,
+    *,
+    estimator: Any,
+    model_info: dict[str, Any],
+) -> tuple[list[str], dict[str, Any]]:
+    """Resolve the trained feature contract and validate one inference table."""
+    id_columns = _effective_id_columns(cfg, model_info)
+    required_features = required_feature_columns(
+        cfg,
+        estimator=estimator,
+        model_info=model_info,
+    )
+    features = _features_for_inference(
+        df,
+        cfg,
+        required_features=required_features,
+        id_columns=id_columns,
+    )
+    summary = schema_check_summary(
+        df,
+        feature_columns=features,
+        id_columns=id_columns,
+        target_column=known_target_column(cfg, model_info),
+        preprocess_bundle=_preprocess_bundle(estimator),
+    )
+    return features, summary
+
+
+def _preprocess_bundle(estimator: Any) -> dict[str, Any]:
+    transformer = getattr(estimator, "transformer", None)
+    estimators = getattr(estimator, "estimators", None)
+    if transformer is None and estimators:
+        transformer = getattr(estimators[0], "transformer", None)
+    return {"transformer": transformer} if transformer is not None else {}
+
+
+def write_schema_check(summary: dict[str, Any], run_dir: Path) -> Path:
     return write_json(summary, run_dir / "schema_check_summary.json")

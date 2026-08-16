@@ -4,7 +4,6 @@ from typing import Any
 
 import pandas as pd
 
-
 HIGH_MISSING_WARNING_RATE = 0.2
 
 
@@ -121,18 +120,18 @@ def build_data_quality_report(
     id_columns: list[str] | str | None = None,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """Build a lightweight data-quality summary for tabular regression inputs."""
-    row_count = int(len(df))
+    row_count = len(df)
     existing_id_columns = _existing_columns(id_columns, df)
     summary: dict[str, Any] = {
         "row_count": row_count,
-        "column_count": int(len(df.columns)),
+        "column_count": len(df.columns),
         "target_column": target_column,
         "duplicate_row_count": int(df.duplicated(keep=False).sum()),
         "id_columns": existing_id_columns,
         "id_duplicate_count": _id_duplicate_count(df, existing_id_columns),
-        "feature_count": int(len(feature_columns)),
-        "numeric_feature_count": int(len(numeric_columns)),
-        "categorical_feature_count": int(len(categorical_columns)),
+        "feature_count": len(feature_columns),
+        "numeric_feature_count": len(numeric_columns),
+        "categorical_feature_count": len(categorical_columns),
         "high_missing_columns": _column_missing_rows(df, feature_columns),
         "high_cardinality_columns": _high_cardinality_rows(df, categorical_columns),
     }

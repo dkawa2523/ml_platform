@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import write_table
 
 from .common import _canvas, _font, _save, _short_label

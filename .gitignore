@@ -9,7 +9,7 @@ __pycache__/
 .mutmut-cache
 mutants/
 outputs/
-data/
+/data/
 verification/raw/
 verification/full_run_rerun/
 credentials/

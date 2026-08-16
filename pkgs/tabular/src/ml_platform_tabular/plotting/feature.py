@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from ml_platform_core.io import write_table
 
 from .common import write_metrics_bar_plot
@@ -78,10 +77,10 @@ def _feature_importance_frame(estimator: Any) -> pd.DataFrame | None:
     raw_values = None
     source = None
     if hasattr(model, "feature_importances_"):
-        raw_values = np.asarray(getattr(model, "feature_importances_"), dtype=float).reshape(-1)
+        raw_values = np.asarray(model.feature_importances_, dtype=float).reshape(-1)
         source = "feature_importances_"
     elif hasattr(model, "coef_"):
-        raw_values = np.asarray(getattr(model, "coef_"), dtype=float).reshape(-1)
+        raw_values = np.asarray(model.coef_, dtype=float).reshape(-1)
         if raw_values.shape[0] == len(columns) + 1:
             raw_values = raw_values[1:]
         source = "coef_"

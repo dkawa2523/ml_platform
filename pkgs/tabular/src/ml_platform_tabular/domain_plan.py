@@ -12,9 +12,10 @@ from .manifest import (
     TABULAR_MANIFEST,
     TABULAR_PREPROCESS_STAGE,
     TABULAR_TRAIN_STAGE,
-    TABULAR_TRAINING_PIPELINE_SPEC,
 )
 from .models import validate_model_name
+
+TABULAR_PIPELINE_KEY = "tabular_training_graph"
 
 
 def build_tabular_domain_plan(
@@ -48,7 +49,7 @@ def build_tabular_domain_plan(
         _evaluate_step(evaluate_parents, stage_common_overrides, selection_metric),
     ]
     return DomainPipelinePlan(
-        key=TABULAR_TRAINING_PIPELINE_SPEC.key,
+        key=TABULAR_PIPELINE_KEY,
         version=TABULAR_MANIFEST.version,
         run_name=run_name,
         steps=tuple(steps),

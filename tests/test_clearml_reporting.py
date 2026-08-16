@@ -1,8 +1,7 @@
 import json
 
-from ml_platform_core.result import RunResult
-
 from clearml_test_utils import load_clearml_adapter_module, load_clearml_reports_module
+from ml_platform_core.result import RunResult
 
 
 class RecordingAdapter:

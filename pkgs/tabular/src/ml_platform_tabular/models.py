@@ -1,64 +1,41 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 
-DEPENDENCY_FREE_MODELS = [
-    "linear",
-    "ridge",
-    "lasso",
-    "elasticnet",
-    "random_forest",
-    "extra_trees",
-    "gradient_boosting",
+from .model_candidates import ModelCandidate, model_candidates
+from .model_catalog import (
+    AVAILABLE_MODELS,
+    DEPENDENCY_FREE_MODELS,
+    OPTIONAL_DEPENDENCY_MODELS,
+    OPTIONAL_MODEL_SPECS,
+    SKLEARN_MODEL_SPECS,
+    SUPPORTED_MODELS,
+    model_params_for_seed,
+    validate_model_name,
+)
+
+__all__ = [
+    "AVAILABLE_MODELS",
+    "DEPENDENCY_FREE_MODELS",
+    "OPTIONAL_DEPENDENCY_MODELS",
+    "SUPPORTED_MODELS",
+    "FrameTransformer",
+    "MeanTopKEnsemble",
+    "MedianEnsemble",
+    "ModelCandidate",
+    "OptionalDependencyError",
+    "Predictor",
+    "Regressor",
+    "build_model",
+    "model_candidates",
+    "model_params_for_seed",
+    "validate_model_name",
 ]
-OPTIONAL_DEPENDENCY_MODELS = [
-    "lightgbm",
-    "xgboost",
-    "catboost",
-]
-SUPPORTED_MODELS = [*DEPENDENCY_FREE_MODELS, *OPTIONAL_DEPENDENCY_MODELS]
-AVAILABLE_MODELS = list(SUPPORTED_MODELS)
-OUT_OF_SCOPE_MODELS = {
-    "knn",
-    "svr",
-    "mlp",
-    "gaussian_process",
-    "tabpfn",
-}
-SKLEARN_MODEL_SPECS: dict[str, tuple[str, str, dict[str, Any]]] = {
-    "random_forest": ("sklearn.ensemble", "RandomForestRegressor", {"n_jobs": 1}),
-    "gradient_boosting": ("sklearn.ensemble", "GradientBoostingRegressor", {}),
-    "lasso": ("sklearn.linear_model", "Lasso", {"alpha": 0.01, "max_iter": 5000}),
-    "elasticnet": (
-        "sklearn.linear_model",
-        "ElasticNet",
-        {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000},
-    ),
-    "extra_trees": ("sklearn.ensemble", "ExtraTreesRegressor", {"n_estimators": 50, "n_jobs": 1}),
-}
-OPTIONAL_MODEL_SPECS: dict[str, tuple[str, str, dict[str, Any]]] = {
-    "lightgbm": ("lightgbm", "LGBMRegressor", {"n_estimators": 100, "n_jobs": 1}),
-    "xgboost": (
-        "xgboost",
-        "XGBRegressor",
-        {"n_estimators": 100, "n_jobs": 1, "objective": "reg:squarederror", "verbosity": 0},
-    ),
-    "catboost": ("catboost", "CatBoostRegressor", {"iterations": 100, "verbose": False}),
-}
-MODEL_SEED_PARAMETERS = {
-    "elasticnet": "random_state",
-    "random_forest": "random_state",
-    "extra_trees": "random_state",
-    "gradient_boosting": "random_state",
-    "lightgbm": "random_state",
-    "xgboost": "random_state",
-    "catboost": "random_seed",
-}
 
 
 class OptionalDependencyError(RuntimeError):
@@ -77,99 +54,6 @@ class Regressor(Protocol):
 
 class Predictor(Protocol):
     def predict(self, X: pd.DataFrame, /) -> np.ndarray: ...
-
-
-@dataclass(frozen=True)
-class ModelCandidate:
-    name: str
-    params: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "params": dict(self.params)}
-
-
-def validate_model_name(name: str) -> str:
-    if name in OUT_OF_SCOPE_MODELS:
-        raise ValueError(
-            f"Model {name!r} is out of current product scope. "
-            "Use supported models only; LightGBM/XGBoost/CatBoost require optional dependencies."
-        )
-    if name not in AVAILABLE_MODELS:
-        raise ValueError(f"Unknown model name: {name}. Available: {', '.join(AVAILABLE_MODELS)}")
-    return name
-
-
-def candidate_params(model_params: Any, name: str) -> dict[str, Any]:
-    if not model_params:
-        return {}
-    if not isinstance(model_params, dict):
-        raise ValueError("model.params must be a mapping.")
-    value = model_params.get(name)
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"model.params.{name} must be a mapping.")
-    return dict(value)
-
-
-def model_candidates(model_cfg: dict[str, Any]) -> list[ModelCandidate]:
-    raw_candidates = model_cfg.get("candidates") or []
-    model_params = model_cfg.get("params") or {}
-    if not raw_candidates:
-        return [_single_model_candidate(model_cfg, model_params)]
-    if not isinstance(raw_candidates, list):
-        raise ValueError("model.candidates must be a list of model names or model definitions.")
-    return _model_candidate_list(raw_candidates, model_params)
-
-
-def _single_model_candidate(model_cfg: dict[str, Any], model_params: Any) -> ModelCandidate:
-    if not isinstance(model_params, dict):
-        raise ValueError("model.params must be a mapping.")
-    name = str(model_cfg.get("name", "ridge"))
-    validate_model_name(name)
-    return ModelCandidate(name=name, params=dict(model_params))
-
-
-def _model_candidate_list(raw_candidates: list[Any], model_params: Any) -> list[ModelCandidate]:
-    candidates: list[ModelCandidate] = []
-    seen: set[str] = set()
-    for index, item in enumerate(raw_candidates):
-        candidate = _model_candidate(item, index, model_params)
-        _add_unique_candidate(candidates, seen, candidate)
-    return candidates
-
-
-def _model_candidate(item: Any, index: int, model_params: Any) -> ModelCandidate:
-    if isinstance(item, str):
-        name = item.strip()
-        if not name:
-            raise ValueError(f"model.candidates[{index}] must not be empty.")
-        return ModelCandidate(name=name, params=candidate_params(model_params, name))
-    if isinstance(item, dict):
-        return _model_candidate_from_mapping(item, index, model_params)
-    raise ValueError(f"model.candidates[{index}] must be a model name or mapping.")
-
-
-def _model_candidate_from_mapping(item: dict[str, Any], index: int, model_params: Any) -> ModelCandidate:
-    name = item.get("name")
-    if not name:
-        raise ValueError(f"model.candidates[{index}].name is required.")
-    name = str(name)
-    params = item.get("params")
-    if params is None:
-        params = candidate_params(model_params, name)
-    if not isinstance(params, dict):
-        raise ValueError(f"model.candidates[{index}].params must be a mapping.")
-    return ModelCandidate(name=name, params=dict(params))
-
-
-def _add_unique_candidate(candidates: list[ModelCandidate], seen: set[str], candidate: ModelCandidate) -> None:
-    name = candidate.name
-    if name in seen:
-        raise ValueError(f"model.candidates contains duplicate model name: {name}")
-    validate_model_name(name)
-    seen.add(name)
-    candidates.append(ModelCandidate(name=str(name), params=dict(candidate.params)))
 
 
 @dataclass
@@ -233,15 +117,6 @@ class MedianEnsemble:
             raise ValueError("Ensemble has no base estimators.")
         predictions = np.column_stack([estimator.predict(X) for estimator in self.estimators])
         return np.median(predictions, axis=1)
-
-
-def model_params_for_seed(name: str, params: dict[str, Any] | None, seed: int) -> dict[str, Any]:
-    """Return effective model params with run.seed as the only random seed."""
-    resolved = dict(params or {})
-    seed_parameter = MODEL_SEED_PARAMETERS.get(name)
-    if seed_parameter:
-        resolved[seed_parameter] = int(seed)
-    return resolved
 
 
 def build_model(name: str, params: dict[str, Any] | None = None, *, seed: int = 42) -> Regressor:

@@ -41,6 +41,7 @@ data:
 split:
   method: random
   valid_size: 0.2
+  selection_size: 0.2
   group_column: null
   time_column: null
   valid_filter_column: null
@@ -57,6 +58,7 @@ features:
   scaling: standard
   drop_columns: []
   passthrough_columns: []
+  max_dense_cells: 25000000
   params: {}
 
 model:

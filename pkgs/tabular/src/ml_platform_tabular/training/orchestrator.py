@@ -15,9 +15,9 @@ from ml_platform_core.result import RunResult
 from ..policy import validate_primary_training_graph
 from ..selection import metric_settings
 from .artifacts import (
+    LEADERBOARD_REPORT_SCHEMA_VERSION,
     CandidateResult,
     EvaluationResult,
-    LEADERBOARD_REPORT_SCHEMA_VERSION,
 )
 from .candidate_training import train_model_candidates
 from .ensemble import build_ensemble
@@ -37,7 +37,9 @@ def _run_training_pipeline(cfg: dict[str, Any]) -> RunResult:
     model_results = train_model_candidates(cfg, preprocess, pipeline_dir, metric_names)
     ranked_models = ranked_results(model_results, selection_metric)
     ensemble_result = build_ensemble(cfg, preprocess, ranked_models, pipeline_dir, metric_names, selection_metric)
-    evaluation = evaluate_model_candidates(cfg, model_results, ensemble_result, pipeline_dir, selection_metric)
+    evaluation = evaluate_model_candidates(
+        cfg, preprocess, model_results, ensemble_result, pipeline_dir, selection_metric
+    )
 
     artifacts, tables, plots = training_pipeline_outputs(preprocess, model_results, ensemble_result, evaluation)
     summary = _pipeline_summary(

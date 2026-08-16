@@ -4,8 +4,10 @@
 
 Start with:
 
+- `feature_config.py` for presets and configuration validation.
 - `features.py` for transformer behavior.
-- `training/preprocessing.py` for training artifacts and feature summaries.
+- `training/preprocess_data.py` for data preparation.
+- `training/preprocess_artifacts.py` for artifacts and feature summaries.
 - `inference/schema.py` for inference-time schema compatibility.
 
 Keep any learned training-time state in the saved transformer or feature spec.
@@ -20,7 +22,7 @@ Start with:
 - `training/evaluation.py` for evaluation orchestration and result assembly.
 - `training/leaderboard_artifacts.py`, `training/prediction_artifacts.py`,
   and `training/best_model_artifacts.py` for user-facing evaluation artifacts.
-- `clearml/reports.py` only when ClearML display behavior changes.
+- `ml_platform_clearml.reports` only when ClearML display behavior changes.
 
 If a new metric can be used as `selection_metric`, define whether lower or
 higher is better and cover that direction in tests.
@@ -30,6 +32,6 @@ higher is better and cover that direction in tests.
 Run targeted tests first, then the full suite:
 
 ```powershell
-uv run python -m pytest tests/test_pipeline_smoke.py tests/test_tabular_characterization.py
-uv run python -m pytest
+uv run python -m pytest tests/test_pipeline_smoke.py tests/test_feature_transformer.py tests/test_regression_metrics.py
+uv run --group quality nox -s quality-fast
 ```

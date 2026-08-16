@@ -49,7 +49,7 @@ graph LR
 | --- | --- |
 | `metrics.json` | `mae`、`rmse`、`r2` など |
 | `metrics_table.csv` | ClearML table 表示用 |
-| `validation_predictions.csv` | validation に対する予測 |
+| `selection_predictions.csv` | model selection holdout に対する予測 |
 | `feature_importance.csv` | 対応モデルでの重要度 |
 | `prediction_vs_actual` | 予測 vs 実測 |
 | `residual_histogram` | 残差分布 |

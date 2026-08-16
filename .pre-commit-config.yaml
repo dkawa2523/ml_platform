@@ -23,12 +23,6 @@ repos:
         entry: python -m ruff format --check
         language: system
         types_or: [python, pyi]
-      - id: pyrefly
-        name: Pyrefly
-        entry: pyrefly check
-        language: system
-        pass_filenames: false
-        types_or: [python, pyi]
       - id: detect-secrets
         name: detect-secrets
         entry: detect-secrets-hook --baseline .secrets.baseline

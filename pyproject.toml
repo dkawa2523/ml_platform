@@ -6,10 +6,11 @@ requires-python = ">=3.10"
 dependencies = [
   "ml-platform-core",
   "ml-platform-tabular",
+  "ml-platform-clearml",
 ]
 
 [project.optional-dependencies]
-clearml = ["clearml==2.1.7"]
+clearml = ["ml-platform-clearml[sdk]"]
 gbm = ["ml-platform-tabular[gbm]"]
 
 [dependency-groups]
@@ -54,16 +55,19 @@ package = false
 members = [
   "pkgs/core",
   "pkgs/tabular",
+  "pkgs/clearml",
 ]
 
 [tool.uv.sources]
 ml-platform-core = { workspace = true }
 ml-platform-tabular = { workspace = true }
+ml-platform-clearml = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = [
   "pkgs/core/src",
   "pkgs/tabular/src",
+  "pkgs/clearml/src",
   "."
 ]
 testpaths = ["tests"]
@@ -71,7 +75,7 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = [
-  "clearml",
+  "ml_platform_clearml",
   "ml_platform_core",
   "ml_platform_tabular",
 ]
@@ -79,6 +83,7 @@ source = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+fail_under = 81
 
 [tool.coverage.json]
 output = ".quality/reports/coverage.json"
@@ -92,6 +97,7 @@ python-version = "3.11"
 check-unannotated-defs = true
 project-includes = [
   "clearml/**/*.py",
+  "pkgs/clearml/src/**/*.py",
   "pkgs/core/src/**/*.py",
   "pkgs/tabular/src/**/*.py",
   "scripts/**/*.py",
@@ -110,9 +116,8 @@ search-path = [
   "tests",
   "pkgs/core/src",
   "pkgs/tabular/src",
+  "pkgs/clearml/src",
 ]
-baseline = "quality/pyrefly-baseline.json"
-
 [tool.ruff]
 target-version = "py310"
 line-length = 120
@@ -133,7 +138,6 @@ select = [
   "SIM",
   "C4",
   "A",
-  "TID",
   "PT",
   "RUF",
   "S",
@@ -145,8 +149,7 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 # ClearML templates execute these files directly, so they must bootstrap the
-# operations directory before sibling imports until R18 moves runtime entrypoints
-# behind a package/manifest boundary.
+# workspace packages before importing their implementation.
 "clearml/app.py" = ["E402"]
 "clearml/pipelines.py" = ["E402"]
 "clearml/templates.py" = ["E402"]
@@ -180,15 +183,17 @@ pytest_add_cli_args_test_selection = [
 
 [tool.importlinter]
 root_packages = [
+  "ml_platform_clearml",
   "ml_platform_core",
   "ml_platform_tabular",
 ]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Tabular may depend on core but core never depends on tabular"
+name = "Runtime layers flow from ClearML to tabular to core"
 type = "layers"
 layers = [
+  "ml_platform_clearml",
   "ml_platform_tabular",
   "ml_platform_core",
 ]

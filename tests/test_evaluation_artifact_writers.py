@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
+import pytest
 from ml_platform_core.io import read_json
-from ml_platform_tabular.training.artifacts import CandidateResult
+from ml_platform_tabular.features import build_feature_pipeline
+from ml_platform_tabular.training.artifacts import CandidateResult, PreprocessResult
 from ml_platform_tabular.training.best_model_artifacts import write_best_model_artifacts
 from ml_platform_tabular.training.evaluation import evaluate_model_candidates
 
@@ -23,7 +24,7 @@ def _candidate(tmp_path, name: str, *, rmse: float, prediction_offset: float = 0
     model_info_path.write_text("{}", encoding="utf-8")
     metrics_path = source_dir / "metrics.json"
     metrics_path.write_text("{}", encoding="utf-8")
-    predictions_path = source_dir / "validation_predictions.csv"
+    predictions_path = source_dir / "selection_predictions.csv"
     pd.DataFrame(
         {
             "actual": [1.0, 2.0, 3.0],
@@ -42,7 +43,29 @@ def _candidate(tmp_path, name: str, *, rmse: float, prediction_offset: float = 0
             "model_info": model_info_path,
             "metrics": metrics_path,
         },
-        tables={"validation_predictions": predictions_path},
+        tables={"selection_predictions": predictions_path},
+    )
+
+
+def _preprocess() -> PreprocessResult:
+    X_train = pd.DataFrame({"x": [0.0, 1.0, 2.0, 3.0], "__source_row__": [0, 1, 2, 3]})
+    X_valid = pd.DataFrame({"x": [4.0, 5.0, 6.0], "__source_row__": [4, 5, 6]})
+    transformer = build_feature_pipeline("basic", X_train[["x"]])
+    return PreprocessResult(
+        transformer=transformer,
+        feature_columns=["x"],
+        target_column="target",
+        target_names=["target"],
+        coordinate_columns=[],
+        id_columns=[],
+        feature_preset="basic",
+        feature_config=transformer.feature_config,
+        X_train=X_train,
+        X_valid=X_valid,
+        y_train=pd.Series([0.0, 1.0, 2.0, 3.0]),
+        y_valid=pd.Series([4.0, 5.0, 6.0]),
+        artifacts={},
+        tables={},
     )
 
 
@@ -56,6 +79,7 @@ def test_best_model_writer_preserves_copy_and_json_contract(tmp_path):
         best_ensemble=None,
         selection_metric="rmse",
         stage_dir=stage_dir,
+        final_metrics={"rmse": 0.4},
         task_id="task-123",
         code_version="abc123",
     )
@@ -69,6 +93,8 @@ def test_best_model_writer_preserves_copy_and_json_contract(tmp_path):
     assert "source_artifact" not in payload
     assert payload["model_selector"] == "best"
     assert payload["candidate_selector"] == "ridge"
+    assert payload["selection_metrics"]["rmse"] == pytest.approx(0.2)
+    assert payload["metrics"]["rmse"] == pytest.approx(0.4)
     assert payload["recommended_inference_settings"] == {
         "Model/source_type": "task_id",
         "Model/source_task_id": "task-123",
@@ -83,6 +109,7 @@ def test_evaluate_model_candidates_preserves_public_artifact_names(tmp_path):
 
     result = evaluate_model_candidates(
         {"runtime": {"clearml_task_id": "task-123"}},
+        _preprocess(),
         [linear, ridge],
         None,
         tmp_path / "run",
@@ -108,3 +135,7 @@ def test_evaluate_model_candidates_preserves_public_artifact_names(tmp_path):
     best_model = read_json(result.artifacts["best_model_json"])
     assert best_model["recommended_inference_settings"]["Model/source_task_id"] == "task-123"
     assert result.summary["source_task_id"] == "task-123"
+    assert result.metrics["rmse"] == pytest.approx(np.sqrt((16.0 + 25.0 + 36.0) / 3.0))
+    selection_rows = pd.read_csv(ridge.tables["selection_predictions"])["actual"].tolist()
+    evaluation_rows = pd.read_csv(result.tables["evaluation_predictions"])["actual"].tolist()
+    assert selection_rows != evaluation_rows

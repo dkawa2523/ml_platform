@@ -75,7 +75,10 @@ def _preprocess_columns(bundle: Mapping[str, Any], train_df) -> tuple[str, list[
     if not feature_columns:
         feature_columns = [col for col in train_df.columns if col != target_column]
     feature_columns = [str(column) for column in feature_columns]
-    metadata_columns = [column for column in (TARGET_COLUMN, SOURCE_ROW_COLUMN) if column in train_df.columns]
+    metadata_columns = bundle.get("metadata_columns") or [
+        column for column in (TARGET_COLUMN, SOURCE_ROW_COLUMN) if column in train_df.columns
+    ]
+    metadata_columns = [str(column) for column in metadata_columns]
     input_columns = [*feature_columns, *metadata_columns]
     return target_column, feature_columns, input_columns
 
@@ -204,15 +207,10 @@ def _model_params(item: dict[str, Any], model_info: dict[str, Any], model_name: 
 
 
 def _prediction_tables(item: dict[str, Any]) -> dict[str, Path]:
-    path = _optional_path(item, "validation_predictions", label="Validation predictions ref")
-    return {"validation_predictions": path} if path is not None else {}
+    path = _optional_path(item, "selection_predictions", label="Selection predictions ref")
+    return {"selection_predictions": path} if path is not None else {}
 
 
 def _ensemble_reference(item: dict[str, Any]) -> CandidateResult:
     ref = replace(_model_ref(item), artifact_kind="ensemble")
-    artifacts = dict(ref.artifacts)
-    tables = dict(ref.tables)
-    ensemble_predictions = _optional_path(item, "ensemble_predictions", label="Ensemble predictions ref")
-    if ensemble_predictions is not None:
-        tables["ensemble_predictions"] = ensemble_predictions
-    return replace(ref, artifacts=artifacts, tables=tables)
+    return replace(ref, artifacts=dict(ref.artifacts), tables=dict(ref.tables))

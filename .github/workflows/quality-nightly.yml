@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Sync locked nightly environment
-        run: uv sync --frozen --all-extras --group quality --group nightly
+        run: uv sync --frozen --group quality --group nightly
       - name: Run nightly quality gate
         run: uv run --group nightly nox -s quality-nightly
       - name: Upload nightly reports

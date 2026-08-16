@@ -20,6 +20,8 @@ from .ensemble_artifacts import (
     write_method_predictions,
 )
 from .ranking import ranked_results
+from .selection_data import selection_split
+from .selection_predictions import ensemble_selection_predictions
 
 
 def build_ensemble(
@@ -38,6 +40,7 @@ def build_ensemble(
     selected = _selected_candidates(ranked, ensemble_cfg.top_k)
     ensemble_results = [
         _build_method_ensemble(
+            cfg,
             method,
             selected,
             preprocess,
@@ -88,6 +91,7 @@ def _selected_candidates(ranked: list[CandidateResult], top_k: int) -> list[Cand
 
 
 def _build_method_ensemble(
+    cfg: dict[str, Any],
     method: str,
     selected: list[CandidateResult],
     preprocess: PreprocessResult,
@@ -97,22 +101,27 @@ def _build_method_ensemble(
 ) -> CandidateResult:
     weights = ensemble_weights(selected, method, selection_metric)
     estimator = _ensemble_estimator(method, selected, weights)
-    y_pred = estimator.predict(preprocess.X_valid)
-    train_targets = target_labels(preprocess.X_train, preprocess.target_names)
-    valid_targets = target_labels(preprocess.X_valid, preprocess.target_names)
+    prediction_frame = ensemble_selection_predictions(selected, method, weights)
+    split = selection_split(cfg, preprocess)
+    train_targets = target_labels(split.X_fit, preprocess.target_names)
+    selection_targets = (
+        prediction_frame["target"]
+        if "target" in prediction_frame
+        else target_labels(split.X_selection, preprocess.target_names).reset_index(drop=True)
+    )
     metrics, metrics_table = target_regression_metrics(
-        preprocess.y_valid,
-        y_pred,
-        valid_targets,
+        prediction_frame["actual"],
+        prediction_frame["prediction"],
+        selection_targets,
         metrics=metric_names,
-        baseline_means=target_means(preprocess.y_train, train_targets),
+        baseline_means=target_means(split.y_fit, train_targets),
     )
     metrics_table.insert(0, "model_name", method)
     metrics_table_path = write_table(metrics_table, stage_dir / f"metrics_table_{method}.csv")
     model_params = _ensemble_model_params(method, len(selected), selection_metric)
     selected_base_models = _selected_base_models(selected, method, weights)
     member_table = write_member_table(selected_base_models, method, stage_dir)
-    prediction_path = write_method_predictions(preprocess, method, y_pred, stage_dir)
+    prediction_path = write_method_predictions(prediction_frame, method, stage_dir)
     model_path = dump_joblib(estimator, stage_dir / f"model_{method}.joblib")
     model_info_path = write_method_model_info(
         preprocess,
@@ -120,6 +129,7 @@ def _build_method_ensemble(
         model_params,
         selected_base_models,
         weights,
+        model_path,
         stage_dir,
     )
     metrics_path = write_json(metrics, stage_dir / f"metrics_{method}.json")
@@ -135,7 +145,7 @@ def _build_method_ensemble(
             "metrics": metrics_path,
         },
         tables={
-            "ensemble_predictions": prediction_path,
+            "selection_predictions": prediction_path,
             "metrics_table": metrics_table_path,
             "ensemble_members": member_table,
         },

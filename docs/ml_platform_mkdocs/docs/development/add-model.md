@@ -5,9 +5,9 @@ model.
 
 ## Implementation Points
 
-- Add the model name and dependency class in `models.py`.
+- Add the model name and dependency class in `model_catalog.py`.
 - Extend `build_model(name, params)` with a small, explicit branch.
-- Add default or suite behavior in `policy.py` only when the model should be
+- Add default or suite behavior in `model_presets.py` only when the model should be
   available through `Basic/model_suite`.
 - Keep heavy libraries optional by adding them to the package extra, not the
   base requirements.

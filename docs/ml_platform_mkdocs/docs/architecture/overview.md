@@ -36,7 +36,7 @@ graph LR
   A[clearml/app.py] --> B[resolve Dataset and runtime params]
   B --> C[ml_platform_tabular.run_task]
   C --> D[RunResult]
-  D --> E[clearml/reports.py]
+  D --> E[ml_platform_clearml.reports]
   E --> F[ClearML Artifacts / Plots]
 ```
 

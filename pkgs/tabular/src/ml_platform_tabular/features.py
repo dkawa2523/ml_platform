@@ -6,99 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ml_platform_core.value_coercion import as_str_list
-
-PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
-    "basic": {
-        "numeric_impute_strategy": "median",
-        "categorical_impute_strategy": "missing_token",
-        "categorical_encoder": "onehot",
-        "scaling": "standard",
-    },
-    "numeric_only": {
-        "numeric_impute_strategy": "median",
-        "categorical_impute_strategy": "missing_token",
-        "categorical_encoder": "drop",
-        "scaling": "standard",
-    },
-}
-FEATURE_CONFIG_KEYS = {
-    "numeric_impute_strategy",
-    "categorical_impute_strategy",
-    "categorical_encoder",
-    "scaling",
-    "drop_columns",
-    "passthrough_columns",
-}
-NUMERIC_IMPUTE_STRATEGIES = {"median", "mean", "zero"}
-CATEGORICAL_IMPUTE_STRATEGIES = {"missing_token", "mode"}
-CATEGORICAL_ENCODERS = {"onehot", "drop"}
-SCALING_OPTIONS = {"standard", "none"}
-
-
-def _validate_choice(name: str, value: str, choices: set[str]) -> str:
-    text = str(value or "").strip()
-    if text not in choices:
-        raise ValueError(f"features.{name} must be one of {sorted(choices)}, got: {value!r}")
-    return text
-
-
-def normalize_feature_config(feature_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Resolve preset defaults and explicit feature settings into one small config."""
-    raw = dict(feature_cfg or {})
-    params = _feature_params(raw)
-    preset = _feature_preset(raw, params)
-    resolved = _feature_defaults(preset, params)
-    _apply_feature_overrides(resolved, params)
-    _apply_feature_overrides(resolved, raw)
-    return _validated_feature_config(resolved)
-
-
-def _feature_params(raw: dict[str, Any]) -> dict[str, Any]:
-    params = raw.get("params") or {}
-    if not isinstance(params, dict):
-        raise ValueError("features.params must be a mapping when provided.")
-    return dict(params)
-
-
-def _feature_preset(raw: dict[str, Any], params: dict[str, Any]) -> str:
-    preset = str(raw.get("preset") or params.get("preset") or "basic").strip()
-    if preset not in PRESET_DEFAULTS:
-        raise ValueError(f"Unknown feature preset: {preset}. Available: {', '.join(PRESET_DEFAULTS)}")
-    return preset
-
-
-def _feature_defaults(preset: str, params: dict[str, Any]) -> dict[str, Any]:
-    resolved: dict[str, Any] = {
-        "preset": preset,
-        **PRESET_DEFAULTS[preset],
-        "drop_columns": [],
-        "passthrough_columns": [],
-        "params": dict(params),
-    }
-    return resolved
-
-
-def _apply_feature_overrides(resolved: dict[str, Any], values: dict[str, Any]) -> None:
-    for key in FEATURE_CONFIG_KEYS:
-        if key in values and values[key] is not None:
-            resolved[key] = values[key]
-
-
-def _validated_feature_config(resolved: dict[str, Any]) -> dict[str, Any]:
-    resolved["numeric_impute_strategy"] = _validate_choice(
-        "numeric_impute_strategy", resolved["numeric_impute_strategy"], NUMERIC_IMPUTE_STRATEGIES
-    )
-    resolved["categorical_impute_strategy"] = _validate_choice(
-        "categorical_impute_strategy", resolved["categorical_impute_strategy"], CATEGORICAL_IMPUTE_STRATEGIES
-    )
-    resolved["categorical_encoder"] = _validate_choice(
-        "categorical_encoder", resolved["categorical_encoder"], CATEGORICAL_ENCODERS
-    )
-    resolved["scaling"] = _validate_choice("scaling", resolved["scaling"], SCALING_OPTIONS)
-    resolved["drop_columns"] = as_str_list(resolved.get("drop_columns")) or []
-    resolved["passthrough_columns"] = as_str_list(resolved.get("passthrough_columns")) or []
-    return resolved
+from .feature_config import normalize_feature_config
 
 
 def _numeric_feature_columns(X: pd.DataFrame, excluded: set[str]) -> list[str]:
@@ -120,6 +28,7 @@ class FeatureTransformer:
     scaling: str = "standard"
     drop_columns: list[str] = field(default_factory=list)
     passthrough_columns: list[str] = field(default_factory=list)
+    max_dense_cells: int = 25_000_000
     feature_config: dict[str, Any] = field(default_factory=dict)
     numeric_cols: list[str] = field(default_factory=list)
     categorical_cols: list[str] = field(default_factory=list)
@@ -131,7 +40,7 @@ class FeatureTransformer:
     categorical_fill_values: dict[str, str] = field(default_factory=dict)
     category_levels: dict[str, list[str]] = field(default_factory=dict)
 
-    def fit(self, X: pd.DataFrame) -> "FeatureTransformer":
+    def fit(self, X: pd.DataFrame) -> FeatureTransformer:
         config = normalize_feature_config(self._raw_config())
         self._apply_config(config)
         X_work = self._fit_input_frame(X)
@@ -149,6 +58,7 @@ class FeatureTransformer:
             "scaling": self.scaling,
             "drop_columns": self.drop_columns,
             "passthrough_columns": self.passthrough_columns,
+            "max_dense_cells": self.max_dense_cells,
             "params": self.feature_config.get("params", {}),
         }
 
@@ -160,6 +70,7 @@ class FeatureTransformer:
         self.scaling = config["scaling"]
         self.drop_columns = list(config["drop_columns"])
         self.passthrough_columns = list(config["passthrough_columns"])
+        self.max_dense_cells = int(config["max_dense_cells"])
         self.feature_config = dict(config)
 
     def _fit_input_frame(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -236,6 +147,7 @@ class FeatureTransformer:
         return "__missing__"
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
+        self._validate_dense_size(len(X))
         arrays = [
             *self._numeric_arrays(X),
             *self._categorical_arrays(X),
@@ -245,17 +157,31 @@ class FeatureTransformer:
             raise ValueError("No feature arrays were produced.")
         return np.hstack(arrays)
 
+    def _validate_dense_size(self, row_count: int) -> None:
+        width = (
+            len(self.numeric_cols)
+            + len(self.passthrough_cols)
+            + sum(len(levels) for levels in self.category_levels.values())
+        )
+        cells = row_count * width
+        if cells > self.max_dense_cells:
+            raise ValueError(
+                "Dense feature matrix exceeds features.max_dense_cells "
+                f"(rows={row_count}, columns={width}, cells={cells}, limit={self.max_dense_cells}). "
+                "Use the numeric_only preset, drop high-cardinality columns, or raise the limit deliberately."
+            )
+
     def _numeric_arrays(self, X: pd.DataFrame) -> list[np.ndarray]:
         arrays: list[np.ndarray] = []
         for col in self.numeric_cols:
             if col not in X.columns:
                 raise ValueError(f"Required numeric feature is missing: {col}")
             fill_value = self.numeric_fill_values.get(col, self.numeric_medians[col])
-            values = pd.to_numeric(X[col], errors="coerce").fillna(fill_value).astype(float)
-            array = values.to_numpy()
+            values = pd.to_numeric(X[col], errors="coerce").fillna(fill_value)
+            array = values.to_numpy(dtype=np.float32)
             if self.scaling == "standard":
                 array = (array - self.numeric_means[col]) / self.numeric_stds[col]
-            arrays.append(array.reshape(-1, 1))
+            arrays.append(array.astype(np.float32, copy=False).reshape(-1, 1))
         return arrays
 
     def _categorical_arrays(self, X: pd.DataFrame) -> list[np.ndarray]:
@@ -265,7 +191,7 @@ class FeatureTransformer:
                 raise ValueError(f"Required categorical feature is missing: {col}")
             values = X[col].fillna(self.categorical_fill_values[col]).astype(str)
             levels = self.category_levels[col]
-            encoded = np.zeros((len(X), len(levels)), dtype=float)
+            encoded = np.zeros((len(X), len(levels)), dtype=np.float32)
             index = {level: i for i, level in enumerate(levels)}
             for row_i, value in enumerate(values):
                 level_i = index.get(value)
@@ -282,7 +208,7 @@ class FeatureTransformer:
             values = pd.to_numeric(X[col], errors="coerce")
             if values.isna().any():
                 raise ValueError(f"Passthrough feature contains missing or non-numeric values: {col}")
-            arrays.append(values.astype(float).to_numpy().reshape(-1, 1))
+            arrays.append(values.to_numpy(dtype=np.float32).reshape(-1, 1))
         return arrays
 
 
@@ -296,6 +222,7 @@ def build_feature_pipeline(name: str, X: pd.DataFrame, params: dict[str, Any] | 
         scaling=config["scaling"],
         drop_columns=list(config["drop_columns"]),
         passthrough_columns=list(config["passthrough_columns"]),
+        max_dense_cells=int(config["max_dense_cells"]),
         feature_config=config,
     )
     return transformer.fit(X)

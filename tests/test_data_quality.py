@@ -1,5 +1,4 @@
 import pandas as pd
-
 from ml_platform_tabular.data_quality import build_data_quality_report
 
 

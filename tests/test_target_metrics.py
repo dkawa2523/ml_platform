@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-
 from ml_platform_tabular.metrics import target_means, target_regression_metrics
 from ml_platform_tabular.selection import (
     higher_is_better,

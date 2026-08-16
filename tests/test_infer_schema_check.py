@@ -1,29 +1,35 @@
 import pandas as pd
-
-from ml_platform_tabular.inference.prediction_frame import _model_artifact_id, _prediction_frame
-from ml_platform_tabular.inference.runner import _schema_transformer
-from ml_platform_tabular.inference.schema import _required_feature_columns, _schema_check_summary
+import pytest
+from ml_platform_tabular.inference.prediction_frame import build_prediction_frame, model_artifact_id
+from ml_platform_tabular.inference.schema import (
+    check_inference_schema,
+    required_feature_columns,
+    schema_check_summary,
+)
 
 
 class _CategoryTransformer:
-    category_levels = {"segment": ["a", "b"]}
-    categorical_fill_values = {"segment": "__missing__"}
+    def __init__(self) -> None:
+        self.category_levels = {"segment": ["a", "b"]}
+        self.categorical_fill_values = {"segment": "__missing__"}
 
 
 class _NumericTransformer:
-    numeric_cols = ["x1"]
-    passthrough_cols = []
+    def __init__(self) -> None:
+        self.numeric_cols = ["x1"]
+        self.passthrough_cols: list[str] = []
 
 
 class _PassthroughTransformer:
-    numeric_cols = []
-    passthrough_cols = ["x1"]
+    def __init__(self) -> None:
+        self.numeric_cols: list[str] = []
+        self.passthrough_cols = ["x1"]
 
 
 def test_infer_schema_check_missing_feature_is_error():
     df = pd.DataFrame({"id": [1, 2], "x1": [0.1, 0.2]})
 
-    summary = _schema_check_summary(
+    summary = schema_check_summary(
         df,
         feature_columns=["x1", "x2"],
         id_columns=["id"],
@@ -39,7 +45,7 @@ def test_infer_schema_check_missing_feature_is_error():
 def test_infer_schema_check_extra_column_is_warning():
     df = pd.DataFrame({"id": [1, 2], "x1": [0.1, 0.2], "note": ["new", "new"]})
 
-    summary = _schema_check_summary(
+    summary = schema_check_summary(
         df,
         feature_columns=["x1"],
         id_columns=["id"],
@@ -55,7 +61,7 @@ def test_infer_schema_check_extra_column_is_warning():
 def test_infer_schema_check_unseen_category_is_warning_when_levels_available():
     df = pd.DataFrame({"id": [1, 2], "x1": [0.1, 0.2], "segment": ["a", "new"]})
 
-    summary = _schema_check_summary(
+    summary = schema_check_summary(
         df,
         feature_columns=["x1", "segment"],
         id_columns=["id"],
@@ -71,7 +77,7 @@ def test_infer_schema_check_unseen_category_is_warning_when_levels_available():
 def test_infer_schema_check_invalid_numeric_value_is_error():
     df = pd.DataFrame({"id": [1, 2], "x1": ["corrupt", "2.0"]})
 
-    summary = _schema_check_summary(
+    summary = schema_check_summary(
         df,
         feature_columns=["x1"],
         id_columns=["id"],
@@ -86,7 +92,7 @@ def test_infer_schema_check_invalid_numeric_value_is_error():
 def test_infer_schema_check_passthrough_missing_value_is_error():
     df = pd.DataFrame({"id": [1, 2], "x1": [1.0, None]})
 
-    summary = _schema_check_summary(
+    summary = schema_check_summary(
         df,
         feature_columns=["x1"],
         id_columns=["id"],
@@ -99,46 +105,48 @@ def test_infer_schema_check_passthrough_missing_value_is_error():
 
 
 def test_required_features_reject_config_that_disagrees_with_trained_schema():
-    try:
-        _required_feature_columns(
+    with pytest.raises(ValueError, match="must match the trained model schema exactly"):
+        required_feature_columns(
             {"data": {"feature_columns": ["x2"]}},
             estimator=object(),
             model_info={"feature_columns": ["x1"]},
         )
-    except ValueError as exc:
-        assert "must match the trained model schema exactly" in str(exc)
-    else:
-        raise AssertionError("Expected mismatched inference schema to fail.")
 
 
 def test_required_features_reject_disagreement_between_trained_artifacts():
-    try:
-        _required_feature_columns(
+    with pytest.raises(ValueError, match="Trained model schema artifacts disagree"):
+        required_feature_columns(
             {},
             estimator=type("Estimator", (), {"feature_columns": ["x1"]})(),
             model_info={"feature_columns": ["x2"]},
         )
-    except ValueError as exc:
-        assert "Trained model schema artifacts disagree" in str(exc)
-    else:
-        raise AssertionError("Expected trained schema disagreement to fail.")
 
 
 def test_schema_check_uses_first_base_estimator_transformer_for_ensemble():
     base = type("BaseEstimator", (), {"transformer": _NumericTransformer()})()
     ensemble = type("EnsembleEstimator", (), {"estimators": [base]})()
 
-    bundle = _schema_transformer(ensemble)
+    _, summary = check_inference_schema(
+        {},
+        pd.DataFrame({"x1": [1.0]}),
+        estimator=ensemble,
+        model_info={"feature_columns": ["x1"]},
+    )
 
-    assert isinstance(bundle["transformer"], _NumericTransformer)
+    assert summary["invalid_numeric_features"] == []
 
 
 def test_schema_check_prefers_estimator_transformer_over_stale_bundle():
     estimator = type("Estimator", (), {"transformer": _NumericTransformer()})()
 
-    bundle = _schema_transformer(estimator)
+    _, summary = check_inference_schema(
+        {},
+        pd.DataFrame({"x1": ["invalid"]}),
+        estimator=estimator,
+        model_info={"feature_columns": ["x1"]},
+    )
 
-    assert isinstance(bundle["transformer"], _NumericTransformer)
+    assert summary["invalid_numeric_features"] == ["x1"]
 
 
 def test_model_artifact_id_hashes_model_bytes(tmp_path):
@@ -147,8 +155,8 @@ def test_model_artifact_id_hashes_model_bytes(tmp_path):
     first.write_bytes(b"model-a")
     second.write_bytes(b"model-b")
 
-    assert _model_artifact_id(first) != _model_artifact_id(second)
-    assert len(_model_artifact_id(first)) == 16
+    assert model_artifact_id(first) != model_artifact_id(second)
+    assert len(model_artifact_id(first)) == 16
 
 
 def test_prediction_frame_keeps_row_index_and_id_without_copying_features():
@@ -161,7 +169,7 @@ def test_prediction_frame_keeps_row_index_and_id_without_copying_features():
         index=[5, 6],
     )
 
-    predictions = _prediction_frame(
+    predictions = build_prediction_frame(
         df,
         [1.2, 1.4],
         id_columns=["id"],

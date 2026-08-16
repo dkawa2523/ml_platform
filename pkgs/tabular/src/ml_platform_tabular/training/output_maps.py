@@ -60,7 +60,7 @@ def _add_model_outputs(
         artifacts[f"model_info_{key}"] = item.artifacts["model_info"]
         artifacts[f"metrics_{key}"] = item.artifacts["metrics"]
         tables[f"metrics_table_{key}"] = item.tables["metrics_table"]
-        tables[f"validation_predictions_{key}"] = item.tables["validation_predictions"]
+        tables[f"selection_predictions_{key}"] = item.tables["selection_predictions"]
         for plot_name, plot_path in item.plots.items():
             plots[f"{plot_name}_{key}"] = plot_path
 

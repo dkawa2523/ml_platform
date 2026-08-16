@@ -4,10 +4,10 @@
 
 ## 評価の基本単位
 
-各モデルは同一 validation split 上で評価されます。
+各モデルは training partition 内の同一 selection holdout 上で順位付けされます。選択後の最終指標は、モデル選択で未使用の test holdout 上で一度だけ算出します。
 
 $$
-\text{candidate} = (\text{model name}, \text{parameters}, \text{validation predictions}, \text{metrics})
+\text{candidate} = (\text{model name}, \text{parameters}, \text{selection predictions}, \text{selection metrics})
 $$
 
 候補は `selection_metric` に基づいて順位付けされます。
@@ -52,10 +52,11 @@ $$
 | --- | --- |
 | best model | 最良候補 |
 | artifact kind | model / ensemble |
-| metrics | best の指標 |
+| selection_metrics | candidate / ensemble の順位付け指標 |
+| metrics | 未使用 test holdout 上の最終指標 |
 | recommended selector | 推論 Task の `Model/model_selector` |
 | recommended source | 推論 Task の `Model/source_task_id` |
 
 ## 評価の限界
 
-現行評価は単一 holdout です。データ量が少ない場合、分割によるぶれがあります。重要な運用判断では、将来的に外部 validation、group k-fold、time-series validation などを検討してください。現行リリースでは未実装であり、ロードマップに残しています。
+現行評価は selection/test の二段 holdout です。データ量が少ない場合は両分割によるぶれがあります。重要な運用判断では、外部 test、group k-fold、time-series validation なども検討してください。

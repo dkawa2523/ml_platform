@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Sync locked quality environment
-        run: uv sync --frozen --all-extras --group quality
+        run: uv sync --frozen --group quality
       - name: Run pull-request quality gate
         env:
           QUALITY_BASE_REF: origin/${{ github.base_ref || 'main' }}

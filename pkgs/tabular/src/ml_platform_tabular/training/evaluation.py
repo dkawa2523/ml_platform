@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import subprocess
 from typing import Any
 
-from ml_platform_core.io import write_json
+import pandas as pd
+from ml_platform_core.io import write_json, write_table
+from ml_platform_core.source_version import git_revision
 
+from ..metrics import regression_prediction_frame, target_labels, target_means, target_regression_metrics
 from .artifacts import (
+    LEADERBOARD_REPORT_SCHEMA_VERSION,
     CandidateResult,
     EvaluationResult,
-    LEADERBOARD_REPORT_SCHEMA_VERSION,
+    PreprocessResult,
 )
 from .best_model_artifacts import write_best_model_artifacts
 from .leaderboard_artifacts import build_leaderboard_rows, write_leaderboard_artifacts
@@ -20,20 +23,8 @@ from .ranking import ranked_results
 
 
 def _code_version() -> str:
-    try:
-        root = Path(__file__).resolve().parents[5]
-        completed = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=root,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except Exception:
-        return "unknown"
-    version = completed.stdout.strip()
-    return version or "unknown"
+    root = Path(__file__).resolve().parents[5]
+    return git_revision(root, short=True) or "unknown"
 
 
 def _runtime_task_id() -> str | None:
@@ -46,6 +37,7 @@ def _runtime_task_id() -> str | None:
 
 def evaluate_model_candidates(
     cfg: dict[str, Any],
+    preprocess: PreprocessResult,
     model_results: list[CandidateResult],
     ensemble_results: list[CandidateResult] | CandidateResult | None,
     pipeline_dir: Path,
@@ -63,13 +55,17 @@ def evaluate_model_candidates(
     )
     task_id = cfg.get("runtime", {}).get("clearml_task_id") or _runtime_task_id()
     version = _code_version()
+    final_metrics, final_metrics_table, final_predictions = _evaluate_on_test_holdout(cfg, preprocess, best, stage_dir)
 
     leaderboard_rows = build_leaderboard_rows(ranked, selection_metric)
     leaderboard_outputs = write_leaderboard_artifacts(
         leaderboard_rows=leaderboard_rows,
         stage_dir=stage_dir,
     )
-    evaluation_predictions_path, diagnostic_tables, diagnostic_plots = write_evaluation_diagnostics(best, stage_dir)
+    evaluation_predictions_path, diagnostic_tables, diagnostic_plots = write_evaluation_diagnostics(
+        best, final_predictions, stage_dir
+    )
+    diagnostic_tables["evaluation_target_metrics"] = final_metrics_table
     best_outputs = write_best_model_artifacts(
         best=best,
         best_ensemble=best_ensemble,
@@ -77,6 +73,7 @@ def evaluate_model_candidates(
         stage_dir=stage_dir,
         task_id=task_id,
         code_version=version,
+        final_metrics=final_metrics,
     )
     summary = _evaluation_summary(
         best_outputs=best_outputs,
@@ -86,18 +83,39 @@ def evaluate_model_candidates(
         task_id=task_id,
         code_version=version,
     )
-    metrics_path = write_json({**best.metrics, **summary}, stage_dir / "metrics.json")
+    metrics_path = write_json({**final_metrics, **summary}, stage_dir / "metrics.json")
     artifacts = evaluation_artifacts(best_outputs, metrics_path)
     tables = evaluation_tables(leaderboard_outputs, evaluation_predictions_path)
     tables.update(diagnostic_tables)
     return EvaluationResult(
         best=best,
-        metrics=dict(best.metrics),
+        metrics=final_metrics,
         summary=summary,
         artifacts=artifacts,
         tables=tables,
         plots={**leaderboard_outputs.plots, **diagnostic_plots},
     )
+
+
+def _evaluate_on_test_holdout(
+    cfg: dict[str, Any], preprocess: PreprocessResult, best: CandidateResult, stage_dir: Path
+) -> tuple[dict[str, float], Path, pd.DataFrame]:
+    prediction = best.estimator.predict(preprocess.X_valid)
+    test_targets = target_labels(preprocess.X_valid, preprocess.target_names)
+    train_targets = target_labels(preprocess.X_train, preprocess.target_names)
+    metrics, table = target_regression_metrics(
+        preprocess.y_valid,
+        prediction,
+        test_targets,
+        metrics=(cfg.get("metrics", {}) or {}).get("names"),
+        baseline_means=target_means(preprocess.y_train, train_targets),
+    )
+    table.insert(0, "model_name", best.model_name)
+    table_path = write_table(table, stage_dir / "evaluation_target_metrics.csv")
+    predictions = regression_prediction_frame(
+        preprocess.X_valid, preprocess.y_valid, prediction, model_name=best.model_name
+    )
+    return metrics, table_path, predictions
 
 
 def _evaluation_summary(

@@ -5,10 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from quality import runner
+from quality import mutation, runner, secrets, static_analysis
 from quality.gates import (
     QualityFailure,
-    compare_complexity,
     compare_counter,
     diagnostic_counter,
     fatal_diagnostics,
@@ -42,12 +41,6 @@ def test_counter_fails_new_and_increased_but_allows_improvement():
     assert compare_counter("tool", {"new": 1}, {})
 
 
-def test_complexity_fails_new_hotspot_and_existing_increase():
-    assert compare_complexity({"module.py::new": 11}, {})
-    assert compare_complexity({"module.py::old": 12}, {"module.py::old": 11})
-    assert compare_complexity({"module.py::old": 9}, {"module.py::old": 11}) == []
-
-
 def test_fatal_diagnostics_cannot_be_baselined(tmp_path):
     ruff = [_ruff(tmp_path / "broken.py", 1, code="F821", message="Undefined name")]
     bandit = [
@@ -65,24 +58,19 @@ def test_fatal_diagnostics_cannot_be_baselined(tmp_path):
     assert any("B999" in failure for failure in failures)
 
 
-def test_coverage_regression_is_nonzero_quality_failure():
-    with pytest.raises(QualityFailure, match="coverage dropped"):
-        runner.check_coverage({"totals": {"percent_covered": 80.9}}, {"coverage": {"percent": 81.0}})
-
-
 def test_secret_regression_is_nonzero_quality_failure(monkeypatch, tmp_path):
     baseline = tmp_path / ".secrets.baseline"
     baseline.write_text('{"results": {}}', encoding="utf-8")
-    monkeypatch.setattr(runner, "SECRETS_BASELINE_PATH", baseline)
+    monkeypatch.setattr(secrets, "SECRETS_BASELINE_PATH", baseline)
     digest_field = "hashed_" + "secret"
     monkeypatch.setattr(
-        runner,
+        secrets,
         "_scan_secrets",
         lambda: {"results": {"tracked.py": [{"type": "Secret Keyword", digest_field: "review-required"}]}},
     )
 
     with pytest.raises(QualityFailure, match="detect-secrets"):
-        runner.check_secrets()
+        secrets.check_secrets()
 
 
 def test_secret_fingerprint_is_independent_of_path_separator():
@@ -91,7 +79,7 @@ def test_secret_fingerprint_is_independent_of_path_separator():
     windows_report = {"results": {r"deploy\base\secret.example.yaml": [finding]}}
     posix_report = {"results": {"deploy/base/secret.example.yaml": [finding]}}
 
-    assert runner._secret_counter(windows_report) == runner._secret_counter(posix_report)
+    assert secrets._secret_counter(windows_report) == secrets._secret_counter(posix_report)
 
 
 def test_architecture_command_failure_is_nonzero(monkeypatch):
@@ -104,17 +92,44 @@ def test_architecture_command_failure_is_nonzero(monkeypatch):
         runner.run_architecture()
 
 
+def test_branch_coverage_gate_rejects_a_regression():
+    with pytest.raises(QualityFailure, match="Branch coverage decreased"):
+        runner.check_branch_coverage(
+            {"branch_percent": 79.5},
+            {"coverage": {"branch_percent": 80.0}},
+        )
+
+    runner.check_branch_coverage(
+        {"branch_percent": 80.1},
+        {"coverage": {"branch_percent": 80.0}},
+    )
+
+
 def test_dependency_audit_failure_cannot_be_recorded_as_empty(monkeypatch, tmp_path):
-    monkeypatch.setattr(runner, "REPORTS", tmp_path)
-    monkeypatch.setattr(runner, "_command", lambda *args, **kwargs: runner.CommandResult((), 0, "", ""))
+    monkeypatch.setattr(static_analysis, "REPORTS", tmp_path)
+    monkeypatch.setattr(static_analysis, "_command", lambda *args, **kwargs: runner.CommandResult((), 0, "", ""))
     monkeypatch.setattr(
-        runner,
+        static_analysis,
         "_python_module",
         lambda *args, **kwargs: runner.CommandResult(("pip-audit",), 1, "", "network failure"),
     )
 
     with pytest.raises(QualityFailure, match="did not complete"):
-        runner._pip_audit()
+        static_analysis._run_pip_audit()
+
+
+def test_dependency_vulnerabilities_are_never_baselined(monkeypatch, tmp_path):
+    monkeypatch.setattr(static_analysis, "REPORTS", tmp_path)
+    monkeypatch.setattr(static_analysis, "_command", lambda *args, **kwargs: runner.CommandResult((), 0, "", ""))
+    report = {"dependencies": [{"name": "unsafe", "vulns": [{"id": "CVE-example"}]}]}
+    monkeypatch.setattr(
+        static_analysis,
+        "_python_module",
+        lambda *args, **kwargs: runner.CommandResult(("pip-audit",), 1, json.dumps(report), ""),
+    )
+
+    with pytest.raises(QualityFailure, match="unsafe:CVE-example"):
+        static_analysis._run_pip_audit()
 
 
 def test_mutation_snapshot_is_grouped_by_module(tmp_path):
@@ -125,7 +140,7 @@ def test_mutation_snapshot_is_grouped_by_module(tmp_path):
         encoding="utf-8",
     )
 
-    snapshot = runner._mutation_snapshot(tmp_path)
+    snapshot = mutation.mutation_snapshot(tmp_path)
 
     assert snapshot["package/module.py"] == {
         "killed": 2,
@@ -146,22 +161,13 @@ def test_mutation_gate_rejects_weaker_module_results():
     }
 
     with pytest.raises(QualityFailure, match="survived increased"):
-        runner.check_mutation(current, baseline)
+        mutation.check_mutation(current, baseline)
 
 
 def test_fast_and_pr_do_not_write_tracked_baselines(monkeypatch, tmp_path):
     baseline = tmp_path / "baseline.json"
     baseline.write_text(
-        json.dumps(
-            {
-                "ruff": {},
-                "bandit": {},
-                "complexity": {},
-                "pip_audit": {},
-                "vulture": {},
-                "coverage": {"percent": 81.0},
-            }
-        ),
+        json.dumps({"ruff": {}, "bandit": {}, "coverage": {"branch_percent": 80.0}}),
         encoding="utf-8",
     )
     original = baseline.read_bytes()
@@ -175,10 +181,10 @@ def test_fast_and_pr_do_not_write_tracked_baselines(monkeypatch, tmp_path):
     monkeypatch.setattr(
         runner,
         "collect_static",
-        lambda: ({key: {} for key in ("ruff", "bandit", "complexity", "pip_audit", "vulture")}, []),
+        lambda: ({"ruff": {}, "bandit": {}}, []),
     )
     monkeypatch.setattr(runner, "run_architecture", lambda: None)
-    monkeypatch.setattr(runner, "run_coverage", lambda: {"totals": {"percent_covered": 81.0}})
+    monkeypatch.setattr(runner, "run_coverage", lambda: {"branch_percent": 80.0})
     monkeypatch.setattr(runner, "run_diff_coverage", lambda: None)
     monkeypatch.setattr(runner, "check_secrets", lambda: None)
     monkeypatch.setattr(runner, "run_smoke", lambda: None)

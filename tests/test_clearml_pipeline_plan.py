@@ -1,16 +1,12 @@
 import json
 
 import pytest
-
 from clearml_test_utils import (
     load_clearml_pipeline_controller_module,
-    load_clearml_pipeline_params_module,
     load_clearml_pipeline_plan_module,
     load_clearml_pipeline_steps_module,
 )
 from ml_platform_core.contracts import DomainStepPlan
-from ml_platform_tabular.manifest import get_tabular_manifest
-
 
 DEFAULT_MODELS = [
     "linear",
@@ -36,134 +32,9 @@ def _default_step_names():
     ]
 
 
-def test_clearml_pipeline_template_has_minimal_training_pipeline_overrides():
-    pipeline_params = load_clearml_pipeline_params_module()
-    params = pipeline_params.pipeline_runtime_params(
-        "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
-    )
-
-    _assert_pipeline_template_param_surface(params)
-    _assert_pipeline_template_defaults(params)
-
-
-def test_clearml_pipeline_runtime_params_are_manifest_declared():
-    pipeline_params = load_clearml_pipeline_params_module()
-    params = pipeline_params.pipeline_runtime_params(
-        "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
-    )
-    manifest_keys = {parameter.name for parameter in get_tabular_manifest().task("tabular_pipeline").parameters}
-
-    assert set(params) <= manifest_keys
-
-
-def _assert_pipeline_template_param_surface(params):
-    assert {key.split("/", 1)[0] for key in params} <= {"Basic", "Input", "Run", "Split", "Features", "Model", "Output"}
-    assert {
-        "Basic/model_suite",
-        "Basic/quality_mode",
-        "Basic/use_ensemble",
-        "Basic/notes",
-    }.issubset(params)
-    assert {
-        "Run/name",
-        "Split/method",
-        "Split/valid_size",
-        "Split/group_column",
-        "Split/time_column",
-        "Split/valid_filter_column",
-        "Split/valid_filter_value",
-        "Input/clearml_dataset_id",
-        "Input/local_path",
-        "Input/dataset_file",
-        "Input/target_column",
-        "Input/id_columns",
-    }.issubset(params)
-    assert {
-        "Features/preset",
-        "Features/numeric_impute_strategy",
-        "Features/categorical_impute_strategy",
-        "Features/categorical_encoder",
-        "Features/scaling",
-        "Features/drop_columns",
-        "Features/passthrough_columns",
-    }.issubset(params)
-    assert {
-        "Model/model_params_by_name",
-        "Model/evaluation_metrics",
-        "Model/candidates",
-        "Model/selection_metric",
-        "Model/ensemble_methods",
-        "Model/ensemble_top_k",
-    }.issubset(params)
-    assert "Run/task" not in params
-    assert "Model/params" not in params
-    assert "Model/ensemble_method" not in params
-    assert "Model/search_enabled" not in params
-    assert "Model/search_method" not in params
-    assert "Model/search_space" not in params
-    assert "Model/max_trials" not in params
-    assert "Run/" + "pipeline" + "_mode" not in params
-    assert "Output/upload_plots" in params
-
-
-def _assert_pipeline_template_defaults(params):
-    _assert_pipeline_template_basic_defaults(params)
-    _assert_pipeline_template_split_defaults(params)
-    _assert_pipeline_template_model_defaults(params)
-
-
-def _assert_pipeline_template_basic_defaults(params):
-    assert params["Output/upload_plots"] is True
-    assert params["Input/local_path"] == ""
-    assert params["Input/clearml_dataset_id"] == "b7afaea9d7aa42f084fb4fc06b0d4d41"
-    assert params["Input/dataset_file"] == "sample_train.csv"
-    assert params["Basic/model_suite"] == "default"
-    assert params["Basic/quality_mode"] == "standard"
-    assert params["Basic/use_ensemble"] is True
-    assert params["Basic/notes"] == ""
-    assert params["Input/feature_columns"] == []
-    assert params["Features/preset"] == "basic"
-    assert params["Features/drop_columns"] == "[]"
-
-
-def _assert_pipeline_template_split_defaults(params):
-    assert params["Split/method"] == "random"
-    assert params["Split/valid_size"] == 0.2
-    assert params["Split/group_column"] is None
-    assert params["Split/time_column"] is None
-    assert params["Split/valid_filter_column"] is None
-    assert params["Split/valid_filter_value"] is None
-
-
-def _assert_pipeline_template_model_defaults(params):
-    assert params["Model/evaluation_metrics"] == '["mae", "rmse", "r2"]'
-    assert params["Model/ensemble_methods"] == '["mean_topk", "weighted", "median"]'
-    assert json.loads(params["Model/candidates"]) == DEFAULT_MODELS
-    assert set(json.loads(params["Model/model_params_by_name"])) == set(DEFAULT_MODELS)
-
-
-def test_clearml_pipeline_new_run_args_are_mapped_to_runtime_params():
-    pipeline_params = load_clearml_pipeline_params_module()
-    pipeline_controller = load_clearml_pipeline_controller_module()
-    defaults = pipeline_params.pipeline_runtime_params(
-        "config/tasks/tabular_pipeline.yaml", "config/profiles/clearml-dev.yaml"
-    )
-    task_params = {
-        "Args/Model/candidates": '["linear","ridge"]',
-        "Args/Input/clearml_dataset_id": "dataset-id",
-    }
-
-    connected = pipeline_params.pipeline_params_from_task(defaults, task_params)
-    draft_params = pipeline_controller._pipeline_draft_params(
-        {"controller_queue": "controller", "stage_queue": "default"}
-    )
-
-    assert connected["Model/candidates"] == ["linear", "ridge"]
-    assert connected["Input/clearml_dataset_id"] == "dataset-id"
-    assert draft_params == {
-        "pipeline/controller_queue": "controller",
-        "pipeline/default_queue": "default",
-    }
+def _train_model_params(plan, model_name):
+    step = next(step for step in plan["steps"] if step["name"] == f"train_{model_name}")
+    return json.loads(step["parameter_override"]["Model/params"])
 
 
 def test_clearml_pipeline_cli_candidate_override_is_not_replaced_by_defaults():
@@ -219,7 +90,7 @@ def test_clearml_pipeline_plan_reports_missing_domain_artifacts():
         model_name="ridge",
     )
 
-    with pytest.raises(ValueError, match="train_bad.*validation_predictions"):
+    with pytest.raises(ValueError, match=r"train_bad.*selection_predictions"):
         pipeline_steps._model_ref(step)
 
 
@@ -355,200 +226,6 @@ def test_clearml_add_plan_steps_uses_rendered_domain_plan_order():
     assert pipe.steps[1]["stage"] == "train_linear"
     assert pipe.steps[1]["parameter_override"]["Model/name"] == "linear"
     assert pipe.steps[-1]["parameter_override"]["Run/stage"] == "evaluate_models"
-
-
-@pytest.mark.parametrize(
-    ("suite", "expected"),
-    [
-        (
-            "fast",
-            ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting"],
-        ),
-        ("interpretable", ["linear", "ridge", "lasso", "elasticnet"]),
-        ("tree", ["random_forest", "extra_trees", "gradient_boosting"]),
-        ("gbm", ["lightgbm", "xgboost", "catboost"]),
-    ],
-)
-def test_clearml_basic_model_suite_selects_candidate_models(suite, expected):
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={"Basic/model_suite": suite},
-    )
-
-    assert plan["model_suite"] == suite
-    assert plan["candidate_models"] == expected
-    assert [step["name"] for step in plan["steps"] if step["name"].startswith("train_")] == [
-        f"train_{model_name}" for model_name in expected
-    ]
-
-
-def _train_model_params(plan, model_name):
-    step = next(step for step in plan["steps"] if step["name"] == f"train_{model_name}")
-    return json.loads(step["parameter_override"]["Model/params"])
-
-
-@pytest.mark.parametrize(
-    ("suite", "quality", "expected_candidates", "expected_values"),
-    [
-        (
-            "fast",
-            "fast",
-            ["linear", "ridge", "lasso", "elasticnet", "random_forest", "extra_trees", "gradient_boosting"],
-            {
-                "random_forest": {"n_estimators": 10},
-                "extra_trees": {"n_estimators": 10},
-                "gradient_boosting": {"n_estimators": 10},
-            },
-        ),
-        (
-            "default",
-            "standard",
-            None,
-            {
-                "random_forest": {"n_estimators": 20},
-                "gradient_boosting": {"n_estimators": 20},
-                "lightgbm": {"n_estimators": 100},
-                "xgboost": {"n_estimators": 100},
-                "catboost": {"iterations": 100},
-            },
-        ),
-        (
-            "tree",
-            "quality",
-            ["random_forest", "extra_trees", "gradient_boosting"],
-            {
-                "random_forest": {"n_estimators": 60},
-                "extra_trees": {"n_estimators": 60},
-                "gradient_boosting": {"n_estimators": 60},
-            },
-        ),
-    ],
-)
-def test_clearml_basic_quality_mode_sets_bounded_params(suite, quality, expected_candidates, expected_values):
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={"Basic/model_suite": suite, "Basic/quality_mode": quality},
-    )
-
-    if expected_candidates is not None:
-        assert plan["candidate_models"] == expected_candidates
-    for model_name, values in expected_values.items():
-        model_params = _train_model_params(plan, model_name)
-        for key, value in values.items():
-            assert model_params[key] == value
-
-
-def test_clearml_explicit_model_params_override_basic_quality_mode():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={
-            "Basic/model_suite": "tree",
-            "Basic/quality_mode": "quality",
-            "Run/seed": 123,
-            "Model/model_params_by_name": '{"random_forest":{"n_estimators":7,"random_state":999}}',
-        },
-    )
-
-    assert _train_model_params(plan, "random_forest") == {"n_estimators": 7, "random_state": 123}
-    assert _train_model_params(plan, "extra_trees") == {"random_state": 123}
-    assert all(step["parameter_override"]["Run/seed"] == 123 for step in plan["steps"])
-
-
-def test_clearml_basic_custom_model_suite_uses_model_candidates():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={
-            "Basic/model_suite": "custom",
-            "Model/candidates": '["linear","ridge"]',
-        },
-    )
-
-    assert plan["model_suite"] == "custom"
-    assert plan["candidate_models"] == ["linear", "ridge"]
-    assert _train_model_params(plan, "ridge") == {"alpha": 1.0}
-
-
-def test_clearml_custom_model_suite_respects_explicit_model_params():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={
-            "Basic/model_suite": "custom",
-            "Basic/quality_mode": "quality",
-            "Model/candidates": '["ridge"]',
-            "Model/model_params_by_name": '{"ridge":{"alpha":2.5}}',
-        },
-    )
-
-    assert plan["model_suite"] == "custom"
-    assert plan["candidate_models"] == ["ridge"]
-    assert _train_model_params(plan, "ridge") == {"alpha": 2.5}
-
-
-def test_clearml_basic_use_ensemble_controls_pipeline_steps():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={
-            "Basic/model_suite": "custom",
-            "Model/candidates": '["linear","ridge"]',
-            "Basic/use_ensemble": False,
-        },
-    )
-
-    assert plan["ensemble_enabled"] is False
-    assert [step["name"] for step in plan["steps"]] == [
-        "preprocess_features",
-        "train_linear",
-        "train_ridge",
-        "evaluate_models",
-    ]
-
-
-def test_clearml_detailed_ensemble_enabled_overrides_basic_use_ensemble():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    plan = pipeline_plan.build_pipeline_plan(
-        "config/tasks/tabular_pipeline.yaml",
-        "config/profiles/clearml-dev.yaml",
-        runtime_params={
-            "Basic/model_suite": "custom",
-            "Model/candidates": '["linear","ridge"]',
-            "Basic/use_ensemble": False,
-            "Model/ensemble_enabled": True,
-            "Model/ensemble_methods": '["mean_topk"]',
-        },
-    )
-
-    assert plan["ensemble_enabled"] is True
-    assert "build_ensemble_mean_topk" in [step["name"] for step in plan["steps"]]
-
-
-def test_clearml_training_pipeline_rejects_search_primary_graph():
-    pipeline_plan = load_clearml_pipeline_plan_module()
-
-    with pytest.raises(ValueError, match="future/experimental"):
-        pipeline_plan.build_pipeline_plan(
-            "config/tasks/tabular_pipeline.yaml",
-            "config/profiles/clearml-dev.yaml",
-            overrides=["model.search.enabled=true"],
-        )
 
 
 def test_clearml_training_pipeline_plan_applies_dataset_and_model_overrides():

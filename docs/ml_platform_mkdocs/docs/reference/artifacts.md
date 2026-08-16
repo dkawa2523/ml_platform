@@ -26,7 +26,7 @@ ClearML step label では `train_<model>` と表示しますが、package stage 
 | Artifact | `model_info.json` | モデル情報、特徴量、パラメータ |
 | Artifact | `metrics.json` | 指標 JSON |
 | Table | `metrics_table.csv` | target別と`__macro__`のtidy指標 table |
-| Table | `validation_predictions.csv` | validation 予測 |
+| Table | `selection_predictions.csv` | model selection holdout 予測 |
 
 ## build_ensemble_<method>
 
@@ -37,7 +37,7 @@ ClearML step label では `build_ensemble_<method>` と表示しますが、pack
 | Artifact | `model_<method>.joblib` | アンサンブル estimator |
 | Artifact | `model_info_<method>.json` | モデル情報、構成モデル、重み |
 | Artifact | `metrics_<method>.json` | アンサンブル指標 |
-| Table | `ensemble_predictions_<method>.csv` | validation 予測 |
+| Table | `selection_predictions_<method>.csv` | model selection holdout 予測 |
 | Table | `ensemble_members_<method>.csv` | 構成モデルと重み |
 
 ## evaluate_models

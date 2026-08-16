@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import json
-import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -125,71 +124,6 @@ def fatal_diagnostics(ruff: Iterable[Mapping[str, Any]], bandit: Iterable[Mappin
                 f"{diagnostic.get('filename')}: {diagnostic.get('issue_text')}"
             )
     return failures
-
-
-def complexity_map(report: Mapping[str, Any], root: Path) -> dict[str, int]:
-    """Flatten Radon JSON into file + qualified-function complexity keys."""
-
-    result: dict[str, int] = {}
-
-    def walk(path: str, blocks: Iterable[Mapping[str, Any]], parents: tuple[str, ...] = ()) -> None:
-        for block in blocks:
-            name = str(block.get("name") or "<unknown>")
-            block_type = str(block.get("type") or "")
-            next_parents = (*parents, name) if block_type == "class" else parents
-            if block_type in {"function", "method"}:
-                qualname = ".".join((*parents, name))
-                result[f"{_normalized_path(path, root)}::{qualname}"] = int(block.get("complexity") or 0)
-            walk(path, block.get("methods") or [], next_parents)
-            walk(path, block.get("closures") or [], (*parents, name))
-
-    for filename, blocks in report.items():
-        if isinstance(blocks, list):
-            walk(filename, blocks)
-    return result
-
-
-def compare_complexity(current: Mapping[str, int], baseline: Mapping[str, int], limit: int = 10) -> list[str]:
-    """Prevent new complex functions and increases in existing functions."""
-
-    failures = []
-    for function, value in sorted(current.items()):
-        previous = baseline.get(function)
-        if previous is None and value > limit:
-            failures.append(f"Radon: new {function} has complexity {value} > {limit}")
-        elif previous is not None and value > previous:
-            failures.append(f"Radon: {function} increased from {previous} to {value}")
-    return failures
-
-
-_VULTURE_LINE = re.compile(r"^(?P<file>.+?):(?P<line>\d+): (?P<message>.+?) \((?P<confidence>\d+)% confidence\)$")
-
-
-def vulture_counter(output: str, root: Path) -> Counter[str]:
-    """Normalize Vulture's stable text format."""
-
-    counter: Counter[str] = Counter()
-    for line in output.splitlines():
-        match = _VULTURE_LINE.match(line.strip())
-        if not match:
-            continue
-        key = json.dumps(
-            [_normalized_path(match["file"], root), match["message"], int(match["confidence"])],
-            separators=(",", ":"),
-        )
-        counter[key] += 1
-    return counter
-
-
-def audit_counter(report: Mapping[str, Any]) -> Counter[str]:
-    """Normalize pip-audit findings by package and vulnerability id."""
-
-    counter: Counter[str] = Counter()
-    for dependency in report.get("dependencies", []):
-        name = str(dependency.get("name") or "unknown").lower()
-        for vulnerability in dependency.get("vulns", []):
-            counter[f"{name}:{vulnerability.get('id')}"] += 1
-    return counter
 
 
 def raise_failures(failures: Iterable[str]) -> None:
